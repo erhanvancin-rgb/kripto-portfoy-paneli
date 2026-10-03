@@ -1,7 +1,0 @@
-streamlit
-pandas
-yfinance
-plotly
-streamlit-autorefresh
-gspread
-google-auth

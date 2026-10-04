@@ -216,31 +216,9 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
 
     net_bar_toplam = toplam_y_bar + toplam_k_bar
     ham_y_oran = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
-    ham_k_oran = 100.0 - ham_y_oran
 
-    # Matris yüzdesi doğrudan ham verilere (% yeşil ve % kırmızı) eşitlenir.
     y_net_yuzde = round(ham_y_oran, 1)
-
-    # Yön ham verilere göre doğrudan belirlenir (Hangi taraf baskınsa)
     aktif_yon_turu = "Long" if y_net_yuzde >= 50.0 else "Short"
-
-    # Risk oranına göre dinamik eşik: Risk azaldıkça (örn %25) onay eşiği sertleşir (örn %55), risk arttıkça (örn %75) gevşer (%45).
-    dinamik_esik = 50.0 + ((50.0 - risk_yuzdesi) * 0.15)
-
-    ilgili_oran = y_net_yuzde if aktif_yon_turu == "Long" else (100.0 - y_net_yuzde)
-
-    state_key = f"onceki_yon_{coin_symbol}"
-    onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
-
-    if ilgili_oran >= dinamik_esik:
-        if ilgili_oran >= 75.0:
-            temiz_yon = f"{aktif_yon_turu} (Trend Haberi)"
-        else:
-            temiz_yon = f"{aktif_yon_turu} (Onaylı)"
-    else:
-        temiz_yon = "Nötr (Beklemede)"
-
-    st.session_state[state_key] = temiz_yon
 
     y_gorsel = round((y_net_yuzde / 100.0) * 10)
     if y_gorsel > 10: y_gorsel = 10
@@ -253,21 +231,17 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
 
     detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_dizilimi_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net_yuzde:.1f} | 🔴 %{100.0 - y_net_yuzde:.1f}</div></div>"""
 
-    if "Long" in temiz_yon:
+    if "Long" in aktif_yon_turu:
         stop_fiyat = anlik_fiyat * 0.992
         hedef_fiyat = anlik_fiyat * 1.025
-    elif "Short" in temiz_yon:
+    else:
         stop_fiyat = anlik_fiyat * 1.008
         hedef_fiyat = anlik_fiyat * 0.975
-    else:
-        stop_fiyat = anlik_fiyat * 0.99
-        hedef_fiyat = anlik_fiyat * 1.01
 
-    is_notr = ("Nötr" in temiz_yon)
-    matris_taban_orani = 0.0 if is_notr else round(y_net_yuzde, 1)
-    toplam_puan_skor = ilgili_oran * 10000 + sum([ord(c) for c in coin_symbol])
+    matris_taban_orani = round(y_net_yuzde, 1) if aktif_yon_turu == "Long" else round(100.0 - y_net_yuzde, 1)
+    toplam_puan_skor = matris_taban_orani * 10000 + sum([ord(c) for c in coin_symbol])
     
-    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, y_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
+    return toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, matris_taban_orani, y_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
 
 def google_sheets_baglan():
     try:
@@ -480,7 +454,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk und Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -490,14 +464,14 @@ def tam_ekran_canli_yayin_dongusu():
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_yuzdesi)
+        toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, matris_taban_orani, raw_yuzde, aktif_yon_turu, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_yuzdesi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         
         islenen_ham_veriler.append({
-            "sembol": sembol, "temiz_yon": temiz_yon, "toplam_puan_skor": toplam_puan_skor,
+            "sembol": sembol, "toplam_puan_skor": toplam_puan_skor,
             "detay_bilgi_html": detay_bilgi_html, "hedef_fiyat": hedef_fiyat, "stop_fiyat": stop_fiyat,
-            "is_notr": is_notr, "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
-            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "r48": r48, "r24": r24, "r12": r12, "r4": r4
+            "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
+            "raw_yuzde": raw_yuzde, "aktif_yon_turu": aktif_yon_turu, "r48": r48, "r24": r24, "r12": r12, "r4": r4
         })
 
     toplam_y_tum, toplam_k_tum = 0, 0
@@ -512,16 +486,21 @@ def tam_ekran_canli_yayin_dongusu():
     for data in islenen_ham_veriler:
         sembol = data["sembol"]
         raw_yuzde = data["raw_yuzde"]
-        raw_yon = data["raw_yon"]
+        aktif_yon_turu = data["aktif_yon_turu"]
+        matris_oran = data["matris_taban_orani"]
         
         # --- PİYASA & DOMİNANS 3'TE 2 ONAY KURALI ---
-        coin_dom_yuzde = raw_yuzde
-        usdt_dom_yuzde = usdt_genel_yuzde
-        matris_dom_yuzde = raw_yuzde
+        coin_dom_yuzde = raw_yuzde if aktif_yon_turu == "Long" else (100.0 - raw_yuzde)
+        usdt_dom_yuzde = usdt_genel_yuzde if aktif_yon_turu == "Long" else (100.0 - usdt_genel_yuzde)
+        matris_dom_yuzde = matris_oran
 
         c_yesil = coin_dom_yuzde >= 50.0
         u_yesil = usdt_dom_yuzde >= 50.0
         m_yesil = matris_dom_yuzde >= 50.0
+
+        # 3 ledden kaç tanesi yeşil?
+        yesil_led_sayisi = sum([c_yesil, u_yesil, m_yesil])
+        piyasa_onayi_var = (yesil_led_sayisi >= 2)
 
         c_durum = "🟢" if c_yesil else "🔴"
         u_durum = "🟢" if u_yesil else "🔴"
@@ -538,7 +517,23 @@ def tam_ekran_canli_yayin_dongusu():
         l_url = logo_urls.get(sembol, "")
         logo_html = f'<img src="{l_url}" width="24" height="24">'
         
-        trend = data["temiz_yon"]
+        # --- KATI EŞİK KONTROLÜ ---
+        # 1. Matris yüzdesi en az %75 olmalı (risk potansüne göre esneyebilir: Örn. Risk %0 iken %80, Risk %100 iken %70)
+        dinamik_matris_esigi = 75.0 - ((risk_yuzdesi - 50.0) * 0.1)
+        
+        is_notr = True
+        trend = "Nötr (Beklemede)"
+
+        if matris_oran >= dinamik_matris_esigi and piyasa_onayi_var:
+            is_notr = False
+            if matris_oran >= 85.0:
+                trend = f"{aktif_yon_turu} (Trend Haberi)"
+            else:
+                trend = f"{aktif_yon_turu} (Onaylı)"
+        else:
+            is_notr = True
+            trend = "Nötr (Beklemede)"
+
         if "Trend Haberi" in trend:
             yon_html = f'<div style="background-color: rgba(25, 135, 84, 0.35); padding: 6px; border-radius: 6px; color: #0f5132; font-weight: bold;">{trend}</div>' if "Long" in trend else f'<div style="background-color: rgba(220, 53, 69, 0.35); padding: 6px; border-radius: 6px; color: #842029; font-weight: bold;">{trend}</div>'
         elif "Long" in trend:
@@ -552,8 +547,8 @@ def tam_ekran_canli_yayin_dongusu():
             "Logo": logo_html, "Coin": sembol, "Fiyat": round(data["anlik_fiyat"], basamak), 
             "Yon": yon_html, "Teyit_Sunumu": data["detay_bilgi_html"], "Dom_Sunumu": dom_html, 
             "Kar_Al": round(data["hedef_fiyat"], basamak), "Stopla": round(data["stop_fiyat"], basamak), 
-            "Skor": data["toplam_puan_skor"], "Basamak": basamak, "Notr": data["is_notr"], 
-            "Ham_Yon": trend, "Matris_Orani": data["matris_taban_orani"]
+            "Skor": data["toplam_puan_skor"], "Basamak": basamak, "Notr": is_notr, 
+            "Ham_Yon": trend, "Matris_Orani": matris_oran if not is_notr else 0.0
         })
 
     # --- OTOMATİK STOP VE KAR-AL KONTROLÜ ---

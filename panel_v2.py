@@ -481,7 +481,6 @@ def tam_ekran_canli_yayin_dongusu():
     islenen_ham_veriler = []
     ortak_fiyat_havuzu = {} 
     
-    # Tüm coinlerin 48/24/12/4s tarama sonuçlarını çek
     for sembol in coinler:
         temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
@@ -493,8 +492,6 @@ def tam_ekran_canli_yayin_dongusu():
             "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "r48": r48, "r24": r24, "r12": r12, "r4": r4
         })
 
-    # Pazarın genel USDT Dominans Oranını, tüm coinlerin mum ortalamalarından matris kuralıyla hesapla
-    # USDT matrisi: Piyasaya giren nakit (Yeşil) / Çıkan nakit (Kırmızı) dengesinin % oranı
     toplam_y_tum, toplam_k_tum = 0, 0
     for d in islenen_ham_veriler:
         for rez in [d["r48"], d["r24"], d["r12"], d["r4"]]:
@@ -509,18 +506,17 @@ def tam_ekran_canli_yayin_dongusu():
         raw_yuzde = data["raw_yuzde"]
         raw_yon = data["raw_yon"]
         
-        # C (Coin Dominans): Doğrudan o coinin kendi matris hesaplanmış yüzdesi (%52 vb.)
         coin_dom_yuzde = raw_yuzde
-        # U (USDT Dominans): Pazarın genel para giriş/çıkış matris yüzdesi (%51 vb.)
         usdt_dom_yuzde = round(usdt_genel_yuzde, 1)
         
-        # LED MANTIĞI: %50 üzeri Yeşil, %50 altı Kırmızı, %50 civarı (%49.5 - %50.5) Sarı Tolerans
-        if coin_dom_yuzde > 50.5: led_c = "🟢"
-        elif coin_dom_yuzde < 49.5: led_c = "🔴"
+        # --- KATI LED EŞİK KURALI (%75 ONAY ŞARTI) ---
+        # Sadece %75 ve üzeri üstünlükte Yeşil/Kırmızı, ara değerlerde kesinlikle Sarı yanar.
+        if coin_dom_yuzde >= 75.0: led_c = "🟢"
+        elif coin_dom_yuzde <= 25.0: led_c = "🔴"
         else: led_c = "🟡"
         
-        if usdt_dom_yuzde > 50.5: led_u = "🟢"
-        elif usdt_dom_yuzde < 49.5: led_u = "🔴"
+        if usdt_dom_yuzde >= 75.0: led_u = "🟢"
+        elif usdt_dom_yuzde <= 25.0: led_u = "🔴"
         else: led_u = "🟡"
         
         led_m = "🟡"
@@ -662,7 +658,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli %75 çoklukta onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli %75 çoklukta onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -838,7 +834,7 @@ def tam_ekran_canli_yayin_dongusu():
             
             col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
             with col_p1:
-                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zارarlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
                 fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#198754', 'Zararlı İşlemler': '#dc3545'})
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
                 st.plotly_chart(fig, use_container_width=True)

@@ -105,66 +105,69 @@ def fiyat_cek_guvenli(coin_symbol):
 
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
+def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
     kucoin_sym = coin_symbol.replace('/', '-')
     headers = {'User-Agent': 'Mozilla/5.0'}
     ts = int(time.time() * 1000)
-    
-    k_map = {"10m": "15min", "5m": "5min", "3m": "3min", "1m": "1min"}
-    k_int = k_map.get(interval_str, "5min")
-
-    def hesapla_bar_sayilari(veriler, o_idx, c_idx):
-        y, k, s = 0, 0, 0
-        for bar in veriler:
-            try:
-                o, c = float(bar[o_idx]), float(bar[c_idx])
-                if c > o: y += 1
-                elif c < o: k += 1
-                else: s += 1
-            except: pass
-        return y, k, s
 
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}&_t={ts}"
         r = requests.get(url, headers=headers, timeout=2.5)
         if r.status_code == 200:
             data = r.json()
-            if len(data) > 0: 
-                return hesapla_bar_sayilari(data, 1, 4)
+            if len(data) > 0:
+                yesil, kirmizi = 0, 0
+                for bar in data:
+                    o, c = float(bar[1]), float(bar[4])
+                    if c > o: yesil += 1
+                    elif c < o: kirmizi += 1
+                return yesil, kirmizi
     except: pass
 
+    # Fallback / Yedek simülasyon
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
-    y_sabit = int(limit_adet * rnd.uniform(0.42, 0.62))
-    k_sabit = limit_adet - y_sabit
-    return y_sabit, k_sabit, 0
+    y = int(limit_adet * rnd.uniform(0.45, 0.58))
+    k = limit_adet - y
+    return y, k
 
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    y48, k48, s48 = kline_cek_belirli_adet(coin_symbol, "10m", 288)
-    y24, k24, s24 = kline_cek_belirli_adet(coin_symbol, "5m", 288)
-    y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)
-    y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)
+    # 4 Zaman Dilimi Veri Çekimi
+    y48, k48 = kline_cek_detayli(coin_symbol, "10m", 288)
+    y24, k24 = kline_cek_detayli(coin_symbol, "5m", 288)
+    y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
+    y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
 
-    # Risk/Potans oranına (%0 - %100) göre hedef puan barajı (%25'te 65, %75'te 190 olacak şekilde lineer interpolasyon)
-    # Formül: 65 + ((risk_yuzdesi - 25) / 50) * 125
+    # Potans / Risk Oranına (%0 - %100) göre dinamik baraj ve onay limitleri
+    # %25 potansta hedef 65 puan, %75 potansta hedef 190 puan
     hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
     hedef_puan_baraji = max(30.0, min(220.0, hedef_puan_baraji))
 
-    yon_48 = "Long" if y48 >= k48 else ("Short" if k48 > y48 else "Notr")
-    yon_24 = "Long" if y24 >= k24 else ("Short" if k24 > y24 else "Notr")
-    yon_12 = "Long" if y12 >= k12 else ("Short" if k12 > y12 else "Notr")
-    yon_4  = "Long" if y4  >= k4  else ("Short" if k4  > y4  else "Notr")
+    # Zaman dilimi başına gereken onay almış bar sayısı esnekliği (%25 potansta 90/72, %75 potansta 245/204)
+    oran_faktor = max(0.2, min(1.0, risk_yuzdesi / 75.0))
+    gerekli_48_24 = int(90 + (245 - 90) * oran_faktor)
+    gerekli_12_4  = int(72 + (204 - 72) * oran_faktor)
 
-    # Puan Katkıları (%10 -> 22p, %15 -> 33p, %25 -> 45p, %50 -> 90p | Toplam 190 Puan max)
+    # 48 Saat (10m x 288)
+    yon_48 = "Long" if y48 >= gerekli_48_24 else ("Short" if k48 >= gerekli_48_24 else "Notr")
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
+
+    # 24 Saat (5m x 288)
+    yon_24 = "Long" if y24 >= gerekli_48_24 else ("Short" if k24 >= gerekli_48_24 else "Notr")
     puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
+
+    # 12 Saat (3m x 240)
+    yon_12 = "Long" if y12 >= gerekli_12_4 else ("Short" if k12 >= gerekli_12_4 else "Notr")
     puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
-    puan_4  = 90.0 if yon_4  == "Long" else (-90.0 if yon_4  == "Short" else 0.0)
+
+    # 4 Saat (1m x 240)
+    yon_4 = "Long" if y4 >= gerekli_12_4 else ("Short" if k4 >= gerekli_12_4 else "Notr")
+    puan_4 = 90.0 if yon_4 == "Long" else (-90.0 if yon_4 == "Short" else 0.0)
 
     toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
 
@@ -368,7 +371,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=75.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
@@ -413,7 +416,7 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        # C, U ve M LED Durumları (Esnek puan barajına göre)
+        # C, U, M LED Durumları
         c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
         u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
         m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
@@ -444,7 +447,7 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # 3'te 2 ve 3'te 3 Çoğunluk Kuralı (M ledi mutlaka Yeşil veya Kırmızı olmalı)
+        # 3'te 2 ve 3'te 3 Onay Kuralı (M ledi mutlaka Yeşil veya Kırmızı olmalı ve C/U ile en az 2'si uyuşmalı)
         if m_y != "Notr":
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:

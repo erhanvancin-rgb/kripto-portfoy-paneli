@@ -104,6 +104,7 @@ def kline_cek_guvenli(coin_symbol, period_type):
     headers = {'User-Agent': 'Mozilla/5.0'}
     ts = int(time.time() * 1000)
     
+    # İstediğiniz periyot ve limit (bar/led) yapılandırması
     if period_type == "48s":
         b_int, b_lim, k_int = "15m", 192, "15min"
     elif period_type == "24s":
@@ -146,27 +147,45 @@ def kline_cek_guvenli(coin_symbol, period_type):
     if y_sabit + k_sabit > b_lim: k_sabit = b_lim - y_sabit
     return y_sabit, k_sabit, b_lim - (y_sabit + k_sabit)
 
-def ham_verileri_getir(coin_symbol, risk_yuzdesi):
+def yeni_agirlikli_analiz_getir(coin_symbol):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
-    res_48s = kline_cek_guvenli(coin_symbol, "48s")
-    res_24s = kline_cek_guvenli(coin_symbol, "24s")
-    res_12s = kline_cek_guvenli(coin_symbol, "12s")
-    res_4s  = kline_cek_guvenli(coin_symbol, "4s")
+    res_48s = kline_cek_guvenli(coin_symbol, "48s") # 192 bar
+    res_24s = kline_cek_guvenli(coin_symbol, "288") if False else kline_cek_guvenli(coin_symbol, "24s") # 288 bar
+    res_12s = kline_cek_guvenli(coin_symbol, "12s") # 240 bar
+    res_4s  = kline_cek_guvenli(coin_symbol, "4s")  # 240 bar
 
-    def calc_ratio(rez):
-        toplam = rez[0] + rez[1]
-        return (rez[0] / toplam * 100.0) if toplam > 0 else 50.0
+    def periyot_net_yon_ve_oran(rez):
+        y, k, s = rez[0], rez[1], rez[2]
+        net_bar = y + k  # Sarı (nötr) barlar tamamen hariç tutulur
+        if net_bar == 0: return 0.5, 50.0
+        y_oran = y / net_bar
+        return y_oran, y_oran * 100.0
 
-    # 4 Zaman dilimi ağırlıklı HAM yüzde hesabı
-    raw_y_net = (calc_ratio(res_48s) * 0.10) + (calc_ratio(res_24s) * 0.15) + (calc_ratio(res_12s) * 0.25) + (calc_ratio(res_4s) * 0.50)
+    # Her zaman dilimi için sarılar hariç yeşil/kırmızı üstünlük oranı
+    y_oran_48, y_yuzde_48 = periyot_net_yon_ve_oran(res_48s)
+    y_oran_24, y_yuzde_24 = periyot_net_yon_ve_oran(res_24s)
+    y_oran_12, y_yuzde_12 = periyot_net_yon_ve_oran(res_12s)
+    y_oran_4,  y_yuzde_4  = periyot_net_yon_ve_oran(res_4s)
+
+    # İSTEDİĞİNİZ AĞIRLIKLI PUANLAMA MİMARİSİ (0.10 + 0.15 + 0.25 + 0.50 = 1.0)
+    puan_48 = (1.0 if y_yuzde_48 >= 50.0 else 0.0) * 0.10 if abs(y_yuzde_48 - 50) > 0 else 0.0
+    puan_24 = (1.0 if y_yuzde_24 >= 50.0 else 0.0) * 0.15
+    puan_12 = (1.0 if y_yuzde_12 >= 50.0 else 0.0) * 0.25
+    puan_4  = (1.0 if y_yuzde_4  >= 50.0 else 0.0) * 0.50
+
+    # Net Long Skoru (0.0 ile 1.0 arasında, % formatı için 100 ile çarpılır)
+    # Sarı barlar hesaba katılmaz, her zaman diliminde sayıca çok olan yön puanı taşır.
+    net_long_puani = (
+        (1.0 if y_yuzde_48 >= 50.0 else 0.0) * 0.10 +
+        (1.0 if y_yuzde_24 >= 50.0 else 0.0) * 0.15 +
+        (1.0 if y_yuzde_12 >= 50.0 else 0.0) * 0.25 +
+        (1.0 if y_yuzde_4  >= 50.0 else 0.0) * 0.50
+    )
     
-    # V2'DEN GELEN ÖZELLİK: Slider'ın Matris Üzerindeki Katsayı Çarpan Etkisi
-    # Yüzde 50 barajından ne kadar uzaklaştığını potansa göre katlayarak görselleştiriyoruz
-    fark = raw_y_net - 50.0
-    risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.5 
-    y_net_scaled = min(100.0, max(0.0, 50.0 + (fark * risk_katsayisi)))
-    
-    return anlik_fiyat, round(y_net_scaled, 1)
+    # Alternatif hassas oran tabanı (her periyodun kendi ağırlıklı yüzdesi)
+    hassas_net_yuzde = (y_yuzde_48 * 0.10) + (y_yuzde_24 * 0.15) + (y_yuzde_12 * 0.25) + (y_yuzde_4 * 0.50)
+
+    return anlik_fiyat, round(hassas_net_yuzde, 2), res_48s, res_24s, res_12s, res_4s
 
 def google_sheets_baglan():
     try:
@@ -267,7 +286,7 @@ def bakiye_durumunu_getir():
     return float(toplam_kasa), float(toplam_kasa - acik_marjin)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
-    if "Nötr" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Eşik Aşılmadı), işlem açılamaz!"
+    if "Nötr" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Eşik Aşılmadı veya Onay Yok), işlem açılamaz!"
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
@@ -368,12 +387,13 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    # FORMÜL: Risk %0 -> Eşik %75 | Risk %100 -> Eşik %25
-    dinamik_matris_esigi = 75.0 - (risk_yuzdesi * 0.50)
+    # İstediğiniz gibi panel eşiği slider oranı (%xx), Trend Habercisi için sabit %75 eşiği
+    panel_esigi = risk_yuzdesi 
+    trend_habercisi_esigi = 75.0
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{dinamik_matris_esigi:.1f})</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Panel Eşiği: %{panel_esigi:.1f} | Trend Habercisi Eşiği: %75.0)</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -382,15 +402,16 @@ def tam_ekran_canli_yayin_dongusu():
     islenen_ham_veriler = []
     ortak_fiyat_havuzu = {} 
     
-    # 1. Aşama: Tüm Coinlerin 4 Zaman Dilimli Ağırlıklı Verilerini Topla (V2 katsayı mantığıyla)
+    # 1. Aşama: Tüm Coinlerin Ağırlıklı Puanlamalı Verilerini Topla
     for sembol in coinler:
-        anlik_fiyat, y_net_yuzde = ham_verileri_getir(sembol, risk_yuzdesi)
+        anlik_fiyat, y_net_yuzde, r48, r24, r12, r4 = yeni_agirlikli_analiz_getir(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         islenen_ham_veriler.append({
-            "sembol": sembol, "anlik_fiyat": anlik_fiyat, "y_net": y_net_yuzde
+            "sembol": sembol, "anlik_fiyat": anlik_fiyat, "y_net": y_net_yuzde,
+            "r48": r48, "r24": r24, "r12": r12, "r4": r4
         })
 
-    # 2. Aşama: U Ledi (USDT Piyasa Ortalaması) İçin Tüm Coinlerin Ağırlıklı Ortalamasını Al
+    # 2. Aşama: U Ledi (USDT Piyasa) İçin Tüm Coinlerin Ağırlıklı Ortalaması
     usdt_genel_yuzde = sum([d["y_net"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
 
     # 3. Aşama: Şartlı Matris ve LED Yapılandırması
@@ -405,17 +426,11 @@ def tam_ekran_canli_yayin_dongusu():
         c_long_mu = (y_net >= 50.0)
         u_long_mu = (usdt_genel_yuzde >= 50.0)
         
-        # Matrisin Slider Eşiğini Aşıp Aşmadığının Kontrolü
-        is_long_esik_met = (y_net >= dinamik_matris_esigi)
-        is_short_esik_met = (k_net >= dinamik_matris_esigi)
+        # Matrisin Slider Eşiğini (Panel Eşiği) Aşıp Aşmadığının Kontrolü
+        is_long_esik_met = (y_net >= panel_esigi)
+        is_short_esik_met = (k_net >= panel_esigi)
 
-        # V2 MANTIĞI: Matris alanı 10'lu LED Bar'ı daima yüzdeleri yeşil/kırmızı oranda göstersin.
-        y_gorsel = int(y_net / 10)
-        y_gorsel = max(0, min(10, y_gorsel))
-        k_gorsel = 10 - y_gorsel
-        led_str = ("🟢" * y_gorsel) + ("🔴" * k_gorsel)
-
-        # Matris Durum LED'i (Nötr İse SARI Yanacak)[cite: 27]
+        # Matris (M Ledi) Durumu (Sarı barlar hariç tutularak hesaplanan skora göre)
         m_durum = "🟡"
         if is_long_esik_met:
             m_durum = "🟢"
@@ -426,7 +441,13 @@ def tam_ekran_canli_yayin_dongusu():
         c_durum = "🟢" if c_long_mu else "🔴"
         u_durum = "🟢" if u_long_mu else "🔴"
 
-        # TREND KURALI: Eşik Aşılmalı (M_Durum Sarı Olmamalı) VE (C veya U ledi Matris ile Aynı Renkte Yanmalı)
+        # Görsel 10'lu LED Bar
+        y_gorsel = int(y_net / 10)
+        y_gorsel = max(0, min(10, y_gorsel))
+        k_gorsel = 10 - y_gorsel
+        led_str = ("🟢" * y_gorsel) + ("🔴" * k_gorsel)
+
+        # --- TREND ONAY KURALI ---
         is_notr = True
         trend = "Nötr (Beklemede)"
         aktif_matris_orani = 0.0
@@ -439,18 +460,18 @@ def tam_ekran_canli_yayin_dongusu():
             if m_durum == "🟢":
                 aktif_yon_turu = "Long"
                 aktif_matris_orani = y_net
-                trend = "Long (Trend Haberi)" if y_net >= 85.0 else "Long (Onaylı)"
+                trend = "Long (Trend Haberi)" if y_net >= trend_habercisi_esigi else "Long (Onaylı)"
             elif m_durum == "🔴":
                 aktif_yon_turu = "Short"
                 aktif_matris_orani = k_net
-                trend = "Short (Trend Haberi)" if k_net >= 85.0 else "Short (Onaylı)"
+                trend = "Short (Trend Haberi)" if k_net >= trend_habercisi_esigi else "Short (Onaylı)"
 
         # Stop & Hedef Belirleme
         if aktif_yon_turu == "Long":
             stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
         elif aktif_yon_turu == "Short":
             stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
-        else: # Nötr iken varsayılan
+        else:
             stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
         
         dom_html = f"""
@@ -460,7 +481,7 @@ def tam_ekran_canli_yayin_dongusu():
         </div>
         """
         
-        detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net:.1f} | 🔴 %{k_net:.1f}</div></div>"""
+        detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net:.1f} | 🔴 %{100.0 - y_net:.1f}</div></div>"""
 
         basamak = 4 if anlik_fiyat < 10 else 2
         logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
@@ -529,7 +550,7 @@ def tam_ekran_canli_yayin_dongusu():
         val_str = f"%{sepet_val:.1f}" if sepet_val != int(sepet_val) else f"%{int(sepet_val)}"
         
         if v['Notr']: oran_html = f'<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
-        elif "Trend Haberi" in v['Ham_Yon']: oran_html = f'<div style="background-color: {"rgba(25, 135, 84, 0.35)" if "Long" in v["Ham_Yon"] else "rgba(220, 53, 69, 0.35)"}; padding: 5px; font-weight: bold;">{val_str}<br>(%85 Trend)</div>'
+        elif "Trend Haberi" in v['Ham_Yon']: oran_html = f'<div style="background-color: {"rgba(25, 135, 84, 0.35)" if "Long" in v["Ham_Yon"] else "rgba(220, 53, 69, 0.35)"}; padding: 5px; font-weight: bold;">{val_str}<br>(%75+ Trend)</div>'
         else: oran_html = f'<div style="background-color: {"rgba(25, 135, 84, 0.2)" if "Long" in v["Ham_Yon"] else "rgba(220, 53, 69, 0.2)"}; padding: 5px; font-weight: bold;">{val_str}<br>(Onaylı)</div>'
 
         table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td></tr>"
@@ -543,7 +564,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Eşiği Aşamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Eşiği Aşamadı veya Onay Yok).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

@@ -15,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- MOBİL UYUMLU %100 BEYAZ ZEMİN VE CSS STİLLERİ ---
+# --- MOBİL UYUMLU %100 BEYAZ ZEMİN, KALIN GRADYAN SLİDER VE CSS STİLLERİ ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -34,6 +34,12 @@ st.markdown("""
         color: #212529 !important;
         border: 1px solid #ced4da !important;
         font-weight: bold !important;
+    }
+    /* Kalın ve Renkli Gradyan Slider (Potans) Çubuğu */
+    div[data-baseweb="slider"] div[data-testid="stSliderTrack"] {
+        background: linear-gradient(to right, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
+        height: 16px !important;
+        border-radius: 8px !important;
     }
     .custom-table { width: 100%; border-collapse: collapse; background-color: #ffffff; margin-bottom: 20px; }
     .custom-table th { background-color: #e9ecef; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: bold; color: #212529; font-size: 13px; line-height: 1.2; }
@@ -237,26 +243,27 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     if genel_toplam == 0: genel_toplam = 1
 
     net_bar_toplam = toplam_y_bar + toplam_k_bar
-    y_net_yuzde = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
-    k_net_yuzde = (toplam_k_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
+    ham_y_net = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
+    
+    risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.0
+    y_net_yuzde = min(100.0, max(0.0, ham_y_net * risk_katsayisi))
 
     max_skor = max(long_skor, short_skor)
     aktif_yon_turu = "Long" if long_skor >= short_skor else "Short"
-    aktif_net_yuzde = y_net_yuzde if aktif_yon_turu == "Long" else k_net_yuzde
 
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
     ham_yon = "Nötr (Beklemede)"
-    if y_net_yuzde >= dinamik_esik or k_net_yuzde >= dinamik_esik:
-        if y_net_yuzde >= 85.0 or k_net_yuzde >= 85.0:
+    if y_net_yuzde >= dinamik_esik or (100.0 - y_net_yuzde) >= dinamik_esik:
+        if y_net_yuzde >= 85.0 or (100.0 - y_net_yuzde) >= 85.0:
             ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
         else:
             ham_yon = f"{aktif_yon_turu} (%{dinamik_esik:.0f} Onay)"
     else:
         if "Long" in onceki_yon and y_net_yuzde >= (dinamik_esik - 5.0):
             ham_yon = f"Long (%{dinamik_esik:.0f} Onay)"
-        elif "Short" in onceki_yon and k_net_yuzde >= (dinamik_esik - 5.0):
+        elif "Short" in onceki_yon and (100.0 - y_net_yuzde) >= (dinamik_esik - 5.0):
             ham_yon = f"Short (%{dinamik_esik:.0f} Onay)"
         else:
             ham_yon = "Nötr (Beklemede)"
@@ -482,19 +489,20 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU ---
+    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DOĞRU YÖNLÜ DİNAMİK GRADYAN KUTU ---
     risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
+    # Doğru Yönlü Renk Skalası: %0 -> Yeşil (#198754), %50 -> Sarı (#ffc107), %100 -> Kırmızı (#dc3545)
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
-        r = 220 + int((255 - 220) * oran)
-        g = 53 + int((193 - 53) * oran)
-        b = 69 + int((7 - 69) * oran)
+        r = 25 + int((255 - 25) * oran)
+        g = 135 + int((193 - 135) * oran)
+        b = 84 + int((7 - 84) * oran)
     else:
         oran = (risk_yuzdesi - 50.0) / 50.0
-        r = 255 + int((25 - 255) * oran)
-        g = 193 + int((135 - 193) * oran)
-        b = 7 + int((84 - 7) * oran)
+        r = 255 + int((220 - 255) * oran)
+        g = 193 + int((53 - 193) * oran)
+        b = 7 + int((69 - 7) * oran)
 
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
@@ -899,7 +907,7 @@ def tam_ekran_canli_yayin_dongusu():
         else:
             st.info("Henüz kapanmış işlem bulunmuyor.")
     else: 
-        st.info("ℹ️️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
+        st.info("ℹ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
 
 # CANLI DÖNGÜYÜ BAŞLAT
 tam_ekran_canli_yayin_dongusu()

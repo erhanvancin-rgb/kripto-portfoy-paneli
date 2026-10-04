@@ -195,12 +195,15 @@ def kline_cek_guvenli(coin_symbol, period_type):
     k_sabit = int(b_lim * 0.45)
     return y_sabit, k_sabit, b_lim - (y_sabit + k_sabit)
 
-def coklu_zaman_dilimli_analiz(coin_symbol, risk_katsayisi):
+def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     res_48s = kline_cek_guvenli(coin_symbol, "48s")
     res_24s = kline_cek_guvenli(coin_symbol, "24s")
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
+
+    # %0-%100 oranını [0.5, 2.0] çarpan katsayısına dönüştür (%50 = 1.0)
+    risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.5
 
     def yon_tayin_et(y, k, s):
         net_bar = y + k
@@ -236,7 +239,6 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_katsayisi):
     y_net_yuzde = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
     k_net_yuzde = (toplam_k_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
 
-    # Risk katsayısının matris yüzdesine dinamik etkisi
     y_net_yuzde = min(100.0, max(0.0, y_net_yuzde * risk_katsayisi))
 
     max_skor = max(long_skor, short_skor)
@@ -455,13 +457,37 @@ elli_islem_arsiv_kontrol()
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 
-    # --- DİNAMİK RİSK KATSAYISI POTANSI (KONTROL PANELİ) ---
+    # --- DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU ---
     col_pot1, col_pot2 = st.columns([3, 1])
     with col_pot1:
-        risk_katsayisi = st.slider("🎛️ Panel Risk / Hassasiyet Katsayısı (Trend Yönlendirici Potans):", min_value=0.5, max_value=2.0, value=1.0, step=0.05, key="risk_potansi")
+        risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
     with col_pot2:
+        st.write("")
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
             st.rerun()
+
+    # %0 -> Kırmızı (#dc3545), %50 -> Sarı/Nötr (#ffc107), %100 -> Yeşil (#198754) gradyan hesaplama
+    if risk_yuzdesi <= 50:
+        # Kırmızıdan Sarıya geçiş
+        oran = risk_yuzdesi / 50.0
+        r = 220 + int((255 - 220) * oran)
+        g = 53 + int((193 - 53) * oran)
+        b = 69 + int((7 - 69) * oran)
+    else:
+        # Sarıdan Yeşile geçiş
+        oran = (risk_yuzdesi - 50.0) / 50.0
+        r = 255 + int((25 - 255) * oran)
+        g = 193 + int((135 - 193) * oran)
+        b = 7 + int((84 - 7) * oran)
+
+    rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
+    border_col = f"rgb({r}, {g}, {b})"
+
+    st.markdown(f"""
+        <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
     col_m1, col_m2 = st.columns(2)
     with col_m1:
@@ -485,7 +511,7 @@ def tam_ekran_canli_yayin_dongusu():
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_katsayisi)
+        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_yuzdesi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         
         islenen_ham_veriler.append({
@@ -502,7 +528,8 @@ def tam_ekran_canli_yayin_dongusu():
             toplam_k_tum += rez[1]
     toplam_bar_karsilastirma = toplam_y_tum + toplam_k_tum
     usdt_genel_yuzde = (toplam_y_tum / toplam_bar_karsilastirma * 100) if toplam_bar_karsilastirma > 0 else 50.0
-    usdt_genel_yuzde = min(100.0, max(0.0, usdt_genel_yuzde * risk_katsayisi))
+    risk_katsayisi_temp = 0.5 + (risk_yuzdesi / 100.0) * 1.5
+    usdt_genel_yuzde = min(100.0, max(0.0, usdt_genel_yuzde * risk_katsayisi_temp))
 
     islenen_veriler = []
     for data in islenen_ham_veriler:

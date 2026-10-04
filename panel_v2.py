@@ -208,9 +208,9 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    # --- RİSK MANTIĞI: RİSK ARTTIKÇA İŞLEME GİRME KOLAYLAŞIR (EŞİK DÜŞER), AZALDIKÇA ZORLAŞIR (EŞİK YÜKSELİR) ---
-    baz_esik = 75.0
-    dinamik_esik = baz_esik - ((risk_yuzdesi - 50.0) * 0.3)
+    # --- RİSK VE DİNAMİK EŞİK MANTIĞI (%50 üstü anında onay alacak şekilde esnetildi) ---
+    # Risk %0 iken eşik %55, Risk %50 iken eşik %50, Risk %100 iken eşik %45 olur.
+    dinamik_esik = 50.0 + ((50.0 - risk_yuzdesi) * 0.1)
 
     def yon_tayin_et(y, k, s):
         net_bar = y + k
@@ -254,19 +254,15 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
+    # Eşik %50'nin üzerindeyse doğrudan yönü tetikle
     ham_yon = "Nötr (Beklemede)"
-    if y_net_yuzde >= dinamik_esik or (100.0 - y_net_yuzde) >= dinamik_esik:
-        if y_net_yuzde >= 85.0 or (100.0 - y_net_yuzde) >= 85.0:
+    if y_net_yuzde > 50.0 or (100.0 - y_net_yuzde) > 50.0:
+        if y_net_yuzde >= 70.0 or (100.0 - y_net_yuzde) >= 70.0:
             ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
         else:
-            ham_yon = f"{aktif_yon_turu} (%{dinamik_esik:.0f} Onay)"
+            ham_yon = f"{aktif_yon_turu} (Onaylı)"
     else:
-        if "Long" in onceki_yon and y_net_yuzde >= (dinamik_esik - 5.0):
-            ham_yon = f"Long (%{dinamik_esik:.0f} Onay)"
-        elif "Short" in onceki_yon and (100.0 - y_net_yuzde) >= (dinamik_esik - 5.0):
-            ham_yon = f"Short (%{dinamik_esik:.0f} Onay)"
-        else:
-            ham_yon = "Nötr (Beklemede)"
+        ham_yon = "Nötr (Beklemede)"
 
     st.session_state[state_key] = ham_yon
     temiz_yon = ham_yon
@@ -691,7 +687,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

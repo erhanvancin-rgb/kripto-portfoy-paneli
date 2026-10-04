@@ -36,7 +36,7 @@ st.markdown("""
     /* SLIDER (POTANS) ÇUBUĞUNU KALIN GRADYAN YAPMAK İÇİN AGRESİF CSS */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
     div[data-baseweb="slider"] > div:first-child > div:first-child {
-        background: linear-gradient(90deg, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
+        background: linear-gradient(90deg, #ffc107 0%, #dc3545 100%) !important;
         height: 16px !important;
         border-radius: 8px !important;
     }
@@ -99,7 +99,7 @@ def fiyat_cek_guvenli(coin_symbol):
         resp = requests.get(url, headers=headers, timeout=3.0)
         if resp.status_code == 200:
             data = resp.json().get('data', {})
-            val = float(data.get('price', 0))
+            val = float(data.get('data', {}).get('price', 0) or data.get('price', 0))
             if val > 0: return val
     except: pass
 
@@ -129,43 +129,45 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
-    y = int(limit_adet * rnd.uniform(0.45, 0.58))
+    y = int(limit_adet * rnd.uniform(0.48, 0.62))
     k = limit_adet - y
     return y, k
 
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 4 Zaman Dilimi Veri Çekimi
     y48, k48 = kline_cek_detayli(coin_symbol, "10m", 288)
     y24, k24 = kline_cek_detayli(coin_symbol, "5m", 288)
     y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
     y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
 
-    # Risk/Potans oranına (%0 - %100) göre dinamik baraj ve onay sınırları
-    # %25 potansta hedef 65 puan, %75 potansta hedef 190 puan
-    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
-    hedef_puan_baraji = max(35.0, min(210.0, hedef_puan_baraji))
+    # Risk %50 ile %75+ arasında lineer esneme
+    # %50 riskte: 144 / 144 / 120 / 120 bar, hedef baraj 65 puan
+    # %75 riskte: 216 / 216 / 180 / 180 bar, hedef baraj 190 puan
+    # Güçlü Trend (%100 riskte veya üst sınırda): 217 / 217 / 181 / 181 bar, hedef baraj 190 puan
+    
+    f = max(0.0, min(1.0, (risk_yuzdesi - 50.0) / 25.0)) # 50'de 0, 75'te 1.0
+    
+    if risk_yuzdesi >= 100.0:
+        req_48_24 = 217
+        req_12_4 = 181
+        hedef_puan_baraji = 190.0
+    else:
+        req_48_24 = int(144 + (216 - 144) * f)
+        req_12_4  = int(120 + (180 - 120) * f)
+        hedef_puan_baraji = 65.0 + (190.0 - 65.0) * f
 
-    # Zaman dilimi başına gereken onay almış bar sayısı esnekliği (25% potans için 72/60, 75% potans için 216/180)
-    f = max(0.0, min(1.0, (risk_yuzdesi - 25.0) / 50.0))
-    gerekli_48_24 = int(72 + (216 - 72) * f)
-    gerekli_12_4  = int(60 + (180 - 60) * f)
-
-    # 48 Saat (10m x 288) - Ağırlık %10 -> 22 Puan
-    yon_48 = "Long" if y48 >= gerekli_48_24 else ("Short" if k48 >= gerekli_48_24 else "Notr")
+    # Puan Katkıları
+    yon_48 = "Long" if y48 >= req_48_24 else ("Short" if k48 >= req_48_24 else "Notr")
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
 
-    # 24 Saat (5m x 288) - Ağırlık %15 -> 33 Puan
-    yon_24 = "Long" if y24 >= gerekli_48_24 else ("Short" if k24 >= gerekli_48_24 else "Notr")
+    yon_24 = "Long" if y24 >= req_48_24 else ("Short" if k24 >= req_48_24 else "Notr")
     puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
 
-    # 12 Saat (3m x 240) - Ağırlık %25 -> 45 Puan
-    yon_12 = "Long" if y12 >= gerekli_12_4 else ("Short" if k12 >= gerekli_12_4 else "Notr")
+    yon_12 = "Long" if y12 >= req_12_4 else ("Short" if k12 >= req_12_4 else "Notr")
     puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
 
-    # 4 Saat (1m x 240) - Ağırlık %50 -> 90 Puan
-    yon_4 = "Long" if y4 >= gerekli_12_4 else ("Short" if k4 >= gerekli_12_4 else "Notr")
+    yon_4 = "Long" if y4 >= req_12_4 else ("Short" if k4 >= req_12_4 else "Notr")
     puan_4 = 90.0 if yon_4 == "Long" else (-90.0 if yon_4 == "Short" else 0.0)
 
     toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
@@ -370,20 +372,17 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=75.0, step=1.0, key="risk_yuzde_potansi")
+    # SLIDER ALT SINIR %50 OLARAK KİLİTLENDİ
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=75.0, step=1.0, key="risk_yuzde_potansi")
 
-    if risk_yuzdesi <= 50:
-        oran = risk_yuzdesi / 50.0
-        r, g, b = 25 + int((255 - 25) * oran), 135 + int((193 - 135) * oran), 84 + int((7 - 84) * oran)
-    else:
-        oran = (risk_yuzdesi - 50.0) / 50.0
-        r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)
+    oran = (risk_yuzdesi - 50.0) / 50.0
+    r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)
 
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
-    hedef_puan_baraji = max(35.0, min(210.0, hedef_puan_baraji))
+    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 50.0) / 25.0) * 125.0
+    hedef_puan_baraji = max(65.0, min(190.0, hedef_puan_baraji))
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -415,10 +414,10 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        # C, U, M LED Durumları
-        c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
-        u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
-        m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
+        # C, U, M LED Durumları (65 puan altı kesinlikle Nötr)
+        c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
+        u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 65.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -65.0) else "🟡")
+        m_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
 
         y_gorsel = int(round(y_yuzde / 10.0))
         y_gorsel = max(0, min(10, y_gorsel))
@@ -446,15 +445,17 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # 3'te 2 ve 3'te 3 Onay Kuralı (M ledi mutlaka Yeşil veya Kırmızı olmalı ve C/U ile en az 2'si uyuşmalı)
-        if m_y != "Notr":
+        # 3'te 2 ve 3'te 3 Onay Kuralı (M ledi mutlaka Yeşil/Kırmızı olmalı ve 65 puan üstü şart)
+        if m_y != "Notr" and abs(net_puan) >= 65.0:
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:
                 is_notr = False
                 aktif_yon_turu = m_y
                 aktif_matris_orani = abs(net_puan)
-                if ayni_renk_sayisi == 3: trend = f"Güçlü Trend {aktif_yon_turu}"
-                else: trend = f"{aktif_yon_turu} (Onaylı)"
+                if ayni_renk_sayisi == 3 and abs(net_puan) >= 190.0: 
+                    trend = f"Güçlü Trend {aktif_yon_turu}"
+                else: 
+                    trend = f"{aktif_yon_turu} (Onaylı)"
 
         if aktif_yon_turu == "Long":
             stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025

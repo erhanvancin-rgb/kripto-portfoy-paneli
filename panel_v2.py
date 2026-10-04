@@ -15,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- MOBİL UYUMLU %100 BEYAZ ZEMİN, KALIN GRADYAN SLİDER VE CSS STİLLERİ ---
+# --- MOBİL UYUMLU %100 BEYAZ ZEMİN, KALIN ÖZEL GRADYAN SLİDER VE CSS STİLLERİ ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -35,8 +35,20 @@ st.markdown("""
         border: 1px solid #ced4da !important;
         font-weight: bold !important;
     }
-    /* Slider Standart Çizgisini Gizleme ve Kalın Renkli Gradyan Bar Ekleme (Sol: Yeşil, Orta: Sarı, Sağ: Kırmızı) */
+    /* Slider Standart Çizgisini Tamamen Gizleme ve Kalın Gradyan Bar Ekleme */
     div[data-baseweb="slider"] div[data-testid="stSliderTrack"] {
+        background: transparent !important;
+    }
+    div[data-baseweb="slider"] > div > div > div[role="slider"] {
+        background-color: #212529 !important;
+        border: 2px solid #ffffff !important;
+    }
+    /* Streamlit Slider Arka Plan Çizgisini Kalın Gradyan Yapma */
+    span[data-baseweb="tag"] { display: none !important; }
+    div[data-baseweb="slider"] div {
+        background-image: none !important;
+    }
+    div[data-testid="stSlider"] [data-baseweb="slider"] div:nth-child(1) {
         background: linear-gradient(to right, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
         height: 18px !important;
         border-radius: 9px !important;
@@ -456,9 +468,12 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
+    # Dinamik Matris Eşiği: Risk %0 iken %100, %50 iken %50, %100 iken %0
+    dinamik_matris_esigi = 100.0 - risk_yuzdesi
+
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{100.0 - risk_yuzdesi:.0f})</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{dinamik_matris_esigi:.0f})</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -493,7 +508,7 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_yon_turu = data["aktif_yon_turu"]
         matris_oran = data["matris_taban_orani"]
         
-        # --- PİYASA & DOMİNANS 3'TE 2 DİNAMİK ONAY KURALI ---
+        # --- PİYASA & DOMİNANS VE MATRİS UYUM KURALI ---
         coin_dom_yuzde = raw_yuzde if aktif_yon_turu == "Long" else (100.0 - raw_yuzde)
         usdt_dom_yuzde = usdt_genel_yuzde if aktif_yon_turu == "Long" else (100.0 - usdt_genel_yuzde)
         matris_dom_yuzde = matris_oran
@@ -502,8 +517,13 @@ def tam_ekran_canli_yayin_dongusu():
         u_yesil = usdt_dom_yuzde >= 50.0
         m_yesil = matris_dom_yuzde >= 50.0
 
-        yesil_led_sayisi = sum([c_yesil, u_yesil, m_yesil])
-        piyasa_onayi_var = (yesil_led_sayisi >= 2)
+        # Matris ledi yönü (Yeşil = True / Long, Kırmızı = False / Short)
+        matris_long_mu = (matris_oran >= 50.0)
+
+        # İstediğiniz kural: C veya U ledlerinden en az biri, matris ledi ile aynı yönde/renkte yanmalı
+        c_uyumlu = (c_yesil == matris_long_mu)
+        u_uyumlu = (u_yesil == matris_long_mu)
+        piyasa_cift_onay = (c_uyumlu or u_uyumlu)
 
         c_durum = "🟢" if c_yesil else "🔴"
         u_durum = "🟢" if u_yesil else "🔴"
@@ -520,14 +540,12 @@ def tam_ekran_canli_yayin_dongusu():
         l_url = logo_urls.get(sembol, "")
         logo_html = f'<img src="{l_url}" width="24" height="24">'
         
-        # --- KESİN MATRİS VE RİSK DİNAMİK FORMÜLÜ ---
-        # Risk %0 -> Eşik %100 | Risk %50 -> Eşik %50 | Risk %100 -> Eşik %0
-        dinamik_matris_esigi = 100.0 - risk_yuzdesi
-        
+        # --- TREND DURUMU KONTROLÜ ---
         is_notr = True
         trend = "Nötr (Beklemede)"
 
-        if matris_oran >= dinamik_matris_esigi and piyasa_onayi_var:
+        # Matris oranı slider ile belirlenen dinamik eşiğin üstünde OLMALI VE C veya U ledlerinden biri matris ile uyumlu yanmalı
+        if matris_oran >= dinamik_matris_esigi and piyasa_cift_onay:
             is_notr = False
             if matris_oran >= 85.0:
                 trend = f"{aktif_yon_turu} (Trend Haberi)"

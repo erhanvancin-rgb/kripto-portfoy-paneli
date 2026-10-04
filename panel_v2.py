@@ -284,7 +284,7 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
     matris_taban_orani = 0.0 if is_notr else round(aktif_net_yuzde, 1)
     toplam_puan_skor = max(long_skor, short_skor) * 10000 + sum([ord(c) for c in coin_symbol])
     
-    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, aktif_net_yuzde, aktif_yon_turu
+    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, aktif_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
 
 def google_sheets_baglan():
     try:
@@ -480,48 +480,57 @@ def tam_ekran_canli_yayin_dongusu():
 
     islenen_ham_veriler = []
     ortak_fiyat_havuzu = {} 
-    toplam_matris_gucu = 0.0
     
+    # Tüm coinlerin 48/24/12/4s tarama sonuçlarını çek
     for sembol in coinler:
-        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon = coklu_zaman_dilimli_analiz(sembol)
+        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
-        
-        # Matris mantığı ile birebir puan (Örn: Long ise pozitif yüzde, Short ise negatif)
-        matris_puan = raw_yuzde if raw_yon == "Long" else (100.0 - raw_yuzde if raw_yon == "Short" else 50.0)
-        net_sapma = matris_puan - 50.0  # 50 tabanlı sapma (0 merkeze göre)
-        toplam_matris_gucu += net_sapma
         
         islenen_ham_veriler.append({
             "sembol": sembol, "temiz_yon": temiz_yon, "toplam_puan_skor": toplam_puan_skor,
             "detay_bilgi_html": detay_bilgi_html, "hedef_fiyat": hedef_fiyat, "stop_fiyat": stop_fiyat,
             "is_notr": is_notr, "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
-            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "net_sapma": net_sapma
+            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "r48": r48, "r24": r24, "r12": r12, "r4": r4
         })
 
-    global_ortalama_sapma = toplam_matris_gucu / len(coinler) 
-    
+    # Pazarın genel USDT Dominans Oranını, tüm coinlerin mum ortalamalarından matris kuralıyla hesapla
+    # USDT matrisi: Piyasaya giren nakit (Yeşil) / Çıkan nakit (Kırmızı) dengesinin % oranı
+    toplam_y_tum, toplam_k_tum = 0, 0
+    for d in islenen_ham_veriler:
+        for rez in [d["r48"], d["r24"], d["r12"], d["r4"]]:
+            toplam_y_tum += rez[0]
+            toplam_k_tum += rez[1]
+    toplam_bar_karsilastirma = toplam_y_tum + toplam_k_tum
+    usdt_genel_yuzde = (toplam_y_tum / toplam_bar_karsilastirma * 100) if toplam_bar_karsilastirma > 0 else 50.0
+
     islenen_veriler = []
     for data in islenen_ham_veriler:
         sembol = data["sembol"]
-        net_sapma = data["net_sapma"]
         raw_yuzde = data["raw_yuzde"]
+        raw_yon = data["raw_yon"]
         
-        # MATRİS MANTIKLI U VE C HESABI (Yüzdelik oran yerine matris puan farkı)
-        usdt_dom_puan = round(-global_ortalama_sapma, 1)  # Pazar genelinin %50'den sapması
-        coin_dom_puan = round(net_sapma - global_ortalama_sapma, 1)  # Coinin pazara göre üstünlük puanı
+        # C (Coin Dominans): Doğrudan o coinin kendi matris hesaplanmış yüzdesi (%52 vb.)
+        coin_dom_yuzde = raw_yuzde
+        # U (USDT Dominans): Pazarın genel para giriş/çıkış matris yüzdesi (%51 vb.)
+        usdt_dom_yuzde = round(usdt_genel_yuzde, 1)
         
-        # LED MANTIĞI (%3 ve üzeri sapmalarda yeşil/kırmızı, arada sarı)
-        led_c = "🟢" if coin_dom_puan >= 3.0 else ("🔴" if coin_dom_puan <= -3.0 else "🟡")
-        led_u = "🟢" if usdt_dom_puan <= -2.0 else ("🔴" if usdt_dom_puan >= 2.0 else "🟡")
+        # LED MANTIĞI: %50 üzeri Yeşil, %50 altı Kırmızı, %50 civarı (%49.5 - %50.5) Sarı Tolerans
+        if coin_dom_yuzde > 50.5: led_c = "🟢"
+        elif coin_dom_yuzde < 49.5: led_c = "🔴"
+        else: led_c = "🟡"
+        
+        if usdt_dom_yuzde > 50.5: led_u = "🟢"
+        elif usdt_dom_yuzde < 49.5: led_u = "🔴"
+        else: led_u = "🟡"
         
         led_m = "🟡"
         if raw_yuzde >= 75.0:
-            led_m = "🟢" if data["raw_yon"] == "Long" else "🔴"
+            led_m = "🟢" if raw_yon == "Long" else "🔴"
             
         dom_html = f"""
         <div style="text-align: center;">
             <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{led_c}{led_u}{led_m}</div>
-            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:{coin_dom_puan:+.1f} | U:{usdt_dom_puan:+.1f} | M:%{raw_yuzde:.0f}</div>
+            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom_yuzde:.0f} | U:%{usdt_dom_yuzde:.0f} | M:%{raw_yuzde:.0f}</div>
         </div>
         """
         

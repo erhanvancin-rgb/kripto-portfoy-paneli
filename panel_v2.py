@@ -208,34 +208,6 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    # --- RİSK VE DİNAMİK EŞİK MANTIĞI (%50 üstü anında onay alacak şekilde esnetildi) ---
-    # Risk %0 iken eşik %55, Risk %50 iken eşik %50, Risk %100 iken eşik %45 olur.
-    dinamik_esik = 50.0 + ((50.0 - risk_yuzdesi) * 0.1)
-
-    def yon_tayin_et(y, k, s):
-        net_bar = y + k
-        if net_bar == 0: return "Notr"
-        y_oran = (y / net_bar) * 100
-        k_oran = (k / net_bar) * 100
-        if y_oran >= dinamik_esik: return "Long"
-        elif k_oran >= dinamik_esik: return "Short"
-        else: return "Notr"
-
-    yon_48s = yon_tayin_et(res_48s[0], res_48s[1], res_48s[2])
-    yon_24s = yon_tayin_et(res_24s[0], res_24s[1], res_24s[2])
-    yon_12s = yon_tayin_et(res_12s[0], res_12s[1], res_12s[2])
-    yon_4s  = yon_tayin_et(res_4s[0],  res_4s[1],  res_4s[2])
-
-    long_skor, short_skor = 0.0, 0.0
-    if yon_48s == "Long": long_skor += 0.10
-    elif yon_48s == "Short": short_skor += 0.10
-    if yon_24s == "Long": long_skor += 0.15
-    elif yon_24s == "Short": short_skor += 0.15
-    if yon_12s == "Long": long_skor += 0.25
-    elif yon_12s == "Short": short_skor += 0.25
-    if yon_4s == "Long": long_skor += 0.50
-    elif yon_4s == "Short": short_skor += 0.50
-
     toplam_y_bar = res_48s[0] + res_24s[0] + res_12s[0] + res_4s[0]
     toplam_k_bar = res_48s[1] + res_24s[1] + res_12s[1] + res_4s[1]
     toplam_s_bar = res_48s[2] + res_24s[2] + res_12s[2] + res_4s[2]
@@ -243,29 +215,32 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     if genel_toplam == 0: genel_toplam = 1
 
     net_bar_toplam = toplam_y_bar + toplam_k_bar
-    ham_y_net = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
-    
-    risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.0
-    y_net_yuzde = min(100.0, max(0.0, ham_y_net * risk_katsayisi))
+    ham_y_oran = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
+    ham_k_oran = 100.0 - ham_y_oran
 
-    max_skor = max(long_skor, short_skor)
-    aktif_yon_turu = "Long" if long_skor >= short_skor else "Short"
+    # Matris yüzdesi doğrudan ham verilere (% yeşil ve % kırmızı) eşitlenir.
+    y_net_yuzde = round(ham_y_oran, 1)
+
+    # Yön ham verilere göre doğrudan belirlenir (Hangi taraf baskınsa)
+    aktif_yon_turu = "Long" if y_net_yuzde >= 50.0 else "Short"
+
+    # Risk oranına göre dinamik eşik: Risk azaldıkça (örn %25) onay eşiği sertleşir (örn %55), risk arttıkça (örn %75) gevşer (%45).
+    dinamik_esik = 50.0 + ((50.0 - risk_yuzdesi) * 0.15)
+
+    ilgili_oran = y_net_yuzde if aktif_yon_turu == "Long" else (100.0 - y_net_yuzde)
 
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
-    # Eşik %50'nin üzerindeyse doğrudan yönü tetikle
-    ham_yon = "Nötr (Beklemede)"
-    if y_net_yuzde > 50.0 or (100.0 - y_net_yuzde) > 50.0:
-        if y_net_yuzde >= 70.0 or (100.0 - y_net_yuzde) >= 70.0:
-            ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
+    if ilgili_oran >= dinamik_esik:
+        if ilgili_oran >= 75.0:
+            temiz_yon = f"{aktif_yon_turu} (Trend Haberi)"
         else:
-            ham_yon = f"{aktif_yon_turu} (Onaylı)"
+            temiz_yon = f"{aktif_yon_turu} (Onaylı)"
     else:
-        ham_yon = "Nötr (Beklemede)"
+        temiz_yon = "Nötr (Beklemede)"
 
-    st.session_state[state_key] = ham_yon
-    temiz_yon = ham_yon
+    st.session_state[state_key] = temiz_yon
 
     y_gorsel = round((y_net_yuzde / 100.0) * 10)
     if y_gorsel > 10: y_gorsel = 10
@@ -290,7 +265,7 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
 
     is_notr = ("Nötr" in temiz_yon)
     matris_taban_orani = 0.0 if is_notr else round(y_net_yuzde, 1)
-    toplam_puan_skor = max(long_skor, short_skor) * 10000 + sum([ord(c) for c in coin_symbol])
+    toplam_puan_skor = ilgili_oran * 10000 + sum([ord(c) for c in coin_symbol])
     
     return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, y_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
 
@@ -505,7 +480,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk und Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -687,7 +662,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

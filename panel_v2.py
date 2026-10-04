@@ -202,9 +202,7 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    # --- RİSK MANTIĞI: RİSK ARTTIKÇA İŞLEME GİRME KOLAYLAŞIR, AZALDIKÇA ZORLAŞIR ---
-    # Sabit baz eşik %75'tir. Risk yüksekken (%100) eşik %60'a düşer (kolaylaşır),
-    # risk düşükken (%0) eşik %90'a çıkar (zorlaşır).
+    # --- RİSK MANTIĞI: RİSK ARTTIKÇA İŞLEME GİRME KOLAYLAŞIR (EŞİK DÜŞER), AZALDIKÇA ZORLAŞIR (EŞİK YÜKSELİR) ---
     baz_esik = 75.0
     dinamik_esik = baz_esik - ((risk_yuzdesi - 50.0) * 0.3)
 
@@ -239,7 +237,6 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     if genel_toplam == 0: genel_toplam = 1
 
     net_bar_toplam = toplam_y_bar + toplam_k_bar
-    # Matris verileri risk potansünden bağımsız ham veridir
     y_net_yuzde = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
     k_net_yuzde = (toplam_k_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
 
@@ -485,7 +482,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU (Kasa Bilgilerinin Altında) ---
+    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU ---
     risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
@@ -902,7 +899,7 @@ def tam_ekran_canli_yayin_dongusu():
         else:
             st.info("Henüz kapanmış işlem bulunmuyor.")
     else: 
-        st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
+        st.info("ℹ️️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
 
 # CANLI DÖNGÜYÜ BAŞLAT
 tam_ekran_canli_yayin_dongusu()

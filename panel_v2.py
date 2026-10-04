@@ -141,12 +141,7 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
     y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
 
-    # Risk %50 ile %75+ arasında lineer esneme
-    # %50 riskte: 144 / 144 / 120 / 120 bar, hedef baraj 65 puan
-    # %75 riskte: 216 / 216 / 180 / 180 bar, hedef baraj 190 puan
-    # Güçlü Trend (%100 riskte veya üst sınırda): 217 / 217 / 181 / 181 bar, hedef baraj 190 puan
-    
-    f = max(0.0, min(1.0, (risk_yuzdesi - 50.0) / 25.0)) # 50'de 0, 75'te 1.0
+    f = max(0.0, min(1.0, (risk_yuzdesi - 50.0) / 25.0))
     
     if risk_yuzdesi >= 100.0:
         req_48_24 = 217
@@ -157,7 +152,6 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
         req_12_4  = int(120 + (180 - 120) * f)
         hedef_puan_baraji = 65.0 + (190.0 - 65.0) * f
 
-    # Puan Katkıları
     yon_48 = "Long" if y48 >= req_48_24 else ("Short" if k48 >= req_48_24 else "Notr")
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
 
@@ -372,8 +366,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # SLIDER ALT SINIR %50 OLARAK KİLİTLENDİ
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=75.0, step=1.0, key="risk_yuzde_potansi")
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     oran = (risk_yuzdesi - 50.0) / 50.0
     r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)
@@ -414,7 +407,6 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        # C, U, M LED Durumları (65 puan altı kesinlikle Nötr)
         c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
         u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 65.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -65.0) else "🟡")
         m_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
@@ -445,7 +437,7 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # 3'te 2 ve 3'te 3 Onay Kuralı (M ledi mutlaka Yeşil/Kırmızı olmalı ve 65 puan üstü şart)
+        # DÜZELTME: GÜÇLÜ TREND İÇİN PUAN MUTLAKA 190 VE ÜZERİ OLMALI, ONAYLI İÇİN 65 VE ÜZERİ YETERLİ
         if m_y != "Notr" and abs(net_puan) >= 65.0:
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:

@@ -202,10 +202,11 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    # Risk oranına göre dinamik eşik ve çarpan katsayısı
-    # risk_yuzdesi %100 iken hassasiyet maksimum, %0 iken minimum olur.
-    risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.5
-    dinamik_esik = 70.0 - (risk_yuzdesi * 0.2)  # Risk arttıkça onay eşik yüzdesi esner (Örn: %50 riskte eşik ~%60 olur)
+    # --- RİSK MANTIĞI: RİSK ARTTIKÇA İŞLEME GİRME KOLAYLAŞIR, AZALDIKÇA ZORLAŞIR ---
+    # Sabit baz eşik %75'tir. Risk yüksekken (%100) eşik %60'a düşer (kolaylaşır),
+    # risk düşükken (%0) eşik %90'a çıkar (zorlaşır).
+    baz_esik = 75.0
+    dinamik_esik = baz_esik - ((risk_yuzdesi - 50.0) * 0.3)
 
     def yon_tayin_et(y, k, s):
         net_bar = y + k
@@ -238,29 +239,27 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     if genel_toplam == 0: genel_toplam = 1
 
     net_bar_toplam = toplam_y_bar + toplam_k_bar
+    # Matris verileri risk potansünden bağımsız ham veridir
     y_net_yuzde = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
     k_net_yuzde = (toplam_k_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
 
-    y_net_yuzde = min(100.0, max(0.0, y_net_yuzde * risk_katsayisi))
-
     max_skor = max(long_skor, short_skor)
     aktif_yon_turu = "Long" if long_skor >= short_skor else "Short"
-    aktif_net_yuzde = y_net_yuzde if aktif_yon_turu == "Long" else (100.0 - y_net_yuzde)
+    aktif_net_yuzde = y_net_yuzde if aktif_yon_turu == "Long" else k_net_yuzde
 
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
-    # DİNAMİK TETİKLEME: Ledlerin yandığı yüzde seviyesi (örn. %60-70) direkt trendi tetikler
     ham_yon = "Nötr (Beklemede)"
-    if y_net_yuzde >= dinamik_esik or (100.0 - y_net_yuzde) >= dinamik_esik:
-        if y_net_yuzde >= (dinamik_esik + 10.0):
+    if y_net_yuzde >= dinamik_esik or k_net_yuzde >= dinamik_esik:
+        if y_net_yuzde >= 85.0 or k_net_yuzde >= 85.0:
             ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
         else:
             ham_yon = f"{aktif_yon_turu} (%{dinamik_esik:.0f} Onay)"
     else:
         if "Long" in onceki_yon and y_net_yuzde >= (dinamik_esik - 5.0):
             ham_yon = f"Long (%{dinamik_esik:.0f} Onay)"
-        elif "Short" in onceki_yon and (100.0 - y_net_yuzde) >= (dinamik_esik - 5.0):
+        elif "Short" in onceki_yon and k_net_yuzde >= (dinamik_esik - 5.0):
             ham_yon = f"Short (%{dinamik_esik:.0f} Onay)"
         else:
             ham_yon = "Nötr (Beklemede)"
@@ -461,14 +460,33 @@ elli_islem_arsiv_kontrol()
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 
-    # --- DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU ---
-    col_pot1, col_pot2 = st.columns([3, 1])
-    with col_pot1:
-        risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
-    with col_pot2:
-        st.write("")
+    # Üst Kısım: Sadece Piyasayı Şimdi Yenile Butonu
+    col_ust1, col_ust2 = st.columns([4, 1])
+    with col_ust2:
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
             st.rerun()
+
+    # Kasa Bilgileri
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown(f"""
+            <div class="metric-container">
+                <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">💰 Anlık Toplam Kasa</p>
+                <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{toplam_kasa:,.2f} $ <span style="font-size: 18px; color: {'#198754' if toplam_kasa - BASLANGIC_BAKIYE >= 0 else '#dc3545'};">({toplam_kasa - BASLANGIC_BAKIYE:+,.2f} $)</span></h1>
+            </div>
+        """, unsafe_allow_html=True)
+    with col_m2:
+        st.markdown(f"""
+            <div class="metric-container">
+                <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">🟢 Mevcut Bakiye (Boştaki Nakit)</p>
+                <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{mevcut_bakiye:,.2f} $</h1>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- DİNAMİK RİSK ORANI POTANSI VE DİNAMİK GRADYAN KUTU (Kasa Bilgilerinin Altında) ---
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
@@ -489,22 +507,6 @@ def tam_ekran_canli_yayin_dongusu():
             <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
         </div>
     """, unsafe_allow_html=True)
-
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        st.markdown(f"""
-            <div class="metric-container">
-                <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">💰 Anlık Toplam Kasa</p>
-                <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{toplam_kasa:,.2f} $ <span style="font-size: 18px; color: {'#198754' if toplam_kasa - BASLANGIC_BAKIYE >= 0 else '#dc3545'};">({toplam_kasa - BASLANGIC_BAKIYE:+,.2f} $)</span></h1>
-            </div>
-        """, unsafe_allow_html=True)
-    with col_m2:
-        st.markdown(f"""
-            <div class="metric-container">
-                <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">🟢 Mevcut Bakiye (Boştaki Nakit)</p>
-                <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{mevcut_bakiye:,.2f} $</h1>
-            </div>
-        """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -529,8 +531,6 @@ def tam_ekran_canli_yayin_dongusu():
             toplam_k_tum += rez[1]
     toplam_bar_karsilastirma = toplam_y_tum + toplam_k_tum
     usdt_genel_yuzde = (toplam_y_tum / toplam_bar_karsilastirma * 100) if toplam_bar_karsilastirma > 0 else 50.0
-    risk_katsayisi_temp = 0.5 + (risk_yuzdesi / 100.0) * 1.5
-    usdt_genel_yuzde = min(100.0, max(0.0, usdt_genel_yuzde * risk_katsayisi_temp))
 
     islenen_veriler = []
     for data in islenen_ham_veriler:
@@ -538,28 +538,23 @@ def tam_ekran_canli_yayin_dongusu():
         raw_yuzde = data["raw_yuzde"]
         raw_yon = data["raw_yon"]
         
-        # --- KORELASYONLU ORANLAR ---
+        # --- PİYASA & DOMİNANS 3'TE 2 ONAY KURALI ---
         coin_dom_yuzde = raw_yuzde
-        usdt_dom_yuzde = round((usdt_genel_yuzde + raw_yuzde) / 2.0, 1)
+        usdt_dom_yuzde = usdt_genel_yuzde
+        matris_dom_yuzde = raw_yuzde
+
+        c_yesil = coin_dom_yuzde >= 50.0
+        u_yesil = usdt_dom_yuzde >= 50.0
+        m_yesil = matris_dom_yuzde >= 50.0
+
+        c_durum = "🟢" if c_yesil else "🔴"
+        u_durum = "🟢" if u_yesil else "🔴"
+        m_durum = "🟢" if m_yesil else "🔴"
         
-        # --- KATI LED EŞİK KURALI ---
-        dinamik_esik_gosterge = 70.0 - (risk_yuzdesi * 0.2)
-        if coin_dom_yuzde >= dinamik_esik_gosterge: led_c = "🟢"
-        elif coin_dom_yuzde <= (100.0 - dinamik_esik_gosterge): led_c = "🔴"
-        else: led_c = "🟡"
-        
-        if usdt_dom_yuzde >= dinamik_esik_gosterge: led_u = "🟢"
-        elif usdt_dom_yuzde <= (100.0 - dinamik_esik_gosterge): led_u = "🔴"
-        else: led_u = "🟡"
-        
-        led_m = "🟡"
-        if raw_yuzde >= dinamik_esik_gosterge:
-            led_m = "🟢" if raw_yon == "Long" else "🔴"
-            
         dom_html = f"""
         <div style="text-align: center;">
-            <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{led_c}{led_u}{led_m}</div>
-            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom_yuzde:.0f} | U:%{usdt_dom_yuzde:.0f} | M:%{raw_yuzde:.0f}</div>
+            <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum}{u_durum}{m_durum}</div>
+            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom_yuzde:.0f} | U:%{usdt_dom_yuzde:.0f} | M:%{matris_dom_yuzde:.0f}</div>
         </div>
         """
         

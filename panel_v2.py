@@ -202,16 +202,18 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    # %0-%100 oranını [0.5, 2.0] çarpan katsayısına dönüştür (%50 = 1.0)
+    # Risk oranına göre dinamik eşik ve çarpan katsayısı
+    # risk_yuzdesi %100 iken hassasiyet maksimum, %0 iken minimum olur.
     risk_katsayisi = 0.5 + (risk_yuzdesi / 100.0) * 1.5
+    dinamik_esik = 70.0 - (risk_yuzdesi * 0.2)  # Risk arttıkça onay eşik yüzdesi esner (Örn: %50 riskte eşik ~%60 olur)
 
     def yon_tayin_et(y, k, s):
         net_bar = y + k
         if net_bar == 0: return "Notr"
-        y_oran = y / net_bar
-        k_oran = k / net_bar
-        if y_oran >= (0.75 / risk_katsayisi): return "Long"
-        elif k_oran >= (0.75 / risk_katsayisi): return "Short"
+        y_oran = (y / net_bar) * 100
+        k_oran = (k / net_bar) * 100
+        if y_oran >= dinamik_esik: return "Long"
+        elif k_oran >= dinamik_esik: return "Short"
         else: return "Notr"
 
     yon_48s = yon_tayin_et(res_48s[0], res_48s[1], res_48s[2])
@@ -248,16 +250,18 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
+    # DİNAMİK TETİKLEME: Ledlerin yandığı yüzde seviyesi (örn. %60-70) direkt trendi tetikler
     ham_yon = "Nötr (Beklemede)"
-    if max_skor >= 0.85 and y_net_yuzde >= 75.0:
-        ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
-    elif max_skor >= 0.75 and y_net_yuzde >= 65.0:
-        ham_yon = f"{aktif_yon_turu} (%75 Onay)"
+    if y_net_yuzde >= dinamik_esik or (100.0 - y_net_yuzde) >= dinamik_esik:
+        if y_net_yuzde >= (dinamik_esik + 10.0):
+            ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
+        else:
+            ham_yon = f"{aktif_yon_turu} (%{dinamik_esik:.0f} Onay)"
     else:
-        if "Long" in onceki_yon and long_skor >= 0.65 and y_net_yuzde >= 60.0:
-            ham_yon = "Long (%75 Onay)"
-        elif "Short" in onceki_yon and short_skor >= 0.65 and (100.0 - y_net_yuzde) >= 60.0:
-            ham_yon = "Short (%75 Onay)"
+        if "Long" in onceki_yon and y_net_yuzde >= (dinamik_esik - 5.0):
+            ham_yon = f"Long (%{dinamik_esik:.0f} Onay)"
+        elif "Short" in onceki_yon and (100.0 - y_net_yuzde) >= (dinamik_esik - 5.0):
+            ham_yon = f"Short (%{dinamik_esik:.0f} Onay)"
         else:
             ham_yon = "Nötr (Beklemede)"
 
@@ -466,15 +470,12 @@ def tam_ekran_canli_yayin_dongusu():
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
             st.rerun()
 
-    # %0 -> Kırmızı (#dc3545), %50 -> Sarı/Nötr (#ffc107), %100 -> Yeşil (#198754) gradyan hesaplama
     if risk_yuzdesi <= 50:
-        # Kırmızıdan Sarıya geçiş
         oran = risk_yuzdesi / 50.0
         r = 220 + int((255 - 220) * oran)
         g = 53 + int((193 - 53) * oran)
         b = 69 + int((7 - 69) * oran)
     else:
-        # Sarıdan Yeşile geçiş
         oran = (risk_yuzdesi - 50.0) / 50.0
         r = 255 + int((25 - 255) * oran)
         g = 193 + int((135 - 193) * oran)
@@ -541,17 +542,18 @@ def tam_ekran_canli_yayin_dongusu():
         coin_dom_yuzde = raw_yuzde
         usdt_dom_yuzde = round((usdt_genel_yuzde + raw_yuzde) / 2.0, 1)
         
-        # --- KATI LED EŞİK KURALI (%75 ONAY ŞARTI) ---
-        if coin_dom_yuzde >= 75.0: led_c = "🟢"
-        elif coin_dom_yuzde <= 25.0: led_c = "🔴"
+        # --- KATI LED EŞİK KURALI ---
+        dinamik_esik_gosterge = 70.0 - (risk_yuzdesi * 0.2)
+        if coin_dom_yuzde >= dinamik_esik_gosterge: led_c = "🟢"
+        elif coin_dom_yuzde <= (100.0 - dinamik_esik_gosterge): led_c = "🔴"
         else: led_c = "🟡"
         
-        if usdt_dom_yuzde >= 75.0: led_u = "🟢"
-        elif usdt_dom_yuzde <= 25.0: led_u = "🔴"
+        if usdt_dom_yuzde >= dinamik_esik_gosterge: led_u = "🟢"
+        elif usdt_dom_yuzde <= (100.0 - dinamik_esik_gosterge): led_u = "🔴"
         else: led_u = "🟡"
         
         led_m = "🟡"
-        if raw_yuzde >= 75.0:
+        if raw_yuzde >= dinamik_esik_gosterge:
             led_m = "🟢" if raw_yon == "Long" else "🔴"
             
         dom_html = f"""
@@ -663,7 +665,7 @@ def tam_ekran_canli_yayin_dongusu():
             oran_html = f'<div style="background-color: {bg_col}; padding: 5px; font-weight: bold;">{val_str}<br>(%85 Trend)</div>'
         else:
             bg_col = "rgba(25, 135, 84, 0.2)" if "Long" in v['Ham_Yon'] else "rgba(220, 53, 69, 0.2)"
-            oran_html = f'<div style="background-color: {bg_col}; padding: 5px; font-weight: bold;">{val_str}<br>(%75 Onay)</div>'
+            oran_html = f'<div style="background-color: {bg_col}; padding: 5px; font-weight: bold;">{val_str}<br>(Onaylı)</div>'
 
         table_html += f"""
             <tr>

@@ -120,7 +120,7 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
         r = requests.get(url, headers=headers, timeout=2.5)
         if r.status_code == 200:
             data = r.json()
-            if len(data) > int(limit_adet * 0.4): 
+            if len(data) > 0: 
                 return hesapla_bar_sayilari(data, 1, 4)
     except: pass
 
@@ -129,11 +129,10 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
         r = requests.get(url, headers=headers, timeout=2.5)
         if r.status_code == 200:
             data = r.json().get('data', [])
-            if len(data) > int(limit_adet * 0.4): 
+            if len(data) > 0: 
                 return hesapla_bar_sayilari(data[:limit_adet], 1, 2)
     except: pass
 
-    # Yedek simülasyon (Yeşil, Kırmızı, Sarı dağılımı)
     y_sabit = int(limit_adet * 0.52)
     k_sabit = int(limit_adet * 0.42)
     s_sabit = limit_adet - (y_sabit + k_sabit)
@@ -142,23 +141,11 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 1. 48 Saat: 10m x 288 bar
     y48, k48, s48 = kline_cek_belirli_adet(coin_symbol, "10m", 288)
-    # 2. 24 Saat: 5m x 288 bar
     y24, k24, s24 = kline_cek_belirli_adet(coin_symbol, "5m", 288)
-    # 3. 12 Saat: 3m x 240 bar
     y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)
-    # 4. 4 Saat: 1m x 240 bar
     y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)
 
-    # Potans Oranına Göre Gerekli Onay Alınmış LED/Bar Barajı (Örn: %75 potansta ~190, %25 potansta ~65 bar)
-    # Toplam bar sayısı: 288 + 288 + 240 + 240 = 1056 bar üzerinden oranlıyoruz
-    toplam_bar = 1056
-    gerekli_oran = risk_yuzdesi / 100.0
-    hedef_onay_bar_sayisi = int(toplam_bar * (0.15 + (gerekli_oran * 0.60))) # %15 ile %75 arası esneme
-
-    # Ağırlıklı Puanlama (48s: %10, 24s: %15, 12s: %25, 4s: %50)
-    # Sarı barlar (s48, s24, s12, s4) hesaba katılmaz, net yeşil/kırmızı üstünlüğü aranır
     def net_puan_ver(y, k, agirlik_yuzdesi):
         net = y + k
         if net == 0: return 0.0
@@ -171,31 +158,22 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     puan_12 = net_puan_ver(y12, k12, 25.0)
     puan_4  = net_puan_ver(y4,  k4,  50.0)
 
-    toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  # -100 ile +100 arası
+    toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
 
-    # Toplam yeşil ve kırmızı bar adetleri
     toplam_y = y48 + y24 + y12 + y4
     toplam_k = k48 + k24 + k12 + k4
-    toplam_s = s48 + s24 + s12 + s4
-    
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
-    # Dinamik Eşik Puan Barajı (Slider risk oranına göre)
     dinamik_puan_baraji = 10.0 + (risk_yuzdesi / 100.0) * 40.0
 
     matris_yon = "Notr"
-    if toplam_net_puan >= dinamik_puan_baraji and toplam_y >= hedef_onay_bar_sayisi / 4:
+    if toplam_net_puan > 0:
         matris_yon = "Long"
-    elif toplam_net_puan <= -dinamik_puan_baraji and toplam_k >= hedef_onay_bar_sayisi / 4:
+    elif toplam_net_puan < 0:
         matris_yon = "Short"
 
-    periyot_detaylari = {
-        "48s": (y48, k48, s48), "24s": (y24, k24, s24),
-        "12s": (y12, k12, s12), "4s": (y4, k4, s4)
-    }
-
-    return anlik_fiyat, toplam_net_puan, dinamik_puan_baraji, matris_yon, y_yuzde, periyot_detaylari
+    return anlik_fiyat, toplam_net_puan, dinamik_puan_baraji, matris_yon, y_yuzde
 
 def google_sheets_baglan():
     try:
@@ -384,7 +362,6 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- SLIDER VE MATRİS EŞİĞİ ---
     risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
@@ -411,11 +388,11 @@ def tam_ekran_canli_yayin_dongusu():
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        anlik_fiyat, net_puan, baraj, m_yon, y_yuzde, periyotlar = detayli_matris_hesapla(sembol, risk_yuzdesi)
+        anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, risk_yuzdesi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         islenen_ham_veriler.append({
             "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
-            "baraj": baraj, "m_yon": m_yon, "y_yuzde": y_yuzde, "periyotlar": periyotlar
+            "baraj": baraj, "m_yon": m_yon, "y_yuzde": y_yuzde
         })
 
     usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
@@ -428,44 +405,26 @@ def tam_ekran_canli_yayin_dongusu():
         y_yuzde = data["y_yuzde"]
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
-        periyotlar = data["periyotlar"]
         
-        # C LEDİ
-        c_durum_led = "🟡"
-        if net_puan >= baraj: c_durum_led = "🟢"
-        elif net_puan <= -baraj: c_durum_led = "🔴"
+        c_durum_led = "🟢" if net_puan > 0 else ("🔴" if net_puan < 0 else "🟡")
+        u_durum_led = "🟢" if usdt_net_puan_ort > 0 else ("🔴" if usdt_net_puan_ort < 0 else "🟡")
+        m_durum_led = "🟢" if net_puan > 0 else ("🔴" if net_puan < 0 else "🟡")
 
-        # U LEDİ
-        u_durum_led = "🟡"
-        if usdt_net_puan_ort >= baraj: u_durum_led = "🟢"
-        elif usdt_net_puan_ort <= -baraj: u_durum_led = "🔴"
-
-        # M LEDİ
-        m_durum_led = "🟡"
-        if net_puan >= baraj: m_durum_led = "🟢"
-        elif net_puan <= -baraj: m_durum_led = "🔴"
-
-        # 10'lu Görsel LED Bar
         y_gorsel = int(round(y_yuzde / 10.0))
         y_gorsel = max(0, min(10, y_gorsel))
         k_gorsel = 10 - y_gorsel
-        led_str = ("🟢" * y_gorsel) + ("🔴" * k_gorsel)
-
-        # Matris Alanında Zaman Dilimi LED Sayılarının Görünümü (48s, 24s, 12s, 4s)
+        
+        # Sadece İstediğiniz Temiz Görsel Tasarım (10'lu LED Bar + Oranlar)
         detay_matris_html = f"""
-        <div style="text-align: center; font-size: 11px; line-height: 1.3;">
-            <div style="margin-bottom: 2px; letter-spacing: 1px;">{led_str}</div>
-            <div style="color: #495057; font-weight: 500;">🟢 %{y_yuzde:.1f} | 🔴 %{k_yuzde:.1f}</div>
-            <div style="font-size: 10px; color: #6c757d; margin-top: 2px;">
-                48s(10m): <span style="color: #198754;">{periyotlar['48s'][0]}e</span>/<span style="color: #dc3545;">{periyotlar['48s'][1]}k</span>/<span style="color: #ffc107;">{periyotlar['48s'][2]}s</span><br>
-                24s(5m): <span style="color: #198754;">{periyotlar['24s'][0]}e</span>/<span style="color: #dc3545;">{periyotlar['24s'][1]}k</span>/<span style="color: #ffc107;">{periyotlar['24s'][2]}s</span><br>
-                12s(3m): <span style="color: #198754;">{periyotlar['12s'][0]}e</span>/<span style="color: #dc3545;">{periyotlar['12s'][1]}k</span>/<span style="color: #ffc107;">{periyotlar['12s'][2]}s</span><br>
-                4s(1m): <span style="color: #198754;">{periyotlar['4s'][0]}e</span>/<span style="color: #dc3545;">{periyotlar['4s'][1]}k</span>/<span style="color: #ffc107;">{periyotlar['4s'][2]}s</span>
+        <div style="text-align: center; line-height: 1.2;">
+            <div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div>
+            <div style="font-size: 11px; color: #495057; font-weight: 600;">
+                <span style="color: #198754; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #198754; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | 
+                <span style="color: #dc3545; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #dc3545; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}
             </div>
         </div>
         """
 
-        # --- 3'te 2 VE 3'te 3 KURALI ---
         def led_to_yon(led):
             return "Long" if led == "🟢" else ("Short" if led == "🔴" else "Notr")
 
@@ -556,7 +515,7 @@ def tam_ekran_canli_yayin_dongusu():
         <thead>
             <tr>
                 <th>Logo</th><th>Coin<br>Adı</th><th>Güncel<br>Fiyat</th><th>Trend<br>Durumu</th>
-                <th>Matris Teyit ve Periyot LED Adetleri</th><th>Piyasa &<br>Dominans</th><th>Önerilen<br>Oran</th>
+                <th>Matris Teyit</th><th>Piyasa &<br>Dominans</th><th>Önerilen<br>Oran</th>
                 <th>Yatırım<br>Tutarı</th><th>Kar Al<br>Hedefi</th><th>Stop<br>Seviyesi</th>
             </tr>
         </thead><tbody>
@@ -584,7 +543,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

@@ -195,7 +195,7 @@ def kline_cek_guvenli(coin_symbol, period_type):
     k_sabit = int(b_lim * 0.45)
     return y_sabit, k_sabit, b_lim - (y_sabit + k_sabit)
 
-def coklu_zaman_dilimli_analiz(coin_symbol):
+def coklu_zaman_dilimli_analiz(coin_symbol, risk_katsayisi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     res_48s = kline_cek_guvenli(coin_symbol, "48s")
     res_24s = kline_cek_guvenli(coin_symbol, "24s")
@@ -207,8 +207,8 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
         if net_bar == 0: return "Notr"
         y_oran = y / net_bar
         k_oran = k / net_bar
-        if y_oran >= 0.75: return "Long"
-        elif k_oran >= 0.75: return "Short"
+        if y_oran >= (0.75 / risk_katsayisi): return "Long"
+        elif k_oran >= (0.75 / risk_katsayisi): return "Short"
         else: return "Notr"
 
     yon_48s = yon_tayin_et(res_48s[0], res_48s[1], res_48s[2])
@@ -236,22 +236,25 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
     y_net_yuzde = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
     k_net_yuzde = (toplam_k_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
 
+    # Risk katsayısının matris yüzdesine dinamik etkisi
+    y_net_yuzde = min(100.0, max(0.0, y_net_yuzde * risk_katsayisi))
+
     max_skor = max(long_skor, short_skor)
     aktif_yon_turu = "Long" if long_skor >= short_skor else "Short"
-    aktif_net_yuzde = y_net_yuzde if aktif_yon_turu == "Long" else k_net_yuzde
+    aktif_net_yuzde = y_net_yuzde if aktif_yon_turu == "Long" else (100.0 - y_net_yuzde)
 
     state_key = f"onceki_yon_{coin_symbol}"
     onceki_yon = st.session_state.get(state_key, "Nötr (Beklemede)")
 
     ham_yon = "Nötr (Beklemede)"
-    if max_skor >= 0.85 and aktif_net_yuzde >= 85.0:
+    if max_skor >= 0.85 and y_net_yuzde >= 75.0:
         ham_yon = f"{aktif_yon_turu} (Trend Haberi)"
-    elif max_skor >= 0.75 and aktif_net_yuzde >= 75.0:
+    elif max_skor >= 0.75 and y_net_yuzde >= 65.0:
         ham_yon = f"{aktif_yon_turu} (%75 Onay)"
     else:
-        if "Long" in onceki_yon and long_skor >= 0.70 and y_net_yuzde >= 72.0:
+        if "Long" in onceki_yon and long_skor >= 0.65 and y_net_yuzde >= 60.0:
             ham_yon = "Long (%75 Onay)"
-        elif "Short" in onceki_yon and short_skor >= 0.70 and k_net_yuzde >= 72.0:
+        elif "Short" in onceki_yon and short_skor >= 0.65 and (100.0 - y_net_yuzde) >= 60.0:
             ham_yon = "Short (%75 Onay)"
         else:
             ham_yon = "Nötr (Beklemede)"
@@ -259,7 +262,7 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
     st.session_state[state_key] = ham_yon
     temiz_yon = ham_yon
 
-    y_gorsel = round((toplam_y_bar / net_bar_toplam) * 10) if net_bar_toplam > 0 else 5
+    y_gorsel = round((y_net_yuzde / 100.0) * 10)
     if y_gorsel > 10: y_gorsel = 10
     if y_gorsel < 0: y_gorsel = 0
     k_gorsel = 10 - y_gorsel
@@ -268,7 +271,7 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
     while len(aktif_ledler) < 10: aktif_ledler.append("🟢")
     led_dizilimi_str = "".join(aktif_ledler[:10])
 
-    detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_dizilimi_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net_yuzde:.1f} | 🔴 %{k_net_yuzde:.1f}</div></div>"""
+    detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_dizilimi_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net_yuzde:.1f} | 🔴 %{100.0 - y_net_yuzde:.1f}</div></div>"""
 
     if "Long" in temiz_yon:
         stop_fiyat = anlik_fiyat * 0.992
@@ -281,10 +284,10 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
         hedef_fiyat = anlik_fiyat * 1.01
 
     is_notr = ("Nötr" in temiz_yon)
-    matris_taban_orani = 0.0 if is_notr else round(aktif_net_yuzde, 1)
+    matris_taban_orani = 0.0 if is_notr else round(y_net_yuzde, 1)
     toplam_puan_skor = max(long_skor, short_skor) * 10000 + sum([ord(c) for c in coin_symbol])
     
-    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, aktif_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
+    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, y_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
 
 def google_sheets_baglan():
     try:
@@ -385,7 +388,7 @@ def bakiye_durumunu_getir():
     return float(toplam_kasa), float(toplam_kasa - acik_marjin)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
-    if "Nötr" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Yeterli %75 çoklukta onay alınamadı), işlem açılamaz!"
+    if "Nötr" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı), işlem açılamaz!"
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
@@ -451,7 +454,14 @@ elli_islem_arsiv_kontrol()
 @st.fragment(run_every=60.0)
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
-    guncel_saat = tr_zaman().strftime("%H:%M:%S")
+
+    # --- DİNAMİK RİSK KATSAYISI POTANSI (KONTROL PANELİ) ---
+    col_pot1, col_pot2 = st.columns([3, 1])
+    with col_pot1:
+        risk_katsayisi = st.slider("🎛️ Panel Risk / Hassasiyet Katsayısı (Trend Yönlendirici Potans):", min_value=0.5, max_value=2.0, value=1.0, step=0.05, key="risk_potansi")
+    with col_pot2:
+        if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
+            st.rerun()
 
     col_m1, col_m2 = st.columns(2)
     with col_m1:
@@ -470,19 +480,12 @@ def tam_ekran_canli_yayin_dongusu():
         """, unsafe_allow_html=True)
 
     st.markdown("---")
-    
-    col_ust1, col_ust2 = st.columns([4, 1])
-    with col_ust1:
-        st.markdown(f"**Son Güncelleme:** `{guncel_saat}` *(Tüm paneller her 60 saniyede tam senkronize güncellenir)*")
-    with col_ust2:
-        if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
-            st.rerun()
 
     islenen_ham_veriler = []
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol)
+        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_katsayisi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         
         islenen_ham_veriler.append({
@@ -499,6 +502,7 @@ def tam_ekran_canli_yayin_dongusu():
             toplam_k_tum += rez[1]
     toplam_bar_karsilastirma = toplam_y_tum + toplam_k_tum
     usdt_genel_yuzde = (toplam_y_tum / toplam_bar_karsilastirma * 100) if toplam_bar_karsilastirma > 0 else 50.0
+    usdt_genel_yuzde = min(100.0, max(0.0, usdt_genel_yuzde * risk_katsayisi))
 
     islenen_veriler = []
     for data in islenen_ham_veriler:
@@ -506,11 +510,11 @@ def tam_ekran_canli_yayin_dongusu():
         raw_yuzde = data["raw_yuzde"]
         raw_yon = data["raw_yon"]
         
+        # --- KORELASYONLU ORANLAR ---
         coin_dom_yuzde = raw_yuzde
-        usdt_dom_yuzde = round(usdt_genel_yuzde, 1)
+        usdt_dom_yuzde = round((usdt_genel_yuzde + raw_yuzde) / 2.0, 1)
         
         # --- KATI LED EŞİK KURALI (%75 ONAY ŞARTI) ---
-        # Sadece %75 ve üzeri üstünlükte Yeşil/Kırmızı, ara değerlerde kesinlikle Sarı yanar.
         if coin_dom_yuzde >= 75.0: led_c = "🟢"
         elif coin_dom_yuzde <= 25.0: led_c = "🔴"
         else: led_c = "🟡"
@@ -658,7 +662,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli %75 çoklukta onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -834,7 +838,7 @@ def tam_ekran_canli_yayin_dongusu():
             
             col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
             with col_p1:
-                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zارarlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
                 fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#198754', 'Zararlı İşlemler': '#dc3545'})
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
                 st.plotly_chart(fig, use_container_width=True)

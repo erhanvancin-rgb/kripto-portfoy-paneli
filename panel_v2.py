@@ -35,23 +35,22 @@ st.markdown("""
         border: 1px solid #ced4da !important;
         font-weight: bold !important;
     }
-    /* Slider Standart Çizgisini Tamamen Gizleme ve Kalın Gradyan Bar Ekleme */
-    div[data-baseweb="slider"] div[data-testid="stSliderTrack"] {
+    /* Slider Çizgisini Kırmak ve Kalın Renkli Gradyan Yapmak İçin Agresif CSS */
+    [data-testid="stSlider"] [data-baseweb="slider"] > div > div > div {
+        background: linear-gradient(90deg, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
+        height: 14px !important;
+        border-radius: 7px !important;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+        background-color: #ffffff !important;
+        border: 4px solid #212529 !important;
+        box-shadow: 0px 0px 5px rgba(0,0,0,0.5) !important;
+        height: 24px !important;
+        width: 24px !important;
+        margin-top: -5px !important;
+    }
+    [data-testid="stSliderTrack"] > div {
         background: transparent !important;
-    }
-    div[data-baseweb="slider"] > div > div > div[role="slider"] {
-        background-color: #212529 !important;
-        border: 2px solid #ffffff !important;
-    }
-    /* Streamlit Slider Arka Plan Çizgisini Kalın Gradyan Yapma */
-    span[data-baseweb="tag"] { display: none !important; }
-    div[data-baseweb="slider"] div {
-        background-image: none !important;
-    }
-    div[data-testid="stSlider"] [data-baseweb="slider"] div:nth-child(1) {
-        background: linear-gradient(to right, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
-        height: 18px !important;
-        border-radius: 9px !important;
     }
     div[data-baseweb="slider"] div[data-testid="stThumbValue"] {
         color: #212529 !important;
@@ -85,40 +84,7 @@ logo_urls = {
 
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
-# --- E-POSTA MOTORU ---
-def islem_kapanis_maili_gonder(islem_id, coin, net_kar, durum):
-    try:
-        gonderen = "erhanvancin@gmail.com"
-        sifre = "jkef zgaf zwtg qyom"
-        alici = "erhanvancin@hotmail.com"
-        
-        msg = MIMEMultipart()
-        msg['From'] = gonderen
-        msg['To'] = alici
-        msg['Subject'] = f"Kripto Bot: {coin} İşlemi Kapandı!"
-        
-        renk = "#198754" if net_kar >= 0 else "#dc3545"
-        html = f"""
-        <div style="font-family: Arial, sans-serif; border: 1px solid #dee2e6; padding: 20px; border-radius: 8px;">
-            <h3 style="color: #212529; margin-top: 0;">Pro Kripto Canlı Akış Paneli</h3>
-            <p><b>İşlem ID:</b> #{islem_id}</p>
-            <p><b>Kripto Varlık:</b> {coin}</p>
-            <p><b>Kapanış Durumu:</b> {durum}</p>
-            <p style="font-size: 16px;"><b>Net Kâr/Zarar:</b> <span style="color: {renk}; font-weight: bold;">{net_kar:+.2f} $</span></p>
-            <p style="font-size: 12px; color: #6c757d;"><b>İşlem Saati:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')}</p>
-        </div>
-        """
-        msg.attach(MIMEText(html, 'html'))
-        
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(gonderen, sifre)
-        server.sendmail(gonderen, alici, msg.as_string())
-        server.quit()
-    except Exception as e:
-        pass
-
-# --- YEDEKLİ (MULTI-EXCHANGE) FİYAT ÇEKME MOTORU ---
+# --- YEDEKLİ FİYAT ÇEKME MOTORU ---
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
@@ -131,63 +97,33 @@ def fiyat_cek_guvenli(coin_symbol):
             val = float(resp.json().get('price', 0))
             if val > 0: return val
     except: pass
-
-    try:
-        kucoin_sym = binance_sym.replace('USDT', '-USDT')
-        url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.5)
-        if resp.status_code == 200:
-            val = float(resp.json().get('data', {}).get('price', 0))
-            if val > 0: return val
-    except: pass
-
-    try:
-        gate_sym = binance_sym.replace('USDT', '_USDT')
-        url = f"https://api.gateio.ws/api/v4/spot/tickers?currency_pair={gate_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.5)
-        if resp.status_code == 200:
-            data = resp.json()
-            if len(data) > 0:
-                val = float(data[0].get('last', 0))
-                if val > 0: return val
-    except: pass
-
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-# --- MATRİS VE TREND LED MOTORU ---
+# --- AĞIRLIKLI MATRİS MOTORU ---
 def kline_cek_guvenli(coin_symbol, period_type):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
-    kucoin_sym = coin_symbol.replace('/', '-')
-    gate_sym = coin_symbol.replace('/', '_')
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     ts = int(time.time() * 1000)
     
+    # 48s: 15m (192), 24s: 5m (288), 12s: 3m (240), 4s: 1m (240)
     if period_type == "48s":
         b_int, b_lim = "15m", 192
-        k_int, k_lim, k_scale = "15min", 192, 1.0
-        g_int, g_lim, g_scale = "15m", 192, 1.0
     elif period_type == "24s":
         b_int, b_lim = "5m", 288
-        k_int, k_lim, k_scale = "5min", 288, 1.0
-        g_int, g_lim, g_scale = "5m", 288, 1.0
     elif period_type == "12s":
-        b_int, b_lim = "5m", 144
-        k_int, k_lim, k_scale = "5min", 144, 1.0
-        g_int, g_lim, g_scale = "5m", 144, 1.0
+        b_int, b_lim = "3m", 240
     else: 
         b_int, b_lim = "1m", 240
-        k_int, k_lim, k_scale = "1min", 240, 1.0
-        g_int, g_lim, g_scale = "1m", 240, 1.0
 
-    def hesabla(veriler, acilis_idx, kapanis_idx, scale=1.0):
+    def hesabla(veriler, acilis_idx, kapanis_idx):
         y, k, s = 0, 0, 0
         for bar in veriler:
             o, c = float(bar[acilis_idx]), float(bar[kapanis_idx])
             if c > o: y += 1
             elif c < o: k += 1
             else: s += 1
-        return int(y * scale), int(k * scale), int(s * scale)
+        return y, k, s
 
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={b_int}&limit={b_lim}&_t={ts}"
@@ -197,43 +133,31 @@ def kline_cek_guvenli(coin_symbol, period_type):
             if len(data) > 0: return hesabla(data, 1, 4)
     except: pass
 
-    try:
-        url = f"https://api.kucoin.com/api/v1/market/candles?type={k_int}&symbol={kucoin_sym}&_t={ts}"
-        r = requests.get(url, headers=headers, timeout=2.5)
-        if r.status_code == 200:
-            data = r.json().get('data', [])
-            if len(data) > 0: return hesabla(data[:k_lim], 1, 2, k_scale)
-    except: pass
-
-    try:
-        url = f"https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair={gate_sym}&interval={g_int}&limit={g_lim}&_t={ts}"
-        r = requests.get(url, headers=headers, timeout=2.5)
-        if r.status_code == 200:
-            data = r.json()
-            if len(data) > 0: return hesabla(data, 5, 2, g_scale)
-    except: pass
-
+    # Hata durumunda varsayılan rastgele
     y_sabit = int(b_lim * 0.50)
     k_sabit = int(b_lim * 0.45)
     return y_sabit, k_sabit, b_lim - (y_sabit + k_sabit)
 
-def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
+def coklu_zaman_dilimli_analiz(coin_symbol):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     res_48s = kline_cek_guvenli(coin_symbol, "48s")
     res_24s = kline_cek_guvenli(coin_symbol, "24s")
     res_12s = kline_cek_guvenli(coin_symbol, "12s")
     res_4s  = kline_cek_guvenli(coin_symbol, "4s")
 
-    toplam_y_bar = res_48s[0] + res_24s[0] + res_12s[0] + res_4s[0]
-    toplam_k_bar = res_48s[1] + res_24s[1] + res_12s[1] + res_4s[1]
-    toplam_s_bar = res_48s[2] + res_24s[2] + res_12s[2] + res_4s[2]
-    genel_toplam = toplam_y_bar + toplam_k_bar + toplam_s_bar
-    if genel_toplam == 0: genel_toplam = 1
+    def calc_ratio(rez):
+        toplam = rez[0] + rez[1]
+        return (rez[0] / toplam * 100.0) if toplam > 0 else 50.0
 
-    net_bar_toplam = toplam_y_bar + toplam_k_bar
-    ham_y_oran = (toplam_y_bar / net_bar_toplam * 100) if net_bar_toplam > 0 else 50.0
+    r_48 = calc_ratio(res_48s)
+    r_24 = calc_ratio(res_24s)
+    r_12 = calc_ratio(res_12s)
+    r_4 = calc_ratio(res_4s)
 
-    y_net_yuzde = round(ham_y_oran, 1)
+    # AĞIRLIKLI HESAPLAMA (48h:%10, 24h:%15, 12h:%25, 4h:%50)
+    y_net_yuzde = (r_48 * 0.10) + (r_24 * 0.15) + (r_12 * 0.25) + (r_4 * 0.50)
+    y_net_yuzde = round(y_net_yuzde, 1)
+    
     aktif_yon_turu = "Long" if y_net_yuzde >= 50.0 else "Short"
 
     y_gorsel = round((y_net_yuzde / 100.0) * 10)
@@ -254,11 +178,12 @@ def coklu_zaman_dilimli_analiz(coin_symbol, risk_yuzdesi):
         stop_fiyat = anlik_fiyat * 1.008
         hedef_fiyat = anlik_fiyat * 0.975
 
-    matris_taban_orani = round(y_net_yuzde, 1) if aktif_yon_turu == "Long" else round(100.0 - y_net_yuzde, 1)
+    matris_taban_orani = y_net_yuzde if aktif_yon_turu == "Long" else (100.0 - y_net_yuzde)
     toplam_puan_skor = matris_taban_orani * 10000 + sum([ord(c) for c in coin_symbol])
     
-    return toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, matris_taban_orani, y_net_yuzde, aktif_yon_turu, res_48s, res_24s, res_12s, res_4s
+    return toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, round(matris_taban_orani, 1), y_net_yuzde, aktif_yon_turu
 
+# --- GOOGLE SHEETS VE İŞLEM GEÇMİŞİ VERİTABANI MOTORLARI ---
 def google_sheets_baglan():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -398,8 +323,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
         df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
         
-        islem_kapanis_maili_gonder(islem_id, coin_isim, net_kar, durum_metni)
-        
         baz_bakiye = BASLANGIC_BAKIYE
         if os.path.exists(ARSIV_KLASORU):
             arsivler = os.listdir(ARSIV_KLASORU)
@@ -425,13 +348,11 @@ elli_islem_arsiv_kontrol()
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 
-    # Üst Kısım: Sadece Piyasayı Şimdi Yenile Butonu
     col_ust1, col_ust2 = st.columns([4, 1])
     with col_ust2:
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
             st.rerun()
 
-    # Kasa Bilgileri
     col_m1, col_m2 = st.columns(2)
     with col_m1:
         st.markdown(f"""
@@ -450,30 +371,25 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DİNAMİK RENKLİ KUTU ---
+    # --- SLIDER VE MATRİS EŞİĞİ ---
     risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
-    # Renk Skalası: %0 -> Yeşil (#198754), %50 -> Sarı (#ffc107), %100 -> Kırmızı (#dc3545)
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
-        r = 25 + int((255 - 25) * oran)
-        g = 135 + int((193 - 135) * oran)
-        b = 84 + int((7 - 84) * oran)
+        r, g, b = 25 + int((255 - 25) * oran), 135 + int((193 - 135) * oran), 84 + int((7 - 84) * oran)
     else:
         oran = (risk_yuzdesi - 50.0) / 50.0
-        r = 255 + int((220 - 255) * oran)
-        g = 193 + int((53 - 193) * oran)
-        b = 7 + int((69 - 7) * oran)
+        r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)
 
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    # Dinamik Matris Eşiği: Risk %0 iken %100, %50 iken %50, %100 iken %0
-    dinamik_matris_esigi = 100.0 - risk_yuzdesi
+    # --- YENİ FORMÜL: Risk %0 -> Eşik %75 | Risk %100 -> Eşik %25 ---
+    dinamik_matris_esigi = 75.0 - (risk_yuzdesi * 0.50)
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{dinamik_matris_esigi:.0f})</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{dinamik_matris_esigi:.1f})</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -483,23 +399,17 @@ def tam_ekran_canli_yayin_dongusu():
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, matris_taban_orani, raw_yuzde, aktif_yon_turu, r48, r24, r12, r4 = coklu_zaman_dilimli_analiz(sembol, risk_yuzdesi)
+        toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, anlik_fiyat, matris_taban_orani, raw_yuzde, aktif_yon_turu = coklu_zaman_dilimli_analiz(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
-        
         islenen_ham_veriler.append({
             "sembol": sembol, "toplam_puan_skor": toplam_puan_skor,
             "detay_bilgi_html": detay_bilgi_html, "hedef_fiyat": hedef_fiyat, "stop_fiyat": stop_fiyat,
             "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
-            "raw_yuzde": raw_yuzde, "aktif_yon_turu": aktif_yon_turu, "r48": r48, "r24": r24, "r12": r12, "r4": r4
+            "raw_yuzde": raw_yuzde, "aktif_yon_turu": aktif_yon_turu
         })
 
-    toplam_y_tum, toplam_k_tum = 0, 0
-    for d in islenen_ham_veriler:
-        for rez in [d["r48"], d["r24"], d["r12"], d["r4"]]:
-            toplam_y_tum += rez[0]
-            toplam_k_tum += rez[1]
-    toplam_bar_karsilastirma = toplam_y_tum + toplam_k_tum
-    usdt_genel_yuzde = (toplam_y_tum / toplam_bar_karsilastirma * 100) if toplam_bar_karsilastirma > 0 else 50.0
+    # Piyasa USDT Genel Ortalama Yüzdesi (Tüm coinlerin Yeşil ağırlıklarının ortalaması)
+    usdt_genel_yuzde = sum([d["raw_yuzde"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
 
     islenen_veriler = []
     for data in islenen_ham_veriler:
@@ -508,31 +418,28 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_yon_turu = data["aktif_yon_turu"]
         matris_oran = data["matris_taban_orani"]
         
-        # --- PİYASA & DOMİNANS VE MATRİS UYUM KURALI ---
+        # --- PİYASA, DOMİNANS VE LED UYUM KURALLARI ---
         coin_dom_yuzde = raw_yuzde if aktif_yon_turu == "Long" else (100.0 - raw_yuzde)
         usdt_dom_yuzde = usdt_genel_yuzde if aktif_yon_turu == "Long" else (100.0 - usdt_genel_yuzde)
-        matris_dom_yuzde = matris_oran
 
-        c_yesil = coin_dom_yuzde >= 50.0
-        u_yesil = usdt_dom_yuzde >= 50.0
-        m_yesil = matris_dom_yuzde >= 50.0
+        # Led Yönleri (True = Long/Yeşil, False = Short/Kırmızı)
+        matris_long_mu = (raw_yuzde >= 50.0)
+        c_long_mu = (raw_yuzde >= 50.0)
+        u_long_mu = (usdt_genel_yuzde >= 50.0)
 
-        # Matris ledi yönü (Yeşil = True / Long, Kırmızı = False / Short)
-        matris_long_mu = (matris_oran >= 50.0)
-
-        # İstediğiniz kural: C veya U ledlerinden en az biri, matris ledi ile aynı yönde/renkte yanmalı
-        c_uyumlu = (c_yesil == matris_long_mu)
-        u_uyumlu = (u_yesil == matris_long_mu)
+        # Uyum Kontrolü (C veya U ledi Matris ile AYNI RENKTE yanıyorsa onay ver)
+        c_uyumlu = (c_long_mu == matris_long_mu)
+        u_uyumlu = (u_long_mu == matris_long_mu)
         piyasa_cift_onay = (c_uyumlu or u_uyumlu)
 
-        c_durum = "🟢" if c_yesil else "🔴"
-        u_durum = "🟢" if u_yesil else "🔴"
-        m_durum = "🟢" if m_yesil else "🔴"
+        c_durum = "🟢" if c_long_mu else "🔴"
+        u_durum = "🟢" if u_long_mu else "🔴"
+        m_durum = "🟢" if matris_long_mu else "🔴"
         
         dom_html = f"""
         <div style="text-align: center;">
             <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum}{u_durum}{m_durum}</div>
-            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom_yuzde:.0f} | U:%{usdt_dom_yuzde:.0f} | M:%{matris_dom_yuzde:.0f}</div>
+            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom_yuzde:.0f} | U:%{usdt_dom_yuzde:.0f} | M:%{matris_oran:.0f}</div>
         </div>
         """
         
@@ -544,7 +451,7 @@ def tam_ekran_canli_yayin_dongusu():
         is_notr = True
         trend = "Nötr (Beklemede)"
 
-        # Matris oranı slider ile belirlenen dinamik eşiğin üstünde OLMALI VE C veya U ledlerinden biri matris ile uyumlu yanmalı
+        # KURAL: Matris oranı dinamik eşiği geçmiş olacak VE (C veya U) ledinden en az biri Matris ile uyumlu olacak.
         if matris_oran >= dinamik_matris_esigi and piyasa_cift_onay:
             is_notr = False
             if matris_oran >= 85.0:

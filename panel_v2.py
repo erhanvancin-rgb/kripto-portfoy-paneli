@@ -150,7 +150,8 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)
     y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)
 
-    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 186.0
+    # Potans / Risk Oranına Göre Esnek Puan Barajı (Örn: %25 riskte 65, %75 riskte 190 puan)
+    hedef_puan_baraji = 30.0 + (risk_yuzdesi / 100.0) * 210.0
 
     yon_48 = "Long" if y48 >= k48 else ("Short" if k48 > y48 else "Notr")
     yon_24 = "Long" if y24 >= k24 else ("Short" if k24 > y24 else "Notr")
@@ -170,8 +171,10 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
     matris_yon = "Notr"
-    if abs(toplam_net_puan) >= 208.0:
-        matris_yon = "Long" if toplam_net_puan > 0 else "Short"
+    if toplam_net_puan >= hedef_puan_baraji:
+        matris_yon = "Long"
+    elif toplam_net_puan <= -hedef_puan_baraji:
+        matris_yon = "Short"
 
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
 
@@ -374,7 +377,7 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 186.0
+    hedef_puan_baraji = 30.0 + (risk_yuzdesi / 100.0) * 210.0
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -406,9 +409,9 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        c_durum_led = "🟢" if net_puan >= 208.0 else ("🔴" if net_puan <= -208.0 else "🟡")
-        u_durum_led = "🟢" if usdt_net_puan_ort >= 208.0 else ("🔴" if usdt_net_puan_ort <= -208.0 else "🟡")
-        m_durum_led = "🟢" if net_puan >= 208.0 else ("🔴" if net_puan <= -208.0 else "🟡")
+        c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
+        u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
+        m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
 
         y_gorsel = int(round(y_yuzde / 10.0))
         y_gorsel = max(0, min(10, y_gorsel))

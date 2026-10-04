@@ -4,11 +4,13 @@ import requests
 from datetime import datetime
 import pytz
 import os
-import random
 import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
@@ -61,6 +63,39 @@ logo_urls = {
 
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
+# --- E-POSTA MOTORU ---
+def islem_kapanis_maili_gonder(islem_id, coin, net_kar, durum):
+    try:
+        gonderen = "erhanvancin@gmail.com"
+        sifre = "jkef zgaf zwtg qyom"
+        alici = "erhanvancin@hotmail.com"
+        
+        msg = MIMEMultipart()
+        msg['From'] = gonderen
+        msg['To'] = alici
+        msg['Subject'] = f"Kripto Bot: {coin} İşlemi Kapandı!"
+        
+        renk = "#198754" if net_kar >= 0 else "#dc3545"
+        html = f"""
+        <div style="font-family: Arial, sans-serif; border: 1px solid #dee2e6; padding: 20px; border-radius: 8px;">
+            <h3 style="color: #212529; margin-top: 0;">Pro Kripto Canlı Akış Paneli</h3>
+            <p><b>İşlem ID:</b> #{islem_id}</p>
+            <p><b>Kripto Varlık:</b> {coin}</p>
+            <p><b>Kapanış Durumu:</b> {durum}</p>
+            <p style="font-size: 16px;"><b>Net Kâr/Zarar:</b> <span style="color: {renk}; font-weight: bold;">{net_kar:+.2f} $</span></p>
+            <p style="font-size: 12px; color: #6c757d;"><b>İşlem Saati:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')}</p>
+        </div>
+        """
+        msg.attach(MIMEText(html, 'html'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(gonderen, sifre)
+        server.sendmail(gonderen, alici, msg.as_string())
+        server.quit()
+    except Exception as e:
+        pass # Hata olursa uygulamanın çökmesini engelle
+
 # --- YEDEKLİ (MULTI-EXCHANGE) FİYAT ÇEKME MOTORU ---
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
@@ -97,12 +132,6 @@ def fiyat_cek_guvenli(coin_symbol):
 
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-# --- REHBER VERİLER SİMÜLASYONU (DOMİNANS VE USDT) ---
-def piyasa_rehber_verilerini_cek(coin_symbol):
-    coin_dom = random.uniform(-0.5, 0.8)  
-    usdt_dom = random.uniform(-0.3, 0.3)  
-    return coin_dom, usdt_dom
-
 # --- YEDEKLİ (MULTI-EXCHANGE) MATRİS VE TREND LED MOTORU ---
 def kline_cek_guvenli(coin_symbol, period_type):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
@@ -112,24 +141,19 @@ def kline_cek_guvenli(coin_symbol, period_type):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     ts = int(time.time() * 1000)
     
-    # Standart borsa mumları ile net 48-24-12-4 Saatlik ölçümleme
     if period_type == "48s":
-        # 48 Saat = 2880 dakika = 15 dakikalık 192 mum
         b_int, b_lim = "15m", 192
         k_int, k_lim, k_scale = "15min", 192, 1.0
         g_int, g_lim, g_scale = "15m", 192, 1.0
     elif period_type == "24s":
-        # 24 Saat = 1440 dakika = 5 dakikalık 288 mum
         b_int, b_lim = "5m", 288
         k_int, k_lim, k_scale = "5min", 288, 1.0
         g_int, g_lim, g_scale = "5m", 288, 1.0
     elif period_type == "12s":
-        # 12 Saat = 720 dakika = 5 dakikalık 144 mum
         b_int, b_lim = "5m", 144
         k_int, k_lim, k_scale = "5min", 144, 1.0
         g_int, g_lim, g_scale = "5m", 144, 1.0
     else: 
-        # 4 Saat = 240 dakika = 1 dakikalık 240 mum
         b_int, b_lim = "1m", 240
         k_int, k_lim, k_scale = "1min", 240, 1.0
         g_int, g_lim, g_scale = "1m", 240, 1.0
@@ -246,38 +270,6 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
 
     detay_bilgi_html = f"""<div style="text-align: center;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{led_dizilimi_str}</div><div style="font-size: 11px; color: #495057; font-weight: 500;">🟢 %{y_net_yuzde:.1f} | 🔴 %{k_net_yuzde:.1f}</div></div>"""
 
-    # --- 3 LED'Lİ DOMİNANS VE REHBER VERİ SÜTUNU HESAPLAMASI (TOLERANSLI) ---
-    coin_dom, usdt_dom = piyasa_rehber_verilerini_cek(coin_symbol)
-    
-    # LED 1: Coin Dominansı (Tolerans: -0.15 ile +0.15 arası Sarı)
-    if coin_dom > 0.15:
-        led_c = "🟢"
-    elif coin_dom < -0.15:
-        led_c = "🔴"
-    else:
-        led_c = "🟡"
-        
-    # LED 2: Market/USDT (Tolerans: -0.10 ile +0.10 arası Sarı)
-    if usdt_dom < -0.10: # Tether düşüyorsa piyasaya para giriyordur (Yeşil)
-        led_u = "🟢"
-    elif usdt_dom > 0.10: # Tether artıyorsa piyasadan para çıkıyordur (Kırmızı)
-        led_u = "🔴"
-    else:
-        led_u = "🟡"
-        
-    # LED 3: Matris Gücü (%75 altındaysa net trend yoktur, Sarı yanar)
-    if aktif_net_yuzde >= 75.0:
-        led_m = "🟢" if aktif_yon_turu == "Long" else "🔴"
-    else:
-        led_m = "🟡"
-        
-    dom_html = f"""
-    <div style="text-align: center;">
-        <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{led_c}{led_u}{led_m}</div>
-        <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom:+.1f} | U:%{usdt_dom:+.1f} | M:%{aktif_net_yuzde:.0f}</div>
-    </div>
-    """
-
     if "Long" in temiz_yon:
         stop_fiyat = anlik_fiyat * 0.992
         hedef_fiyat = anlik_fiyat * 1.025
@@ -290,9 +282,9 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
 
     is_notr = ("Nötr" in temiz_yon)
     matris_taban_orani = 0.0 if is_notr else round(aktif_net_yuzde, 1)
-
     toplam_puan_skor = max(long_skor, short_skor) * 10000 + sum([ord(c) for c in coin_symbol])
-    return temiz_yon, toplam_puan_skor, detay_bilgi_html, dom_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani
+    
+    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, aktif_net_yuzde, aktif_yon_turu
 
 def google_sheets_baglan():
     try:
@@ -423,6 +415,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     try:
         giris_f = float(row['Giris_Fiyat'])
         miktar = float(row['Islem_Miktari'])
+        coin_isim = str(row['Coin'])
         fark_yuzde = ((anlik_kapatma_fiyati - giris_f) / giris_f) if 'Long' in row['Yon'] else ((giris_f - anlik_kapatma_fiyati) / giris_f)
         net_kar = miktar * KALDIRAC * fark_yuzde
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
@@ -431,6 +424,9 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         df.at[idx[0], 'Durum'] = durum_metni
         df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
         df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
+        
+        # --- MAİL TETİKLEMESİ BURADA YAPILIR ---
+        islem_kapanis_maili_gonder(islem_id, coin_isim, net_kar, durum_metni)
         
         baz_bakiye = BASLANGIC_BAKIYE
         if os.path.exists(ARSIV_KLASORU):
@@ -483,17 +479,54 @@ def tam_ekran_canli_yayin_dongusu():
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
             st.rerun()
 
-    islenen_veriler = []
+    islenen_ham_veriler = []
     ortak_fiyat_havuzu = {} 
+    toplam_matris_gucu = 0.0
     
     for sembol in coinler:
-        trend, guclu_skor, teyit_sunumu, dom_sunumu, hedef_fiyat, stop_fiyat, notr_piyasa, anlik_fiyat, matris_orani = coklu_zaman_dilimli_analiz(sembol)
+        temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon = coklu_zaman_dilimli_analiz(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         
-        basamak = 4 if anlik_fiyat < 10 else 2
+        gercek_guc = raw_yuzde if raw_yon == "Long" else -raw_yuzde
+        toplam_matris_gucu += gercek_guc
+        
+        islenen_ham_veriler.append({
+            "sembol": sembol, "temiz_yon": temiz_yon, "toplam_puan_skor": toplam_puan_skor,
+            "detay_bilgi_html": detay_bilgi_html, "hedef_fiyat": hedef_fiyat, "stop_fiyat": stop_fiyat,
+            "is_notr": is_notr, "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
+            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "gercek_guc": gercek_guc
+        })
+
+    global_piyasa_gucu = toplam_matris_gucu / len(coinler) 
+    
+    islenen_veriler = []
+    for data in islenen_ham_veriler:
+        sembol = data["sembol"]
+        gercek_guc = data["gercek_guc"]
+        raw_yuzde = data["raw_yuzde"]
+        
+        usdt_dom = -global_piyasa_gucu / 100.0  
+        coin_dom = (gercek_guc - global_piyasa_gucu) / 100.0  
+        
+        led_c = "🟢" if coin_dom >= 0.15 else ("🔴" if coin_dom <= -0.15 else "🟡")
+        led_u = "🟢" if usdt_dom <= -0.10 else ("🔴" if usdt_dom >= 0.10 else "🟡")
+        
+        led_m = "🟡"
+        if raw_yuzde >= 75.0:
+            led_m = "🟢" if data["raw_yon"] == "Long" else "🔴"
+            
+        dom_html = f"""
+        <div style="text-align: center;">
+            <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{led_c}{led_u}{led_m}</div>
+            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom:+.2f} | U:%{usdt_dom:+.2f} | M:%{raw_yuzde:.0f}</div>
+        </div>
+        """
+        
+        basamak = 4 if data["anlik_fiyat"] < 10 else 2
         l_url = logo_urls.get(sembol, "")
         logo_html = f'<img src="{l_url}" width="24" height="24">'
         
+        trend = data["temiz_yon"]
         if "Trend Haberi" in trend:
             yon_html = f'<div style="background-color: rgba(25, 135, 84, 0.35); padding: 6px; border-radius: 6px; color: #0f5132; font-weight: bold;">{trend}</div>' if "Long" in trend else f'<div style="background-color: rgba(220, 53, 69, 0.35); padding: 6px; border-radius: 6px; color: #842029; font-weight: bold;">{trend}</div>'
         elif "Long" in trend:
@@ -504,10 +537,11 @@ def tam_ekran_canli_yayin_dongusu():
             yon_html = f'<div style="background-color: rgba(255, 193, 7, 0.25); padding: 6px; border-radius: 6px; color: #664d03; font-weight: bold;">{trend}</div>'
         
         islenen_veriler.append({
-            "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), 
-            "Yon": yon_html, "Teyit_Sunumu": teyit_sunumu, "Dom_Sunumu": dom_sunumu, "Kar_Al": round(hedef_fiyat, basamak), 
-            "Stopla": round(stop_fiyat, basamak), "Skor": guclu_skor, "Basamak": basamak, 
-            "Notr": notr_piyasa, "Ham_Yon": trend, "Matris_Orani": matris_orani
+            "Logo": logo_html, "Coin": sembol, "Fiyat": round(data["anlik_fiyat"], basamak), 
+            "Yon": yon_html, "Teyit_Sunumu": data["detay_bilgi_html"], "Dom_Sunumu": dom_html, 
+            "Kar_Al": round(data["hedef_fiyat"], basamak), "Stopla": round(data["stop_fiyat"], basamak), 
+            "Skor": data["toplam_puan_skor"], "Basamak": basamak, "Notr": data["is_notr"], 
+            "Ham_Yon": trend, "Matris_Orani": data["matris_taban_orani"]
         })
 
     # --- OTOMATİK STOP VE KAR-AL KONTROLÜ ---

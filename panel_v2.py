@@ -8,7 +8,6 @@ import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
 import time
-import random
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
@@ -81,14 +80,13 @@ logo_urls = {
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
-# --- GÜÇLENDİRİLMİŞ CANLI FİYAT ÇEKME FONKSİYONU ---
+# --- GÜÇLENDİRİLMİŞ CANLI FİYAT ÇEKME ---
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
     kucoin_sym = coin_symbol.replace('/', '-')
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # 1. Deneme: Binance API
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
         resp = requests.get(url, headers=headers, timeout=3.0)
@@ -97,22 +95,12 @@ def fiyat_cek_guvenli(coin_symbol):
             if val > 0: return val
     except: pass
 
-    # 2. Deneme: KuCoin API
     try:
         url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
         resp = requests.get(url, headers=headers, timeout=3.0)
         if resp.status_code == 200:
             data = resp.json().get('data', {})
             val = float(data.get('price', 0))
-            if val > 0: return val
-    except: pass
-
-    # 3. Deneme: Binance Alternatif (Ticker Price 2)
-    try:
-        url = f"https://data-api.binance.vision/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=3.0)
-        if resp.status_code == 200:
-            val = float(resp.json().get('price', 0))
             if val > 0: return val
     except: pass
 
@@ -148,15 +136,6 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
                 return hesapla_bar_sayilari(data, 1, 4)
     except: pass
 
-    try:
-        url = f"https://api.kucoin.com/api/v1/market/candles?type={k_int}&symbol={kucoin_sym}"
-        r = requests.get(url, headers=headers, timeout=2.5)
-        if r.status_code == 200:
-            data = r.json().get('data', [])
-            if len(data) > 0: 
-                return hesapla_bar_sayilari(data[:limit_adet], 1, 2)
-    except: pass
-
     y_sabit = int(limit_adet * 0.52)
     k_sabit = int(limit_adet * 0.42)
     s_sabit = limit_adet - (y_sabit + k_sabit)
@@ -190,9 +169,9 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
     matris_yon = "Notr"
-    if toplam_net_puan >= hedef_puan_baraji:
+    if toplam_net_puan >= 208.0: # İstediğiniz 208 puan barajı kuralı
         matris_yon = "Long"
-    elif toplam_net_puan <= -hedef_puan_baraji:
+    elif toplam_net_puan <= -208.0:
         matris_yon = "Short"
 
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
@@ -384,7 +363,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    risk_yuzdesi = st.slider("🎛️️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
@@ -428,9 +407,9 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
-        u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
-        m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
+        c_durum_led = "🟢" if net_puan >= 208.0 else ("🔴" if net_puan <= -208.0 else "🟡")
+        u_durum_led = "🟢" if usdt_net_puan_ort >= 208.0 else ("🔴" if usdt_net_puan_ort <= -208.0 else "🟡")
+        m_durum_led = "🟢" if net_puan >= 208.0 else ("🔴" if net_puan <= -208.0 else "🟡")
 
         y_gorsel = int(round(y_yuzde / 10.0))
         y_gorsel = max(0, min(10, y_gorsel))

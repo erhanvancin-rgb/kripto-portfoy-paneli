@@ -150,14 +150,17 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)
     y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)
 
-    # Potans / Risk Oranına Göre Esnek Puan Barajı (Örn: %25 riskte 65, %75 riskte 190 puan)
-    hedef_puan_baraji = 30.0 + (risk_yuzdesi / 100.0) * 210.0
+    # Risk/Potans oranına (%0 - %100) göre hedef puan barajı (%25'te 65, %75'te 190 olacak şekilde lineer interpolasyon)
+    # Formül: 65 + ((risk_yuzdesi - 25) / 50) * 125
+    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
+    hedef_puan_baraji = max(30.0, min(220.0, hedef_puan_baraji))
 
     yon_48 = "Long" if y48 >= k48 else ("Short" if k48 > y48 else "Notr")
     yon_24 = "Long" if y24 >= k24 else ("Short" if k24 > y24 else "Notr")
     yon_12 = "Long" if y12 >= k12 else ("Short" if k12 > y12 else "Notr")
     yon_4  = "Long" if y4  >= k4  else ("Short" if k4  > y4  else "Notr")
 
+    # Puan Katkıları (%10 -> 22p, %15 -> 33p, %25 -> 45p, %50 -> 90p | Toplam 190 Puan max)
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
     puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
     puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
@@ -377,7 +380,8 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    hedef_puan_baraji = 30.0 + (risk_yuzdesi / 100.0) * 210.0
+    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
+    hedef_puan_baraji = max(30.0, min(220.0, hedef_puan_baraji))
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -409,6 +413,7 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
+        # C, U ve M LED Durumları (Esnek puan barajına göre)
         c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
         u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
         m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
@@ -439,6 +444,7 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
+        # 3'te 2 ve 3'te 3 Çoğunluk Kuralı (M ledi mutlaka Yeşil veya Kırmızı olmalı)
         if m_y != "Notr":
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:

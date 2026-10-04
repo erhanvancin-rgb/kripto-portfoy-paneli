@@ -245,11 +245,11 @@ def coklu_zaman_dilimli_analiz(coin_symbol):
         stop_fiyat = anlik_fiyat * 0.99
         hedef_fiyat = anlik_fiyat * 1.01
 
-    # MATRİS TABANLI ORAN HESABI: Doğrudan 48s+24s+12s+4s net yüzdesinden (aktif_net_yuzde) türetildi
-    matris_taban_orani = round(aktif_net_yuzde, 1)
+    is_notr = ("Nötr" in temiz_yon)
+    matris_taban_orani = 0.0 if is_notr else round(aktif_net_yuzde, 1)
 
     toplam_puan_skor = max(long_skor, short_skor) * 10000 + sum([ord(c) for c in coin_symbol])
-    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, ("Nötr" in temiz_yon), anlik_fiyat, matris_taban_orani
+    return temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani
 
 def google_sheets_baglan():
     try:
@@ -469,9 +469,23 @@ def tam_ekran_canli_yayin_dongusu():
 
     islenen_veriler = sorted(islenen_veriler, key=lambda x: x["Skor"], reverse=True)
 
-    # Önerilen Oranı doğrudan matris verisinden (Matris_Orani) alıyoruz
+    # BEKLEMEDE (NÖTR) OLANLAR %0, AKTİF POZİSYON ÖNERİLERİ TOPLAM %100 OLACAK ŞEKİLDE ORANTILANIR
+    aktif_coinler = [v for v in islenen_veriler if not v["Notr"]]
+    if aktif_coinler:
+        toplam_aktif_matris = sum([v["Matris_Orani"] for v in aktif_coinler])
+        if toplam_aktif_matris <= 0: toplam_aktif_matris = 1.0
+        
+        for v in islenen_veriler:
+            if v["Notr"]:
+                v["Sepet_Orani"] = 0.0
+            else:
+                normalize_oran = (v["Matris_Orani"] / toplam_aktif_matris) * 100.0
+                v["Sepet_Orani"] = round(normalize_oran, 1)
+    else:
+        for v in islenen_veriler:
+            v["Sepet_Orani"] = 0.0
+
     for v in islenen_veriler:
-        v["Sepet_Orani"] = v["Matris_Orani"]
         v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
     table_html = """
@@ -501,7 +515,7 @@ def tam_ekran_canli_yayin_dongusu():
         val_str = f"%{sepet_val:.1f}" if sepet_val != int(sepet_val) else f"%{int(sepet_val)}"
         
         if v['Notr']:
-            oran_html = f'<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">{val_str}<br>(Beklemede)</div>'
+            oran_html = f'<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
         elif "Trend Haberi" in v['Ham_Yon']:
             bg_col = "rgba(25, 135, 84, 0.35)" if "Long" in v['Ham_Yon'] else "rgba(220, 53, 69, 0.35)"
             oran_html = f'<div style="background-color: {bg_col}; padding: 5px; font-weight: bold;">{val_str}<br>(%85 Trend)</div>'
@@ -748,7 +762,7 @@ def tam_ekran_canli_yayin_dongusu():
         else:
             st.info("Henüz kapanmış işlem bulunmuyor.")
     else: 
-        st.info("ℹ️️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
+        st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
 
 # CANLI DÖNGÜYÜ BAŞLAT
 tam_ekran_canli_yayin_dongusu()

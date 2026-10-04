@@ -80,7 +80,6 @@ logo_urls = {
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
-# --- GÜÇLENDİRİLMİŞ CANLI FİYAT ÇEKME ---
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
@@ -136,16 +135,6 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
                 return hesapla_bar_sayilari(data, 1, 4)
     except: pass
 
-    try:
-        url = f"https://api.kucoin.com/api/v1/market/candles?type={k_int}&symbol={kucoin_sym}"
-        r = requests.get(url, headers=headers, timeout=2.5)
-        if r.status_code == 200:
-            data = r.json().get('data', [])
-            if len(data) > 0: 
-                return hesapla_bar_sayilari(data[:limit_adet], 1, 2)
-    except: pass
-
-    # Her coin için benzersiz hash tabanlı dinamik rastgelelik (aynı görünmeyi önlemek için)
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)

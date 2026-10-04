@@ -458,7 +458,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f}</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Dinamik Matris Eşiği: %{100.0 - risk_yuzdesi:.0f})</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -493,7 +493,7 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_yon_turu = data["aktif_yon_turu"]
         matris_oran = data["matris_taban_orani"]
         
-        # --- PİYASA & DOMİNANS 3'TE 2 ONAY KURALI ---
+        # --- PİYASA & DOMİNANS 3'TE 2 DİNAMİK ONAY KURALI ---
         coin_dom_yuzde = raw_yuzde if aktif_yon_turu == "Long" else (100.0 - raw_yuzde)
         usdt_dom_yuzde = usdt_genel_yuzde if aktif_yon_turu == "Long" else (100.0 - usdt_genel_yuzde)
         matris_dom_yuzde = matris_oran
@@ -520,8 +520,8 @@ def tam_ekran_canli_yayin_dongusu():
         l_url = logo_urls.get(sembol, "")
         logo_html = f'<img src="{l_url}" width="24" height="24">'
         
-        # --- YENİ İSTEDİĞİNİZ RİSKE GÖRE DİNAMİK FORMÜL EŞİĞİ ---
-        # Risk %0 iken eşik %100, Risk %50 iken eşik %50, Risk %100 iken eşik %0
+        # --- KESİN MATRİS VE RİSK DİNAMİK FORMÜLÜ ---
+        # Risk %0 -> Eşik %100 | Risk %50 -> Eşik %50 | Risk %100 -> Eşik %0
         dinamik_matris_esigi = 100.0 - risk_yuzdesi
         
         is_notr = True
@@ -660,7 +660,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

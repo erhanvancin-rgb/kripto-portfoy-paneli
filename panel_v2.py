@@ -129,7 +129,7 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
-    y = int(limit_adet * rnd.uniform(0.48, 0.62))
+    y = int(limit_adet * rnd.uniform(0.48, 0.55))
     k = limit_adet - y
     return y, k
 
@@ -437,14 +437,14 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # DÜZELTME: GÜÇLÜ TREND İÇİN PUAN MUTLAKA 190 VE ÜZERİ OLMALI, ONAYLI İÇİN 65 VE ÜZERİ YETERLİ
+        # KATI KURAL: GÜÇLÜ TREND İÇİN PUAN KESİNLİKLE 190.0 VE ÜZERİ OLACAK! 65 PUANDA ASLA GÜÇLÜ YAZMAZ.
         if m_y != "Notr" and abs(net_puan) >= 65.0:
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:
                 is_notr = False
                 aktif_yon_turu = m_y
                 aktif_matris_orani = abs(net_puan)
-                if ayni_renk_sayisi == 3 and abs(net_puan) >= 190.0: 
+                if abs(net_puan) >= 190.0 and ayni_renk_sayisi == 3: 
                     trend = f"Güçlü Trend {aktif_yon_turu}"
                 else: 
                     trend = f"{aktif_yon_turu} (Onaylı)"

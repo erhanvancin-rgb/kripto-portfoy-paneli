@@ -126,7 +126,6 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
                 return yesil, kirmizi
     except: pass
 
-    # Fallback / Yedek simülasyon
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
@@ -143,29 +142,29 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
     y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
 
-    # Potans / Risk Oranına (%0 - %100) göre dinamik baraj ve onay limitleri
+    # Risk/Potans oranına (%0 - %100) göre dinamik baraj ve onay sınırları
     # %25 potansta hedef 65 puan, %75 potansta hedef 190 puan
     hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
-    hedef_puan_baraji = max(30.0, min(220.0, hedef_puan_baraji))
+    hedef_puan_baraji = max(35.0, min(210.0, hedef_puan_baraji))
 
-    # Zaman dilimi başına gereken onay almış bar sayısı esnekliği (%25 potansta 90/72, %75 potansta 245/204)
-    oran_faktor = max(0.2, min(1.0, risk_yuzdesi / 75.0))
-    gerekli_48_24 = int(90 + (245 - 90) * oran_faktor)
-    gerekli_12_4  = int(72 + (204 - 72) * oran_faktor)
+    # Zaman dilimi başına gereken onay almış bar sayısı esnekliği (25% potans için 72/60, 75% potans için 216/180)
+    f = max(0.0, min(1.0, (risk_yuzdesi - 25.0) / 50.0))
+    gerekli_48_24 = int(72 + (216 - 72) * f)
+    gerekli_12_4  = int(60 + (180 - 60) * f)
 
-    # 48 Saat (10m x 288)
+    # 48 Saat (10m x 288) - Ağırlık %10 -> 22 Puan
     yon_48 = "Long" if y48 >= gerekli_48_24 else ("Short" if k48 >= gerekli_48_24 else "Notr")
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
 
-    # 24 Saat (5m x 288)
+    # 24 Saat (5m x 288) - Ağırlık %15 -> 33 Puan
     yon_24 = "Long" if y24 >= gerekli_48_24 else ("Short" if k24 >= gerekli_48_24 else "Notr")
     puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
 
-    # 12 Saat (3m x 240)
+    # 12 Saat (3m x 240) - Ağırlık %25 -> 45 Puan
     yon_12 = "Long" if y12 >= gerekli_12_4 else ("Short" if k12 >= gerekli_12_4 else "Notr")
     puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
 
-    # 4 Saat (1m x 240)
+    # 4 Saat (1m x 240) - Ağırlık %50 -> 90 Puan
     yon_4 = "Long" if y4 >= gerekli_12_4 else ("Short" if k4 >= gerekli_12_4 else "Notr")
     puan_4 = 90.0 if yon_4 == "Long" else (-90.0 if yon_4 == "Short" else 0.0)
 
@@ -384,7 +383,7 @@ def tam_ekran_canli_yayin_dongusu():
     border_col = f"rgb({r}, {g}, {b})"
 
     hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 25.0) / 50.0) * 125.0
-    hedef_puan_baraji = max(30.0, min(220.0, hedef_puan_baraji))
+    hedef_puan_baraji = max(35.0, min(210.0, hedef_puan_baraji))
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">

@@ -81,17 +81,41 @@ logo_urls = {
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
+# --- GÜÇLENDİRİLMİŞ CANLI FİYAT ÇEKME FONKSİYONU ---
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
+    kucoin_sym = coin_symbol.replace('/', '-')
     headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    # 1. Deneme: Binance API
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.5)
+        resp = requests.get(url, headers=headers, timeout=3.0)
         if resp.status_code == 200:
             val = float(resp.json().get('price', 0))
             if val > 0: return val
     except: pass
+
+    # 2. Deneme: KuCoin API
+    try:
+        url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
+        resp = requests.get(url, headers=headers, timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json().get('data', {})
+            val = float(data.get('price', 0))
+            if val > 0: return val
+    except: pass
+
+    # 3. Deneme: Binance Alternatif (Ticker Price 2)
+    try:
+        url = f"https://data-api.binance.vision/api/v3/ticker/price?symbol={binance_sym}"
+        resp = requests.get(url, headers=headers, timeout=3.0)
+        if resp.status_code == 200:
+            val = float(resp.json().get('price', 0))
+            if val > 0: return val
+    except: pass
+
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
 def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
@@ -141,40 +165,30 @@ def kline_cek_belirli_adet(coin_symbol, interval_str, limit_adet):
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 4 Zaman Dilimi Tam Bar Çekimleri
-    y48, k48, s48 = kline_cek_belirli_adet(coin_symbol, "10m", 288) # 288 adet
-    y24, k24, s24 = kline_cek_belirli_adet(coin_symbol, "5m", 288)  # 288 adet
-    y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)  # 240 adet
-    y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)  # 240 adet
+    y48, k48, s48 = kline_cek_belirli_adet(coin_symbol, "10m", 288)
+    y24, k24, s24 = kline_cek_belirli_adet(coin_symbol, "5m", 288)
+    y12, k12, s12 = kline_cek_belirli_adet(coin_symbol, "3m", 240)
+    y4,  k4,  s4  = kline_cek_belirli_adet(coin_symbol, "1m",  240)
 
-    # --- POTANS ORANINA GÖRE DİNAMİK PUAN VE ONAY BAROSU (0 ile 100 arası risk oranı) ---
-    # %75 potansta hedef baraj 190 Puan, %25 potansta hedef baraj 65 Puan olacak şekilde orantılıyoruz:
-    # Formül: 65 + (risk_yuzdesi / 100) * 165 (veya tam istediğiniz lineer interpolasyon)
-    # %0 riskte ~50 puan, %25'te 65, %75'te 190, %100'de ~215 puan barajı
-    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 150.0
+    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 186.0
 
-    # Her zaman dilimi için yön baskısı ve puan katkısı
-    # Yönler Long mu Short mu? (Hangi taraf baskınsa o yön puan üretir)
     yon_48 = "Long" if y48 >= k48 else ("Short" if k48 > y48 else "Notr")
     yon_24 = "Long" if y24 >= k24 else ("Short" if k24 > y24 else "Notr")
     yon_12 = "Long" if y12 >= k12 else ("Short" if k12 > y12 else "Notr")
     yon_4  = "Long" if y4  >= k4  else ("Short" if k4  > y4  else "Notr")
 
-    # Ağırlıklı Puan Katkıları (Toplam 100 Puan üzerinden maksimum)
-    # 48s (%10 ağırlık -> 22 puana kadar, 24s -> 33 puana kadar, 12s -> 45 puana kadar, 4s -> 90 puana kadar esneklik)
     puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
     puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
     puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
     puan_4  = 90.0 if yon_4  == "Long" else (-90.0 if yon_4  == "Short" else 0.0)
 
-    toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  # -190 ile +190 arası net puan
+    toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
 
     toplam_y = y48 + y24 + y12 + y4
     toplam_k = k48 + k24 + k12 + k4
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
-    # Trend Yönü Kararı (190 veya potansa göre belirlenen barajın üstü Long/Short, altı Nötr)
     matris_yon = "Notr"
     if toplam_net_puan >= hedef_puan_baraji:
         matris_yon = "Long"
@@ -370,8 +384,7 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- SLIDER VE POTANS MATRİS BARARI ---
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
+    risk_yuzdesi = st.slider("🎛️️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
@@ -383,11 +396,7 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    # İstediğiniz Güvenilirlik/Potans Puan Barajı Hesaplaması (%75 potansta 190, %25 potansta 65 puan)
-    # Lineer esneme: 65 + ((risk_yuzdesi - 25) / 50) * 125 vb. veya doğrudan:
-    # 50 + (risk_yuzdesi / 100) * 190 -> %25'te ~97, %75'te ~192 puan. 
-    # Tam istediğiniz eşik değerlerini yakalamak için:
-    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 186.0  # %75 potansta ~190, %25'te ~96 puan
+    hedef_puan_baraji = 50.0 + (risk_yuzdesi / 100.0) * 186.0
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -419,7 +428,6 @@ def tam_ekran_canli_yayin_dongusu():
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
         
-        # C, U ve M LED Durumları (Puan barajını aşıp aşmadığına göre)
         c_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
         u_durum_led = "🟢" if usdt_net_puan_ort >= baraj else ("🔴" if usdt_net_puan_ort <= -baraj else "🟡")
         m_durum_led = "🟢" if net_puan >= baraj else ("🔴" if net_puan <= -baraj else "🟡")
@@ -428,7 +436,6 @@ def tam_ekran_canli_yayin_dongusu():
         y_gorsel = max(0, min(10, y_gorsel))
         k_gorsel = 10 - y_gorsel
         
-        # İstediğiniz Temiz Matris Görsel Tasarımı (Sadece 10'lu LED Bar + Oranlar)
         detay_matris_html = f"""
         <div style="text-align: center; line-height: 1.2;">
             <div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div>
@@ -451,7 +458,6 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # 3'te 2 ve 3'te 3 Çoğunluk Kuralı (M ledi mutlaka Yeşil veya Kırmızı olmalı)
         if m_y != "Notr":
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:
@@ -697,7 +703,7 @@ def tam_ekran_canli_yayin_dongusu():
             
             col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
             with col_p1:
-                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zارarlı İşlemler' if False else 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+                df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
                 fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#198754', 'Zararlı İşlemler': '#dc3545'})
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
                 st.plotly_chart(fig, use_container_width=True)

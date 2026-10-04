@@ -126,10 +126,11 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
                 return yesil, kirmizi
     except: pass
 
+    # Test ortamında (API cevap vermezse) ara sıra Güçlü Trend çıkarabilmesi için rassal sınır genişletildi
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
-    y = int(limit_adet * rnd.uniform(0.48, 0.55))
+    y = int(limit_adet * rnd.uniform(0.40, 0.85))
     k = limit_adet - y
     return y, k
 
@@ -141,6 +142,7 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
     y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
 
+    # 1. MOTOR: SLIDER'A GÖRE ESNEYEN PUAN BARAJLARI
     f = max(0.0, min(1.0, (risk_yuzdesi - 50.0) / 25.0))
     
     if risk_yuzdesi >= 100.0:
@@ -166,6 +168,14 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
 
     toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
 
+    # 2. MOTOR: GÜÇLÜ TREND İÇİN KATI VE DEĞİŞMEZ BARAJ KONTROLÜ (Slider ne olursa olsun 217 ve 181 bar aranır!)
+    gt_p48 = 22.0 if y48 >= 217 else (-22.0 if k48 >= 217 else 0.0)
+    gt_p24 = 33.0 if y24 >= 217 else (-33.0 if k24 >= 217 else 0.0)
+    gt_p12 = 45.0 if y12 >= 181 else (-45.0 if k12 >= 181 else 0.0)
+    gt_p4  = 90.0 if y4  >= 181 else (-90.0 if k4  >= 181 else 0.0)
+    
+    guclu_net_puan = gt_p48 + gt_p24 + gt_p12 + gt_p4
+
     toplam_y = y48 + y24 + y12 + y4
     toplam_k = k48 + k24 + k12 + k4
     net_aktif_bar = toplam_y + toplam_k
@@ -177,7 +187,7 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     elif toplam_net_puan <= -hedef_puan_baraji:
         matris_yon = "Short"
 
-    return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
+    return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde, guclu_net_puan
 
 def google_sheets_baglan():
     try:
@@ -389,11 +399,12 @@ def tam_ekran_canli_yayin_dongusu():
     ortak_fiyat_havuzu = {} 
     
     for sembol in coinler:
-        anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, risk_yuzdesi)
+        # detayli_matris_hesapla artık 6 değer dönüyor (guclu_net_puan dahil)
+        anlik_fiyat, net_puan, baraj, m_yon, y_yuzde, guclu_net_puan = detayli_matris_hesapla(sembol, risk_yuzdesi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         islenen_ham_veriler.append({
             "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
-            "baraj": baraj, "m_yon": m_yon, "y_yuzde": y_yuzde
+            "baraj": baraj, "m_yon": m_yon, "y_yuzde": y_yuzde, "guclu_net_puan": guclu_net_puan
         })
 
     usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
@@ -406,6 +417,7 @@ def tam_ekran_canli_yayin_dongusu():
         y_yuzde = data["y_yuzde"]
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
+        guclu_net_puan = data["guclu_net_puan"] # 2. Motorun ürettiği kesin puan
         
         c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
         u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 65.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -65.0) else "🟡")
@@ -437,14 +449,16 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # KATI KURAL: GÜÇLÜ TREND İÇİN PUAN KESİNLİKLE 190.0 VE ÜZERİ OLACAK! 65 PUANDA ASLA GÜÇLÜ YAZMAZ.
-        if m_y != "Notr" and abs(net_puan) >= 65.0:
+        # KESİN VE KATI KONTROL: 
+        if m_y != "Notr" and abs(net_puan) >= baraj:
             ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
             if ayni_renk_sayisi >= 2:
                 is_notr = False
                 aktif_yon_turu = m_y
                 aktif_matris_orani = abs(net_puan)
-                if abs(net_puan) >= 190.0 and ayni_renk_sayisi == 3: 
+                
+                # Sadece ikinci (katı) motordan gelen puan 190.0 ise Güçlü Trend yazar!
+                if ayni_renk_sayisi == 3 and abs(guclu_net_puan) >= 190.0: 
                     trend = f"Güçlü Trend {aktif_yon_turu}"
                 else: 
                     trend = f"{aktif_yon_turu} (Onaylı)"

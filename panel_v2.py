@@ -35,11 +35,15 @@ st.markdown("""
         border: 1px solid #ced4da !important;
         font-weight: bold !important;
     }
-    /* Kalın ve Renkli Gradyan Slider (Potans) Çubuğu */
+    /* Slider Standart Çizgisini Gizleme ve Kalın Renkli Gradyan Bar Ekleme (Sol: Yeşil, Orta: Sarı, Sağ: Kırmızı) */
     div[data-baseweb="slider"] div[data-testid="stSliderTrack"] {
         background: linear-gradient(to right, #198754 0%, #ffc107 50%, #dc3545 100%) !important;
-        height: 16px !important;
-        border-radius: 8px !important;
+        height: 18px !important;
+        border-radius: 9px !important;
+    }
+    div[data-baseweb="slider"] div[data-testid="stThumbValue"] {
+        color: #212529 !important;
+        font-weight: bold !important;
     }
     .custom-table { width: 100%; border-collapse: collapse; background-color: #ffffff; margin-bottom: 20px; }
     .custom-table th { background-color: #e9ecef; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: bold; color: #212529; font-size: 13px; line-height: 1.2; }
@@ -434,10 +438,10 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DOĞRU YÖNLÜ DİNAMİK GRADYAN KUTU ---
+    # --- KASA BİLGİLERİNİN ALTINDA DİNAMİK RİSK ORANI POTANSI VE DİNAMİK RENKLİ KUTU ---
     risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%0 - %100):", min_value=0.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
 
-    # Doğru Yönlü Renk Skalası: %0 -> Yeşil (#198754), %50 -> Sarı (#ffc107), %100 -> Kırmızı (#dc3545)
+    # Renk Skalası: %0 -> Yeşil (#198754), %50 -> Sarı (#ffc107), %100 -> Kırmızı (#dc3545)
     if risk_yuzdesi <= 50:
         oran = risk_yuzdesi / 50.0
         r = 25 + int((255 - 25) * oran)
@@ -498,7 +502,6 @@ def tam_ekran_canli_yayin_dongusu():
         u_yesil = usdt_dom_yuzde >= 50.0
         m_yesil = matris_dom_yuzde >= 50.0
 
-        # 3 ledden kaç tanesi yeşil?
         yesil_led_sayisi = sum([c_yesil, u_yesil, m_yesil])
         piyasa_onayi_var = (yesil_led_sayisi >= 2)
 
@@ -517,9 +520,9 @@ def tam_ekran_canli_yayin_dongusu():
         l_url = logo_urls.get(sembol, "")
         logo_html = f'<img src="{l_url}" width="24" height="24">'
         
-        # --- KATI EŞİK KONTROLÜ ---
-        # 1. Matris yüzdesi en az %75 olmalı (risk potansüne göre esneyebilir: Örn. Risk %0 iken %80, Risk %100 iken %70)
-        dinamik_matris_esigi = 75.0 - ((risk_yuzdesi - 50.0) * 0.1)
+        # --- YENİ İSTEDİĞİNİZ RİSKE GÖRE DİNAMİK FORMÜL EŞİĞİ ---
+        # Risk %0 iken eşik %100, Risk %50 iken eşik %50, Risk %100 iken eşik %0
+        dinamik_matris_esigi = 100.0 - risk_yuzdesi
         
         is_notr = True
         trend = "Nötr (Beklemede)"
@@ -657,7 +660,7 @@ def tam_ekran_canli_yayin_dongusu():
     if secilen_coin:
         coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
+        if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay alınamadı).")
         
         secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider_frag")
         hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

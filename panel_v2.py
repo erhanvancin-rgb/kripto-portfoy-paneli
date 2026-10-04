@@ -94,7 +94,7 @@ def islem_kapanis_maili_gonder(islem_id, coin, net_kar, durum):
         server.sendmail(gonderen, alici, msg.as_string())
         server.quit()
     except Exception as e:
-        pass # Hata olursa uygulamanın çökmesini engelle
+        pass
 
 # --- YEDEKLİ (MULTI-EXCHANGE) FİYAT ÇEKME MOTORU ---
 def fiyat_cek_guvenli(coin_symbol):
@@ -132,7 +132,7 @@ def fiyat_cek_guvenli(coin_symbol):
 
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-# --- YEDEKLİ (MULTI-EXCHANGE) MATRİS VE TREND LED MOTORU ---
+# --- MATRİS VE TREND LED MOTORU ---
 def kline_cek_guvenli(coin_symbol, period_type):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
@@ -425,7 +425,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
         df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
         
-        # --- MAİL TETİKLEMESİ BURADA YAPILIR ---
         islem_kapanis_maili_gonder(islem_id, coin_isim, net_kar, durum_metni)
         
         baz_bakiye = BASLANGIC_BAKIYE
@@ -487,29 +486,33 @@ def tam_ekran_canli_yayin_dongusu():
         temiz_yon, toplam_puan_skor, detay_bilgi_html, hedef_fiyat, stop_fiyat, is_notr, anlik_fiyat, matris_taban_orani, raw_yuzde, raw_yon = coklu_zaman_dilimli_analiz(sembol)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
         
-        gercek_guc = raw_yuzde if raw_yon == "Long" else -raw_yuzde
-        toplam_matris_gucu += gercek_guc
+        # Matris mantığı ile birebir puan (Örn: Long ise pozitif yüzde, Short ise negatif)
+        matris_puan = raw_yuzde if raw_yon == "Long" else (100.0 - raw_yuzde if raw_yon == "Short" else 50.0)
+        net_sapma = matris_puan - 50.0  # 50 tabanlı sapma (0 merkeze göre)
+        toplam_matris_gucu += net_sapma
         
         islenen_ham_veriler.append({
             "sembol": sembol, "temiz_yon": temiz_yon, "toplam_puan_skor": toplam_puan_skor,
             "detay_bilgi_html": detay_bilgi_html, "hedef_fiyat": hedef_fiyat, "stop_fiyat": stop_fiyat,
             "is_notr": is_notr, "anlik_fiyat": anlik_fiyat, "matris_taban_orani": matris_taban_orani,
-            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "gercek_guc": gercek_guc
+            "raw_yuzde": raw_yuzde, "raw_yon": raw_yon, "net_sapma": net_sapma
         })
 
-    global_piyasa_gucu = toplam_matris_gucu / len(coinler) 
+    global_ortalama_sapma = toplam_matris_gucu / len(coinler) 
     
     islenen_veriler = []
     for data in islenen_ham_veriler:
         sembol = data["sembol"]
-        gercek_guc = data["gercek_guc"]
+        net_sapma = data["net_sapma"]
         raw_yuzde = data["raw_yuzde"]
         
-        usdt_dom = -global_piyasa_gucu / 100.0  
-        coin_dom = (gercek_guc - global_piyasa_gucu) / 100.0  
+        # MATRİS MANTIKLI U VE C HESABI (Yüzdelik oran yerine matris puan farkı)
+        usdt_dom_puan = round(-global_ortalama_sapma, 1)  # Pazar genelinin %50'den sapması
+        coin_dom_puan = round(net_sapma - global_ortalama_sapma, 1)  # Coinin pazara göre üstünlük puanı
         
-        led_c = "🟢" if coin_dom >= 0.15 else ("🔴" if coin_dom <= -0.15 else "🟡")
-        led_u = "🟢" if usdt_dom <= -0.10 else ("🔴" if usdt_dom >= 0.10 else "🟡")
+        # LED MANTIĞI (%3 ve üzeri sapmalarda yeşil/kırmızı, arada sarı)
+        led_c = "🟢" if coin_dom_puan >= 3.0 else ("🔴" if coin_dom_puan <= -3.0 else "🟡")
+        led_u = "🟢" if usdt_dom_puan <= -2.0 else ("🔴" if usdt_dom_puan >= 2.0 else "🟡")
         
         led_m = "🟡"
         if raw_yuzde >= 75.0:
@@ -518,7 +521,7 @@ def tam_ekran_canli_yayin_dongusu():
         dom_html = f"""
         <div style="text-align: center;">
             <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{led_c}{led_u}{led_m}</div>
-            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:%{coin_dom:+.2f} | U:%{usdt_dom:+.2f} | M:%{raw_yuzde:.0f}</div>
+            <div style="font-size: 10px; color: #495057; font-weight: 500;">C:{coin_dom_puan:+.1f} | U:{usdt_dom_puan:+.1f} | M:%{raw_yuzde:.0f}</div>
         </div>
         """
         

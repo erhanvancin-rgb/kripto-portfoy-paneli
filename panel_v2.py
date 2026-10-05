@@ -169,7 +169,6 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
 
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
 
-# --- GEÇİCİ OLARAK GOOGLE SHEETS TEST MODU ---
 def google_sheets_baglan():
     return None
 
@@ -221,7 +220,7 @@ with col_m2:
 
 st.markdown("---")
 
-risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+risk_yuzdesi = st.slider("🎛️️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
 
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -238,4 +237,62 @@ for sembol in coinler:
     long_sayisi = gecmis_liste.count("Long")
     short_sayisi = gecmis_liste.count("Short")
 
-    suanki_filtrelenmis_yon = "
+    suanki_filtrelenmis_yon = "Notr"
+    if long_sayisi >= 14:
+        suanki_filtrelenmis_yon = "Long"
+    elif short_sayisi >= 14:
+        suanki_filtrelenmis_yon = "Short"
+
+    islenen_ham_veriler.append({
+        "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
+        "baraj": baraj, "m_yon": suanki_filtrelenmis_yon, "y_yuzde": y_yuzde
+    })
+
+usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
+
+islenen_veriler = []
+for data in islenen_ham_veriler:
+    sembol = data["sembol"]
+    net_puan = data["net_puan"]
+    baraj = data["baraj"]
+    y_yuzde = data["y_yuzde"]
+    k_yuzde = 100.0 - y_yuzde
+    anlik_fiyat = data["anlik_fiyat"]
+    filtrelenmis_yon = data["m_yon"]
+    
+    c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 50.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -50.0) else "🟡")
+    u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 50.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -50.0) else "🟡")
+
+    y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
+    k_gorsel = 10 - y_gorsel
+    
+    detay_matris_html = f"""
+    <div style="text-align: center; line-height: 1.2;">
+        <div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div>
+        <div style="font-size: 11px; color: #495057; font-weight: 600;">
+            <span style="color: #198754; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #198754; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | 
+            <span style="color: #dc3545; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #dc3545; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}
+        </div>
+    </div>
+    """
+
+    is_notr = True
+    trend = "Nötr (Beklemede)"
+    aktif_yon_turu = "Nötr"
+
+    if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj and abs(net_puan) >= 50.0:
+        is_notr = False
+        aktif_yon_turu = filtrelenmis_yon
+        trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > 100.0 else f"{aktif_yon_turu} (Onaylı)"
+
+    if aktif_yon_turu == "Long":
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+    elif aktif_yon_turu == "Short":
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
+    else:
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+    
+    dom_html = f"""
+    <div style="text-align: center;">
+        <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div>
+        <div style="font-size: 10px; color: #495057; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led

@@ -12,7 +12,7 @@ import time
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS STİLLERİ VE ÖZEL RENKLİ BUTONLAR ---
+# --- CSS STİLLERİ ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -27,15 +27,6 @@ st.markdown("""
         color: #212529 !important;
     }
     
-    /* HIZLI SEÇİM BUTONLARINA ÖZEL RENK GEÇİŞLERİ (KESİN ÇÖZÜM) */
-    div[data-testid="stHorizontalBlock"] > div:nth-child(1) button { background-color: #ff9800 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="stHorizontalBlock"] > div:nth-child(2) button { background-color: #ffee58 !important; color: #212529 !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="stHorizontalBlock"] > div:nth-child(3) button { background-color: #66bb6a !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="stHorizontalBlock"] > div:nth-child(4) button { background-color: #2e7d32 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="stHorizontalBlock"] > div:nth-child(5) button { background-color: #1b5e20 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-
-    div[data-testid="stHorizontalBlock"] button:hover { opacity: 0.85; transform: scale(1.02); }
-
     /* SLIDER (POTANS) ÇUBUĞUNU KALIN GRADYAN YAPMAK İÇİN AGRESİF CSS */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
     div[data-baseweb="slider"] > div:first-child > div:first-child {
@@ -379,28 +370,28 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- ÖZEL GRADIENT RENKLİ HIZLI SEÇİM BUTONLARI ---
+    # --- HIZLI RİSK MODU SEÇİM BUTONLARI ---
     st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
     
     with b_col1:
-        if st.button("%50 Esnek", use_container_width=True):
+        if st.button("🟠 %50 Esnek", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 50.0
             st.rerun()
     with b_col2:
-        if st.button("%60 Dengeli", use_container_width=True):
+        if st.button("🟡 %60 Dengeli", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 60.0
             st.rerun()
     with b_col3:
-        if st.button("%75 Güvenli", use_container_width=True):
+        if st.button("🟢 %75 Güvenli", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 75.0
             st.rerun()
     with b_col4:
-        if st.button("%90 Güçlü", use_container_width=True):
+        if st.button("🟢 %90 Güçlü", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 90.0
             st.rerun()
     with b_col5:
-        if st.button("%100 Ultra", use_container_width=True):
+        if st.button("🟢 %100 Ultra", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 100.0
             st.rerun()
 
@@ -754,7 +745,7 @@ def tam_ekran_canli_yayin_dongusu():
                     <p style="color: #198754; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
                     <h3 style="color: #198754; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
                     <p style="color: #dc3545; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
-                    <h3 style="color: #dc3545; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
+                    <h3 style="color: #dc3545; margin: 0px 0px 10px 0px;">-{toplami_kayip_dolar if 'toplami_kayip_dolar' in locals() else toplam_kayip_dolar:,.2f} $</h3>
                     <hr style="border-color: #ced4da; margin: 8px 0px;">
                     <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
                     <h3 style="color: {'#198754' if net_fark_dolar >= 0 else '#dc3545'}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>

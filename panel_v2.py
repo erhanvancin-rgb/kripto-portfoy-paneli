@@ -8,9 +8,13 @@ import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
 import time
+from streamlit_autorefresh import st_autorefresh
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
+
+# --- OTOMATİK YENİLEME (60 SANİYE) ---
+st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
 # --- CSS STİLLERİ ---
 st.markdown("""

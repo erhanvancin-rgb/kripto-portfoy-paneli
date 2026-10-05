@@ -12,7 +12,7 @@ import time
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS STİLLERİ VE GRADYAN SLIDER KİLİT KIRICI ---
+# --- CSS STİLLERİ VE ÖZEL RENKLİ BUTONLAR ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -26,20 +26,11 @@ st.markdown("""
     h1, h2, h3, h4, h5, h6, p, span, label, div, table, th, td {
         color: #212529 !important;
     }
-    .stButton>button {
-        background-color: #e9ecef !important;
-        color: #212529 !important;
-        border: 1px solid #ced4da !important;
-        font-weight: bold !important;
-        border-radius: 6px !important;
-        transition: all 0.2s ease;
-    }
-    .stButton>button:hover {
-        background-color: #0d6efd !important;
-        color: #ffffff !important;
-        border-color: #0d6efd !important;
-    }
     
+    /* ÖZEL RENKLİ HIZLI SEÇİM BUTONLARI İÇİN CSS SINIFLARI */
+    div.stButton > button:nth-child(1) { background-color: #ffa726 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    div.stButton > button:nth-child(1):hover { background-color: #fb8c00 !important; }
+
     /* SLIDER (POTANS) ÇUBUĞUNU KALIN GRADYAN YAPMAK İÇİN AGRESİF CSS */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
     div[data-baseweb="slider"] > div:first-child > div:first-child {
@@ -143,7 +134,6 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 240 barlık periyot taramaları (32 Saat, 16 Saat, 8 Saat, 4 Saat, 2 Saat)
     y32s, k32s = kline_cek_detayli(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli(coin_symbol, "4h", 240)
     y8s,  k8s  = kline_cek_detayli(coin_symbol, "2h", 240)
@@ -153,11 +143,11 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     oran_faktor = (risk_yuzdesi - 50.0) / 50.0  
     aranan_onay_bar_sayisi = int(90 + (180 - 90) * oran_faktor)
 
-    p_32s = 5.0 * (0.5 + 0.5 * oran_faktor)   # %5 ağırlık
-    p_16s = 10.0 * (0.5 + 0.5 * oran_faktor)  # %10 ağırlık
-    p_8s  = 15.0 * (0.5 + 0.5 * oran_faktor)  # %15 ağırlık
-    p_4s  = 30.0 * (0.5 + 0.5 * oran_faktor)  # %30 ağırlık
-    p_2s  = 40.0 * (0.5 + 0.5 * oran_faktor)  # %40 ağırlık
+    p_32s = 5.0 * (0.5 + 0.5 * oran_faktor)
+    p_16s = 10.0 * (0.5 + 0.5 * oran_faktor)
+    p_8s  = 15.0 * (0.5 + 0.5 * oran_faktor)
+    p_4s  = 30.0 * (0.5 + 0.5 * oran_faktor)
+    p_2s  = 40.0 * (0.5 + 0.5 * oran_faktor)
 
     yon_32s = "Long" if y32s >= aranan_onay_bar_sayisi else ("Short" if k32s >= aranan_onay_bar_sayisi else "Notr")
     skor_32s = p_32s if yon_32s == "Long" else (-p_32s if yon_32s == "Short" else 0.0)
@@ -358,9 +348,9 @@ def tam_ekran_canli_yayin_dongusu():
     if 'trend_gecmisleri' not in st.session_state:
         st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
 
-    # Session State tabanlı risk oranı hafızası (Hızlı butonlar için)
-    if 'risk_orani_hafiza' not in st.session_state:
-        st.session_state['risk_orani_hafiza'] = 50.0
+    # Slider ve butonların ortak senkronize state belleği
+    if 'risk_yuzde_potansi' not in st.session_state:
+        st.session_state['risk_yuzde_potansi'] = 50.0
 
     col_ust1, col_ust2 = st.columns([4, 1])
     with col_ust2:
@@ -385,33 +375,46 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    # --- ŞIK HIZLI SEÇİM ORAN BUTONLARI ---
+    # --- ÖZEL GRADIENT RENKLİ HIZLI SEÇİM BUTONLARI ---
     st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+    
     with b_col1:
+        st.markdown('<style>div.row-widget.stButton > div:nth-child(1) button {background-color: #ffa726 !important; color: white !important;}</style>', unsafe_allow_html=True)
         if st.button("🟢 %50 Esnek", use_container_width=True):
-            st.session_state['risk_orani_hafiza'] = 50.0
+            st.session_state['risk_yuzde_potansi'] = 50.0
             st.rerun()
     with b_col2:
+        st.markdown('<style>div.row-widget.stButton > div:nth-child(2) button {background-color: #ffee58 !important; color: #212529 !important;}</style>', unsafe_allow_html=True)
         if st.button("🔵 %60 Dengeli", use_container_width=True):
-            st.session_state['risk_orani_hafiza'] = 60.0
+            st.session_state['risk_yuzde_potansi'] = 60.0
             st.rerun()
     with b_col3:
         if st.button("🟡 %75 Güvenli", use_container_width=True):
-            st.session_state['risk_orani_hafiza'] = 75.0
+            st.session_state['risk_yuzde_potansi'] = 75.0
             st.rerun()
     with b_col4:
         if st.button("🟠 %90 Güçlü", use_container_width=True):
-            st.session_state['risk_orani_hafiza'] = 90.0
+            st.session_state['risk_yuzde_potansi'] = 90.0
             st.rerun()
     with b_col5:
         if st.button("🔴 %100 Ultra", use_container_width=True):
-            st.session_state['risk_orani_hafiza'] = 100.0
+            st.session_state['risk_yuzde_potansi'] = 100.0
             st.rerun()
 
-    # Slider ile butonlar tam senkronize çalışır
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=st.session_state['risk_orani_hafiza'], step=1.0, key="risk_yuzde_potansi")
-    st.session_state['risk_orani_hafiza'] = risk_yuzdesi # Slider manuel oynatılırsa hafızayı da güncelle
+    # Özel butonlar için renk enjeksiyonu (HTML/CSS ile buton arka planlarını tam istediğin renk tonlarına boyuyoruz)
+    st.markdown("""
+        <style>
+        div[data-testid="column"]:nth-of-type(1) button { background-color: #ffa726 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; }
+        div[data-testid="column"]:nth-of-type(2) button { background-color: #ffee58 !important; color: #212529 !important; border: none !important; font-weight: bold !important; }
+        div[data-testid="column"]:nth-of-type(3) button { background-color: #66bb6a !important; color: #ffffff !important; border: none !important; font-weight: bold !important; }
+        div[data-testid="column"]:nth-of-type(4) button { background-color: #2e7d32 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; }
+        div[data-testid="column"]:nth-of-type(5) button { background-color: #1b5e20 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Slider state ile birebir senkronize çalışır
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
 
     oran = (risk_yuzdesi - 50.0) / 50.0
     r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)

@@ -5,8 +5,6 @@ from datetime import datetime
 import pytz
 import os
 import plotly.express as px
-import gspread
-from google.oauth2.service_account import Credentials
 import time
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -51,7 +49,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- SABİTLER ---
-GOOGLE_SHEET_ADRESI = "KriptoPortfoyVeritabani"  
 ARSIV_KLASORU = "arsiv"
 BASLANGIC_BAKIYE = 500.0
 KALDIRAC = 3 
@@ -139,3 +136,106 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     p_8s  = 15.0 * (0.5 + (0.5 * oran_faktor))
     p_4s  = 30.0 * (0.5 + (0.5 * oran_faktor))
     p_2s  = 40.0 * (0.5 + (0.5 * oran_faktor))
+
+    yon_32s = "Long" if y32s >= aranan_onay_bar_sayisi else ("Short" if k32s >= aranan_onay_bar_sayisi else "Notr")
+    skor_32s = p_32s if yon_32s == "Long" else (-p_32s if yon_32s == "Short" else 0.0)
+
+    yon_16s = "Long" if y16s >= aranan_onay_bar_sayisi else ("Short" if k16s >= aranan_onay_bar_sayisi else "Notr")
+    skor_16s = p_16s if yon_16s == "Long" else (-p_16s if yon_16s == "Short" else 0.0)
+
+    yon_8s = "Long" if y8s >= aranan_onay_bar_sayisi else ("Short" if k8s >= aranan_onay_bar_sayisi else "Notr")
+    skor_8s = p_8s if yon_8s == "Long" else (-p_8s if yon_8s == "Short" else 0.0)
+
+    yon_4s = "Long" if y4s >= aranan_onay_bar_sayisi else ("Short" if k4s >= aranan_onay_bar_sayisi else "Notr")
+    skor_4s = p_4s if yon_4s == "Long" else (-p_4s if yon_4s == "Short" else 0.0)
+
+    yon_2s = "Long" if y2s >= aranan_onay_bar_sayisi else ("Short" if k2s >= aranan_onay_bar_sayisi else "Notr")
+    skor_2s = p_2s if yon_2s == "Long" else (-p_2s if yon_2s == "Short" else 0.0)
+
+    toplam_net_puan = skor_32s + skor_16s + skor_8s + skor_4s + skor_2s  
+
+    toplam_y = y32s + y16s + y8s + y4s + y2s
+    toplam_k = k32s + k16s + k8s + k4s + k2s
+    net_aktif_bar = toplam_y + toplam_k
+    y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
+
+    hedef_puan_baraji = 50.0 + oran_faktor * 50.0
+
+    matris_yon = "Notr"
+    if toplam_net_puan >= hedef_puan_baraji:
+        matris_yon = "Long"
+    elif toplam_net_puan <= -hedef_puan_baraji:
+        matris_yon = "Short"
+
+    return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
+
+# --- GEÇİCİ OLARAK GOOGLE SHEETS TEST MODU ---
+def google_sheets_baglan():
+    return None
+
+def islem_gecmisi_getir(sheet_guncelle=True):
+    beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani"]
+    return pd.DataFrame(columns=beklenen_kolonlar)
+
+def dataframe_guncelle_gsheets(df):
+    pass
+
+def elli_islem_arsiv_kontrol():
+    pass
+
+def bakiye_durumunu_getir():
+    return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
+
+def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
+    return True, "Geçici mod aktif."
+
+def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
+    return True, "Geçici mod aktif."
+
+# --- ARAYÜZ AKIŞI ---
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Test Modu)")
+
+toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
+
+if 'trend_gecmisleri' not in st.session_state:
+    st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
+
+if 'risk_yuzde_potansi' not in st.session_state:
+    st.session_state['risk_yuzde_potansi'] = 50.0
+
+col_m1, col_m2 = st.columns(2)
+with col_m1:
+    st.markdown(f"""
+        <div class="metric-container">
+            <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">💰 Anlık Toplam Kasa</p>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{toplam_kasa:,.2f} $</h1>
+        </div>
+    """, unsafe_allow_html=True)
+with col_m2:
+    st.markdown(f"""
+        <div class="metric-container">
+            <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">🟢 Mevcut Bakiye (Boştaki Nakit)</p>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{mevcut_bakiye:,.2f} $</h1>
+        </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+
+islenen_ham_veriler = []
+ortak_fiyat_havuzu = {} 
+
+for sembol in coinler:
+    anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, risk_yuzdesi)
+    ortak_fiyat_havuzu[sembol] = anlik_fiyat 
+
+    gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
+    gecmis_liste.append(m_yon)
+    if len(gecmis_liste) > 20:
+        gecmis_liste.pop(0)
+
+    long_sayisi = gecmis_liste.count("Long")
+    short_sayisi = gecmis_liste.count("Short")
+
+    suanki_filtrelenmis_yon = "

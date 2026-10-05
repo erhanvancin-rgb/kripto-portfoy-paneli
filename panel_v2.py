@@ -220,7 +220,7 @@ with col_m2:
 
 st.markdown("---")
 
-risk_yuzdesi = st.slider("🎛️️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
 
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -270,30 +270,4 @@ for data in islenen_ham_veriler:
     <div style="text-align: center; line-height: 1.2;">
         <div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div>
         <div style="font-size: 11px; color: #495057; font-weight: 600;">
-            <span style="color: #198754; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #198754; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | 
-            <span style="color: #dc3545; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #dc3545; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}
-        </div>
-    </div>
-    """
-
-    is_notr = True
-    trend = "Nötr (Beklemede)"
-    aktif_yon_turu = "Nötr"
-
-    if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj and abs(net_puan) >= 50.0:
-        is_notr = False
-        aktif_yon_turu = filtrelenmis_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > 100.0 else f"{aktif_yon_turu} (Onaylı)"
-
-    if aktif_yon_turu == "Long":
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
-    elif aktif_yon_turu == "Short":
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
-    else:
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
-  dom_html = (
-        '<div style="text-align: center;">'
-        f'<div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div>'
-        f'<div style="font-size: 10px; color: #495057; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led}</div>'
-        '</div>'
-    )
+            <span style="color: #198754; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #198754; border-radius: 50%; margin-right: 2px

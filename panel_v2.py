@@ -27,14 +27,14 @@ st.markdown("""
         color: #212529 !important;
     }
     
-    /* ÖZEL RENKLİ HIZLI SEÇİM BUTONLARI İÇİN KESİN ÇÖZÜM CSS */
-    div[data-testid="column"]:nth-of-type(1) button { background-color: #ff9800 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="column"]:nth-of-type(2) button { background-color: #ffeb3b !important; color: #212529 !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="column"]:nth-of-type(3) button { background-color: #4caf50 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="column"]:nth-of-type(4) button { background-color: #2e7d32 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
-    div[data-testid="column"]:nth-of-type(5) button { background-color: #1b5e20 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    /* HIZLI SEÇİM BUTONLARINA ÖZEL RENK GEÇİŞLERİ (KESİN ÇÖZÜM) */
+    div[data-testid="stHorizontalBlock"] > div:nth-child(1) button { background-color: #ff9800 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(2) button { background-color: #ffee58 !important; color: #212529 !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(3) button { background-color: #66bb6a !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(4) button { background-color: #2e7d32 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(5) button { background-color: #1b5e20 !important; color: #ffffff !important; border: none !important; font-weight: bold !important; border-radius: 6px !important; }
 
-    div[data-testid="column"] button:hover { opacity: 0.85; transform: scale(1.02); }
+    div[data-testid="stHorizontalBlock"] button:hover { opacity: 0.85; transform: scale(1.02); }
 
     /* SLIDER (POTANS) ÇUBUĞUNU KALIN GRADYAN YAPMAK İÇİN AGRESİF CSS */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
@@ -384,23 +384,23 @@ def tam_ekran_canli_yayin_dongusu():
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
     
     with b_col1:
-        if st.button("🟠 %50 Esnek", use_container_width=True):
+        if st.button("%50 Esnek", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 50.0
             st.rerun()
     with b_col2:
-        if st.button("🟡 %60 Dengeli", use_container_width=True):
+        if st.button("%60 Dengeli", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 60.0
             st.rerun()
     with b_col3:
-        if st.button("🟢 %75 Güvenli", use_container_width=True):
+        if st.button("%75 Güvenli", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 75.0
             st.rerun()
     with b_col4:
-        if st.button("🟢 %90 Güçlü", use_container_width=True):
+        if st.button("%90 Güçlü", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 90.0
             st.rerun()
     with b_col5:
-        if st.button("🟢 %100 Ultra", use_container_width=True):
+        if st.button("%100 Ultra", use_container_width=True):
             st.session_state['risk_yuzde_potansi'] = 100.0
             st.rerun()
 

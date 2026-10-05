@@ -291,8 +291,9 @@ for data in islenen_ham_veriler:
         stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
     else:
         stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
-    
-    dom_html = f"""
-    <div style="text-align: center;">
-        <div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div>
-        <div style="font-size: 10px; color: #495057; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led
+  dom_html = (
+        '<div style="text-align: center;">'
+        f'<div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div>'
+        f'<div style="font-size: 10px; color: #495057; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led}</div>'
+        '</div>'
+    )

@@ -1,8 +1,7 @@
 streamlit
-streamlit-autorefresh
 pandas
 requests
-gspread
-pytz
 plotly
+gspread
 google-auth
+pytz

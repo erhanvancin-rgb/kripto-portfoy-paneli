@@ -16,7 +16,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ (MOBİL VE BUTON GÖRÜNÜM DÜZELTMELERİ) ---
+# --- CSS STİLLERİ (ÖZEL RENK BLOKLARI VE MOBİL UYUM) ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -31,7 +31,7 @@ st.markdown("""
         color: #212529 !important;
     }
     
-    /* STREAMLIT BUTONLARININ MOBİLDE KOYU OLMASINI ENGELLEME VE STİL */
+    /* GENEL BUTONLAR */
     .stButton > button {
         background-color: #e9ecef !important;
         color: #212529 !important;
@@ -42,6 +42,13 @@ st.markdown("""
         background-color: #0d6efd !important;
         color: #ffffff !important;
     }
+
+    /* 5'Lİ ÖZEL RİSK RENK BLOKLARI (YUVARLAK İŞARETÇİSİZ) */
+    div[data-testid="column"]:nth-of-type(1) .stButton > button { background-color: #f7931a !important; color: white !important; border: none !important; }
+    div[data-testid="column"]:nth-of-type(2) .stButton > button { background-color: #f7d002 !important; color: #212529 !important; border: none !important; }
+    div[data-testid="column"]:nth-of-type(3) .stButton > button { background-color: #28a745 !important; color: white !important; border: none !important; }
+    div[data-testid="column"]:nth-of-type(4) .stButton > button { background-color: #198754 !important; color: white !important; border: none !important; }
+    div[data-testid="column"]:nth-of-type(5) .stButton > button { background-color: #0f5132 !important; color: white !important; border: none !important; }
 
     /* SLIDER ÇUBUĞU GRADYAN STİLİ */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
@@ -374,28 +381,28 @@ with col_m2:
 
 st.markdown("---")
 
-# --- HIZLI RİSK MODU SEÇİM BUTONLARI ---
+# --- HIZLI RİSK MODU SEÇİM BUTONLARI (5 ÖZEL RENK BLOKLU) ---
 st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
 b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
 
 with b_col1:
-    if st.button("🟠 %50 Esnek", use_container_width=True):
+    if st.button("%50 Esnek", use_container_width=True):
         st.session_state['risk_yuzde_potansi'] = 50.0
         st.rerun()
 with b_col2:
-    if st.button("🟡 %60 Dengeli", use_container_width=True):
+    if st.button("%60 Dengeli", use_container_width=True):
         st.session_state['risk_yuzde_potansi'] = 60.0
         st.rerun()
 with b_col3:
-    if st.button("🟢 %75 Güvenli", use_container_width=True):
+    if st.button("%75 Güvenli", use_container_width=True):
         st.session_state['risk_yuzde_potansi'] = 75.0
         st.rerun()
 with b_col4:
-    if st.button("🟢 %90 Güçlü", use_container_width=True):
+    if st.button("%90 Güçlü", use_container_width=True):
         st.session_state['risk_yuzde_potansi'] = 90.0
         st.rerun()
 with b_col5:
-    if st.button("🟢 %100 Ultra", use_container_width=True):
+    if st.button("%100 Ultra", use_container_width=True):
         st.session_state['risk_yuzde_potansi'] = 100.0
         st.rerun()
 
@@ -416,7 +423,7 @@ for sembol in coinler:
     long_sayisi = gecmis_liste.count("Long")
     short_sayisi = gecmis_liste.count("Short")
 
-    # --- DİNAMİK TEYİT MOTORU (TREND DURUMU İÇİN) ---
+    # --- DİNAMİK TEYİT MOTORU ---
     mevcut_uzunluk = len(gecmis_liste)
     gereken_onay = max(1, int(mevcut_uzunluk * 0.7))
     
@@ -425,7 +432,7 @@ for sembol in coinler:
         suanki_filtrelenmis_yon = "Long"
     elif short_sayisi >= gereken_onay:
         suanki_filtrelenmis_yon = "Short"
-    # -----------------------------------------------
+    # ---------------------------
 
     islenen_ham_veriler.append({
         "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,

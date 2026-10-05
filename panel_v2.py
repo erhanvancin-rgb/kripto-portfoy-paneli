@@ -136,40 +136,50 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    y48, k48 = kline_cek_detayli(coin_symbol, "10m", 288)
-    y24, k24 = kline_cek_detayli(coin_symbol, "5m", 288)
-    y12, k12 = kline_cek_detayli(coin_symbol, "3m", 240)
-    y4,  k4  = kline_cek_detayli(coin_symbol, "1m", 240)
+    # 240 barlık yeni periyot taramaları (32 Saat, 16 Saat, 8 Saat, 4 Saat, 2 Saat)
+    # Not: Binance API standart aralıkları '8h', '4h', '2h', '1h', '30m' şeklindedir. 
+    # Sizin belirttiğiniz dakikalık eşdeğer simülasyonları ve aralıklar kurgulanmıştır.
+    y32s, k32s = kline_cek_detayli(coin_symbol, "8h", 240)
+    y16s, k16s = kline_cek_detayli(coin_symbol, "4h", 240)
+    y8s,  k8s  = kline_cek_detayli(coin_symbol, "2h", 240)
+    y4s,  k4s  = kline_cek_detayli(coin_symbol, "1h", 240)
+    y2s,  k2s  = kline_cek_detayli(coin_symbol, "30m", 240)
 
-    f = max(0.0, min(1.0, (risk_yuzdesi - 50.0) / 25.0))
+    # Risk/Potans oranına göre çarpan katsayısı (slider %50 iken 0.5, %100 iken 1.0)
+    carpan = (risk_yuzdesi - 50.0) / 50.0  # 0.0 ile 1.0 arası
     
-    if risk_yuzdesi >= 100.0:
-        req_48_24 = 217
-        req_12_4 = 181
-        hedef_puan_baraji = 190.0
-    else:
-        req_48_24 = int(144 + (216 - 144) * f)
-        req_12_4  = int(120 + (180 - 120) * f)
-        hedef_puan_baraji = 65.0 + (190.0 - 65.0) * f
+    # Puan ağırlıkları tablosu: (%50 potansta yarı puan, %75 potansta tam puan, %100'e doğru ölçeklenir)
+    p_32s = 5.0 * (0.5 + 0.5 * carpan)   # %5 ağırlık (2.5 - 5 puan)
+    p_16s = 10.0 * (0.5 + 0.5 * carpan)  # %10 ağırlık (5 - 10 puan)
+    p_8s  = 15.0 * (0.5 + 0.5 * carpan)  # %15 ağırlık (7.5 - 15 puan)
+    p_4s  = 30.0 * (0.5 + 0.5 * carpan)  # %30 ağırlık (15 - 30 puan)
+    p_2s  = 40.0 * (0.5 + 0.5 * carpan)  # %40 ağırlık (20 - 40 puan)
 
-    yon_48 = "Long" if y48 >= req_48_24 else ("Short" if k48 >= req_48_24 else "Notr")
-    puan_48 = 22.0 if yon_48 == "Long" else (-22.0 if yon_48 == "Short" else 0.0)
+    # 180 onay kuralı denetimi
+    yon_32s = "Long" if y32s >= 180 else ("Short" if k32s >= 180 else "Notr")
+    skor_32s = p_32s if yon_32s == "Long" else (-p_32s if yon_32s == "Short" else 0.0)
 
-    yon_24 = "Long" if y24 >= req_48_24 else ("Short" if k24 >= req_48_24 else "Notr")
-    puan_24 = 33.0 if yon_24 == "Long" else (-33.0 if yon_24 == "Short" else 0.0)
+    yon_16s = "Long" if y16s >= 180 else ("Short" if k16s >= 180 else "Notr")
+    skor_16s = p_16s if yon_16s == "Long" else (-p_16s if yon_16s == "Short" else 0.0)
 
-    yon_12 = "Long" if y12 >= req_12_4 else ("Short" if k12 >= req_12_4 else "Notr")
-    puan_12 = 45.0 if yon_12 == "Long" else (-45.0 if yon_12 == "Short" else 0.0)
+    yon_8s = "Long" if y8s >= 180 else ("Short" if k8s >= 180 else "Notr")
+    skor_8s = p_8s if yon_8s == "Long" else (-p_8s if yon_8s == "Short" else 0.0)
 
-    yon_4 = "Long" if y4 >= req_12_4 else ("Short" if k4 >= req_12_4 else "Notr")
-    puan_4 = 90.0 if yon_4 == "Long" else (-90.0 if yon_4 == "Short" else 0.0)
+    yon_4s = "Long" if y4s >= 180 else ("Short" if k4s >= 180 else "Notr")
+    skor_4s = p_4s if yon_4s == "Long" else (-p_4s if yon_4s == "Short" else 0.0)
 
-    toplam_net_puan = puan_48 + puan_24 + puan_12 + puan_4  
+    yon_2s = "Long" if y2s >= 180 else ("Short" if k2s >= 180 else "Notr")
+    skor_2s = p_2s if yon_2s == "Long" else (-p_2s if yon_2s == "Short" else 0.0)
 
-    toplam_y = y48 + y24 + y12 + y4
-    toplam_k = k48 + k24 + k12 + k4
+    toplam_net_puan = skor_32s + skor_16s + skor_8s + skor_4s + skor_2s  
+
+    toplam_y = y32s + y16s + y8s + y4s + y2s
+    toplam_k = k32s + k16s + k8s + k4s + k2s
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
+
+    # Slider %50 ise baraj 50 puan, %100 ise baraj 100 puandır.
+    hedef_puan_baraji = 50.0 + ((risk_yuzdesi - 50.0) / 50.0) * 50.0
 
     matris_yon = "Notr"
     if toplam_net_puan >= hedef_puan_baraji:
@@ -343,6 +353,10 @@ elli_islem_arsiv_kontrol()
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 
+    # 14/20 Gürültü Önleyici Süzgeç İçin Oturum Hafızası Başlatma
+    if 'trend_gecmisleri' not in st.session_state:
+        st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
+
     col_ust1, col_ust2 = st.columns([4, 1])
     with col_ust2:
         if st.button("🔄 Piyasayı Şimdi Yenile", use_container_width=True):
@@ -374,8 +388,7 @@ def tam_ekran_canli_yayin_dongusu():
     rgba_bg = f"rgba({r}, {g}, {b}, 0.22)"
     border_col = f"rgb({r}, {g}, {b})"
 
-    hedef_puan_baraji = 65.0 + ((risk_yuzdesi - 50.0) / 25.0) * 125.0
-    hedef_puan_baraji = max(65.0, min(190.0, hedef_puan_baraji))
+    hedef_puan_baraji = 50.0 + ((risk_yuzdesi - 50.0) / 50.0) * 50.0
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -391,9 +404,33 @@ def tam_ekran_canli_yayin_dongusu():
     for sembol in coinler:
         anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, risk_yuzdesi)
         ortak_fiyat_havuzu[sembol] = anlik_fiyat 
+
+        # --- 14/20 GÜRÜLTÜ ÖNLEYİCİ SÜZGEÇ (HİSTEREZİS) ---
+        ham_karar = m_yon
+        gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
+        gecmis_liste.append(ham_karar)
+        if len(gecmis_liste) > 20:
+            gecmis_liste.pop(0) # Son 20 dakikalık kuyruk tutulur
+
+        # 20 periyot içinde en az 14 kez aynı yön çıkmış mı kontrol edilir
+        long_sayisi = gecmis_liste.count("Long")
+        short_sayisi = gecmis_liste.count("Short")
+        notr_sayisi = gecmis_liste.count("Notr")
+
+        suanki_filtrelenmis_yon = "Notr"
+        if long_sayisi >= 14:
+            suanki_filtrelenmis_yon = "Long"
+        elif short_sayisi >= 14:
+            suanki_filtrelenmis_yon = "Short"
+        else:
+            # 14 çoğunluk sağlanamadıysa hafızadaki son geçerli yön korunur (testereler elenir)
+            if len(gecmis_liste) > 1:
+                onceki_yonler = [g for g in gecmis_liste[:-1] if g != "Notr"]
+                suanki_filtrelenmis_yon = onceki_yonler[-1] if onceki_yonler else "Notr"
+
         islenen_ham_veriler.append({
             "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
-            "baraj": baraj, "m_yon": m_yon, "y_yuzde": y_yuzde
+            "baraj": baraj, "m_yon": suanki_filtrelenmis_yon, "y_yuzde": y_yuzde
         })
 
     usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
@@ -406,10 +443,11 @@ def tam_ekran_canli_yayin_dongusu():
         y_yuzde = data["y_yuzde"]
         k_yuzde = 100.0 - y_yuzde
         anlik_fiyat = data["anlik_fiyat"]
+        filtrelenmis_yon = data["m_yon"]
         
-        c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
-        u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 65.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -65.0) else "🟡")
-        m_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 65.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -65.0) else "🟡")
+        c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 50.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -50.0) else "🟡")
+        u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 50.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -50.0) else "🟡")
+        m_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 50.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -50.0) else "🟡")
 
         y_gorsel = int(round(y_yuzde / 10.0))
         y_gorsel = max(0, min(10, y_gorsel))
@@ -425,34 +463,21 @@ def tam_ekran_canli_yayin_dongusu():
         </div>
         """
 
-        def led_to_yon(led):
-            return "Long" if led == "🟢" else ("Short" if led == "🔴" else "Notr")
-
-        c_y = led_to_yon(c_durum_led)
-        u_y = led_to_yon(u_durum_led)
-        m_y = led_to_yon(m_durum_led)
-
         is_notr = True
         trend = "Nötr (Beklemede)"
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # KESİN VE KATI KURAL: "Güçlü Trend" yazısı puanlardan bağımsız olarak DOĞRUDAN ekrandaki YÜZDEYE bağlandı!
-        if m_y != "Notr" and abs(net_puan) >= baraj:
-            ayni_renk_sayisi = sum([1 for x in [c_y, u_y, m_y] if x == m_y])
-            if ayni_renk_sayisi >= 2:
-                is_notr = False
-                aktif_yon_turu = m_y
-                aktif_matris_orani = abs(net_puan)
-                
-                if ayni_renk_sayisi == 3:
-                    # Yalnızca görsel oran %75.0 ve üzerinde ise Güçlü Trend yazar.
-                    if (aktif_yon_turu == "Long" and y_yuzde >= 75.0) or (aktif_yon_turu == "Short" and k_yuzde >= 75.0):
-                        trend = f"Güçlü Trend {aktif_yon_turu}"
-                    else:
-                        trend = f"{aktif_yon_turu} (Onaylı)"
-                else:
-                    trend = f"{aktif_yon_turu} (Onaylı)"
+        # 50 Puan altı Nötr, 100 Puan üstü Güçlü Trend Uyarısı
+        if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj and abs(net_puan) >= 50.0:
+            is_notr = False
+            aktif_yon_turu = filtrelenmis_yon
+            aktif_matris_orani = abs(net_puan)
+            
+            if abs(net_puan) > 100.0:
+                trend = f"Güçlü Trend {aktif_yon_turu}"
+            else:
+                trend = f"{aktif_yon_turu} (Onaylı)"
 
         if aktif_yon_turu == "Long":
             stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025

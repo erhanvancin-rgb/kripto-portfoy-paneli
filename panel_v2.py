@@ -31,6 +31,13 @@ st.markdown("""
         color: #212529 !important;
         border: 1px solid #ced4da !important;
         font-weight: bold !important;
+        border-radius: 6px !important;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        background-color: #0d6efd !important;
+        color: #ffffff !important;
+        border-color: #0d6efd !important;
     }
     
     /* SLIDER (POTANS) ÇUBUĞUNU KALIN GRADYAN YAPMAK İÇİN AGRESİF CSS */
@@ -136,28 +143,22 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 240 barlık yeni periyot taramaları (32 Saat, 16 Saat, 8 Saat, 4 Saat, 2 Saat)
+    # 240 barlık periyot taramaları (32 Saat, 16 Saat, 8 Saat, 4 Saat, 2 Saat)
     y32s, k32s = kline_cek_detayli(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli(coin_symbol, "4h", 240)
     y8s,  k8s  = kline_cek_detayli(coin_symbol, "2h", 240)
     y4s,  k4s  = kline_cek_detayli(coin_symbol, "1h", 240)
     y2s,  k2s  = kline_cek_detayli(coin_symbol, "30m", 240)
 
-    # Risk/Potans oranına göre çarpan (Slider %50 iken 0.0, %100 iken 1.0)
     oran_faktor = (risk_yuzdesi - 50.0) / 50.0  
-    
-    # Aranan minimum onay barı sayısı: Slider %50 iken 90 bar, %100 iken 180 bar
     aranan_onay_bar_sayisi = int(90 + (180 - 90) * oran_faktor)
 
-    # Puan ağırlıkları: Slider %50 iken taban puanlar (2.5, 5, 7.5, 15, 20 -> Toplam 50 puan)
-    # Slider %100 iken tam puanlar (5, 10, 15, 30, 40 -> Toplam 100 puan)
     p_32s = 5.0 * (0.5 + 0.5 * oran_faktor)   # %5 ağırlık
     p_16s = 10.0 * (0.5 + 0.5 * oran_faktor)  # %10 ağırlık
     p_8s  = 15.0 * (0.5 + 0.5 * oran_faktor)  # %15 ağırlık
     p_4s  = 30.0 * (0.5 + 0.5 * oran_faktor)  # %30 ağırlık
     p_2s  = 40.0 * (0.5 + 0.5 * oran_faktor)  # %40 ağırlık
 
-    # Dinamik aranan onay barı şartına göre yön ve skor tespiti
     yon_32s = "Long" if y32s >= aranan_onay_bar_sayisi else ("Short" if k32s >= aranan_onay_bar_sayisi else "Notr")
     skor_32s = p_32s if yon_32s == "Long" else (-p_32s if yon_32s == "Short" else 0.0)
 
@@ -180,7 +181,6 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
-    # Puan barajı: Slider %50 iken 50 puan, %100 iken 100 puandır.
     hedef_puan_baraji = 50.0 + oran_faktor * 50.0
 
     matris_yon = "Notr"
@@ -355,9 +355,12 @@ elli_islem_arsiv_kontrol()
 def tam_ekran_canli_yayin_dongusu():
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 
-    # 14/20 Gürültü Önleyici Süzgeç İçin Oturum Hafızası Başlatma
     if 'trend_gecmisleri' not in st.session_state:
         st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
+
+    # Session State tabanlı risk oranı hafızası (Hızlı butonlar için)
+    if 'risk_orani_hafiza' not in st.session_state:
+        st.session_state['risk_orani_hafiza'] = 50.0
 
     col_ust1, col_ust2 = st.columns([4, 1])
     with col_ust2:
@@ -382,7 +385,33 @@ def tam_ekran_canli_yayin_dongusu():
 
     st.markdown("---")
 
-    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=50.0, step=1.0, key="risk_yuzde_potansi")
+    # --- ŞIK HIZLI SEÇİM ORAN BUTONLARI ---
+    st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
+    b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+    with b_col1:
+        if st.button("🟢 %50 Esnek", use_container_width=True):
+            st.session_state['risk_orani_hafiza'] = 50.0
+            st.rerun()
+    with b_col2:
+        if st.button("🔵 %60 Dengeli", use_container_width=True):
+            st.session_state['risk_orani_hafiza'] = 60.0
+            st.rerun()
+    with b_col3:
+        if st.button("🟡 %75 Güvenli", use_container_width=True):
+            st.session_state['risk_orani_hafiza'] = 75.0
+            st.rerun()
+    with b_col4:
+        if st.button("🟠 %90 Güçlü", use_container_width=True):
+            st.session_state['risk_orani_hafiza'] = 90.0
+            st.rerun()
+    with b_col5:
+        if st.button("🔴 %100 Ultra", use_container_width=True):
+            st.session_state['risk_orani_hafiza'] = 100.0
+            st.rerun()
+
+    # Slider ile butonlar tam senkronize çalışır
+    risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, value=st.session_state['risk_orani_hafiza'], step=1.0, key="risk_yuzde_potansi")
+    st.session_state['risk_orani_hafiza'] = risk_yuzdesi # Slider manuel oynatılırsa hafızayı da güncelle
 
     oran = (risk_yuzdesi - 50.0) / 50.0
     r, g, b = 255 + int((220 - 255) * oran), 193 + int((53 - 193) * oran), 7 + int((69 - 7) * oran)
@@ -391,10 +420,11 @@ def tam_ekran_canli_yayin_dongusu():
     border_col = f"rgb({r}, {g}, {b})"
 
     hedef_puan_baraji = 50.0 + oran * 50.0
+    aranan_bar = int(90 + (180 - 90) * oran)
 
     st.markdown(f"""
         <div style="background-color: {rgba_bg}; border: 2px solid {border_col}; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk ve Güvenli Bölge Seviyesi: %{risk_yuzdesi:.0f} (Hedef Puan Barajı: {hedef_puan_baraji:.1f} Puan)</span>
+            <span style="font-size: 16px; font-weight: bold; color: #212529;">Aktif Risk Seviyesi: %{risk_yuzdesi:.0f} | Hedef Puan Barajı: {hedef_puan_baraji:.1f} Puan | Periyot Başına Aranan Onay: {aranan_bar} Bar</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -412,11 +442,10 @@ def tam_ekran_canli_yayin_dongusu():
         gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
         gecmis_liste.append(ham_karar)
         if len(gecmis_liste) > 20:
-            gecmis_liste.pop(0) # Son 20 dakikalık kuyruk tutulur
+            gecmis_liste.pop(0)
 
         long_sayisi = gecmis_liste.count("Long")
         short_sayisi = gecmis_liste.count("Short")
-        notr_sayisi = gecmis_liste.count("Notr")
 
         suanki_filtrelenmis_yon = "Notr"
         if long_sayisi >= 14:
@@ -468,7 +497,6 @@ def tam_ekran_canli_yayin_dongusu():
         aktif_matris_orani = 0.0
         aktif_yon_turu = "Nötr"
 
-        # 50 Puan altı Nötr, 50-100 arası Onaylı, 100 Puan üstü Güçlü Trend Uyarısı
         if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj and abs(net_puan) >= 50.0:
             is_notr = False
             aktif_yon_turu = filtrelenmis_yon

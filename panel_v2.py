@@ -16,7 +16,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış Paneli", page_icon="📈
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ ---
+# --- CSS STİLLERİ (MOBİL VE BUTON GÖRÜNÜM DÜZELTMELERİ) ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -31,6 +31,18 @@ st.markdown("""
         color: #212529 !important;
     }
     
+    /* STREAMLIT BUTONLARININ MOBİLDE KOYU OLMASINI ENGELLEME VE STİL */
+    .stButton > button {
+        background-color: #e9ecef !important;
+        color: #212529 !important;
+        border: 1px solid #ced4da !important;
+        font-weight: bold !important;
+    }
+    .stButton > button:hover {
+        background-color: #0d6efd !important;
+        color: #ffffff !important;
+    }
+
     /* SLIDER ÇUBUĞU GRADYAN STİLİ */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
     div[data-baseweb="slider"] > div:first-child > div:first-child {
@@ -404,11 +416,16 @@ for sembol in coinler:
     long_sayisi = gecmis_liste.count("Long")
     short_sayisi = gecmis_liste.count("Short")
 
+    # --- DİNAMİK TEYİT MOTORU (TREND DURUMU İÇİN) ---
+    mevcut_uzunluk = len(gecmis_liste)
+    gereken_onay = max(1, int(mevcut_uzunluk * 0.7))
+    
     suanki_filtrelenmis_yon = "Notr"
-    if long_sayisi >= 14:
+    if long_sayisi >= gereken_onay:
         suanki_filtrelenmis_yon = "Long"
-    elif short_sayisi >= 14:
+    elif short_sayisi >= gereken_onay:
         suanki_filtrelenmis_yon = "Short"
+    # -----------------------------------------------
 
     islenen_ham_veriler.append({
         "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,

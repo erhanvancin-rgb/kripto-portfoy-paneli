@@ -134,4 +134,8 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     oran_faktor = (risk_yuzdesi - 50.0) / 50.0  
     aranan_onay_bar_sayisi = int(90 + (180 - 90) * oran_faktor)
 
-    p_32s = 5.0 * (0.5 +
+    p_32s = 5.0 * (0.5 + (0.5 * oran_faktor))
+    p_16s = 10.0 * (0.5 + (0.5 * oran_faktor))
+    p_8s  = 15.0 * (0.5 + (0.5 * oran_faktor))
+    p_4s  = 30.0 * (0.5 + (0.5 * oran_faktor))
+    p_2s  = 40.0 * (0.5 + (0.5 * oran_faktor))

@@ -745,7 +745,7 @@ def tam_ekran_canli_yayin_dongusu():
                     <p style="color: #198754; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
                     <h3 style="color: #198754; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
                     <p style="color: #dc3545; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
-                    <h3 style="color: #dc3545; margin: 0px 0px 10px 0px;">-{toplami_kayip_dolar if 'toplami_kayip_dolar' in locals() else toplam_kayip_dolar:,.2f} $</h3>
+                    <h3 style="color: #dc3545; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
                     <hr style="border-color: #ced4da; margin: 8px 0px;">
                     <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
                     <h3 style="color: {'#198754' if net_fark_dolar >= 0 else '#dc3545'}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>

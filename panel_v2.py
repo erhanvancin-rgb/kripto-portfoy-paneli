@@ -480,7 +480,7 @@ if not df_gecmis_anlik.empty:
             acik_islem_toplam_kz += m_M * KALDIRAC * f_y
 efektif_kasa = toplam_kasa + acik_islem_toplam_kz
 
-# --- ÜST BİLGİ PANELİ (MEVCUT BAKİYE SOLDA, EFEKTİF KASA YANINDA, YENİLE BUTONU SAĞ EN UÇTA) ---
+# --- ÜST BİLGİ PANELİ ---
 col_ust1, col_ust2, col_ust3, col_ust4 = st.columns([2, 2, 2, 1.5])
 with col_ust1:
     st.markdown(f"""
@@ -559,35 +559,4 @@ for v in islenen_veriler:
     elif "Güçlü Trend" in v['Ham_Yon']: oran_html = f'<div style="background-color: {"rgb(0, 130, 0)" if "Long" in v["Ham_Yon"] else "rgb(130, 0, 0)"}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>(Güçlü Trend)</div>'
     else: oran_html = f'<div style="background-color: {"rgb(0, 130, 0)" if "Long" in v["Ham_Yon"] else "rgb(130, 0, 0)"}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>(Onaylı)</div>'
 
-    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td></tr>"
-table_html += "</tbody></table>"
-st.markdown(table_html, unsafe_allow_html=True)
-
-st.markdown("### 🛒 Hızlı İşlem Emri Ver")
-df_gosterge = pd.DataFrame(islenen_veriler)
-secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="secilen_coin_select")
-
-if secilen_coin:
-    coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
-    onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
-    
-    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
-    hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
-    st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Mevcut Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
-    
-    if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
-        st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-        basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe Motoru")
-        if basari: 
-            st.success(mesaj)
-            st.balloons()
-        else: 
-            st.error(mesaj)
-
-st.markdown("---")
-st.markdown(f"### 💼 Sanal Portföy ve Açık Pozisyonlar")
-
-df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
-if not df_gecmis.empty:
-    acik_islem_listesi = df_gecmis[df_gecmis['Durum'] == 'Acik']['Islem_ID'].
+    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html

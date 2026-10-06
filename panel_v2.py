@@ -326,16 +326,12 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     
     net_kasa_hareketleri = BASLANGIC_BAKIYE
     
-    # 1. KasaDefteri'ndeki tüm hareketleri ekle
     if not df_kasa.empty:
         net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
         
-    # 2. KasaDefteri'ne işlenmemiş olan geçmiş tüm kapalı trade kâr/zararlarını KriptoPortfoyVeritabani'ndan otomatik ekle
     if not df_trade.empty:
         kap_trades = df_trade[df_trade['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
         if not kap_trades.empty:
-            # Eğer KasaDefteri'nde bu trade'ler "Trade_Sonuc" olarak zaten kayıtlı değilse, mükerrer olmaması için farkı ya da direkt tüm kapalı trade'leri ekleyelim
-            # En güvenlisi: KasaDefteri'nde "Trade_Sonuc" türü hiç yoksa veya eksikse, tüm geçmiş kapalı trade toplamını dahil et
             trade_sonuc_defterde = 0.0
             if not df_kasa.empty and 'Islem_Turu' in df_kasa.columns:
                 ts_df = df_kasa[df_kasa['Islem_Turu'] == 'Trade_Sonuc']
@@ -343,8 +339,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                     trade_sonuc_defterde = pd.to_numeric(ts_df['Tutar'], errors='coerce').fillna(0.0).sum()
             
             gercek_trade_toplam = pd.to_numeric(kap_trades['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum()
-            
-            # Eğer deftere henüz kaydedilmemiş geçmiş kârlar varsa aradaki farkı ekle
             if gercek_trade_toplam != trade_sonuc_defterde:
                 net_kasa_hareketleri += (gercek_trade_toplam - trade_sonuc_defterde)
         
@@ -450,6 +444,9 @@ if 'kasa_islem_acik' not in st.session_state:
 
 if 'kasa_islem_turu' not in st.session_state:
     st.session_state['kasa_islem_turu'] = "Para Yatır"
+
+if 'sadece_aktifleri_goster' not in st.session_state:
+    st.session_state['sadece_aktifleri_goster'] = False
 
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -557,7 +554,7 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-# --- ÜST BİLGİ PANELİ (AKTİF YATIRIM, BOŞTAKİ NAKİT, EFEKTİF KASA, TOPLAM KASA) ---
+# --- ÜST BİLGİ PANELİ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6 = st.columns([2, 2, 2, 2, 1.5, 1.2])
 with col_ust1:
     st.markdown(f"""
@@ -650,7 +647,7 @@ if st.session_state['kasa_islem_acik']:
 
 st.markdown("---")
 
-# --- HIZLI RİSK MODU SEÇİM BUTONLARI ---
+# --- HIZLI RİSK MODU SEÇİMİ ---
 st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
 b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
 
@@ -729,7 +726,15 @@ if secilen_coin:
             st.error(mesaj)
 
 st.markdown("---")
-st.markdown("### 💼 Sanal Portföy ve Açık Pozisyonlar")
+
+# --- SANAL PORTFÖY VE AÇIK POZİSYONLAR ---
+col_pbas1, col_pbas2 = st.columns([3, 1])
+with col_pbas1:
+    st.markdown("### 💼 Sanal Portföy ve Pozisyonlar")
+with col_pbas2:
+    if st.button("👁️ Aktifleri Göster / Gizle", use_container_width=True):
+        st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
+        st.rerun()
 
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
@@ -751,9 +756,14 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 else: st.warning("Onay kutusunu işaretleyin!")
         st.markdown("---")
 
-    df_gecmis_copy = df_gecmis.copy()
+    # Filtreleme (Buton aktifse sadece 'Acik' olanları göster, değilse tümünü listele)
+    df_gosterilecek = df_gecmis.copy()
+    if st.session_state['sadece_aktifleri_goster']:
+        df_gosterilecek = df_gosterilecek[df_gosterilecek['Durum'] == 'Acik']
+        st.info("ℹ️ Şu an sadece **Aktif (Açık)** pozisyonlar gösteriliyor. (Geçmiş işlemler gizlendi)")
+
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
-    for idx, row in df_gecmis_copy.iterrows():
+    for idx, row in df_gecmis.iterrows():
         islem_id = row['Islem_ID']
         coin = row['Coin']
         giris_f = float(row['Giris_Fiyat'])
@@ -777,6 +787,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         else:
             anlik_kz_sozluk[islem_id] = float(row['Net_Kar_Zarar'])
 
+    df_gecmis_copy = df_gosterje_df = df_gosterilecek.copy()
     df_gecmis_copy['Anlik_Fiyat_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_fiyat_sozluk)
     df_gecmis_copy['Hedef_Kar'] = df_gecmis_copy['Islem_ID'].map(hedef_kar_sozluk)
     df_gecmis_copy['Olasi_Stop'] = df_gecmis_copy['Islem_ID'].map(olasi_stop_sozluk)

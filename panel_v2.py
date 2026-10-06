@@ -272,10 +272,10 @@ def elli_islem_arsiv_kontrol():
 
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df = islem_gecmisi_getir(sheet_guncelle=False)
-    if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
+    if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, 0.0
     
-    kapanan_df = df[df['Durum'] != 'Acik']
-    toplam_hareketler = pd.to_numeric(kapanan_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not kapanan_df.empty else 0.0
+    pasif_df = df[df['Durum'] != 'Acik']
+    toplam_hareketler = pd.to_numeric(pasif_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not pasif_df.empty else 0.0
     
     baz_bakiye = BASLANGIC_BAKIYE
     if os.path.exists(ARSIV_KLASORU):
@@ -291,10 +291,10 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     toplam_kasa = baz_bakiye + toplam_hareketler
     
     acik_df = df[df['Durum'] == 'Acik']
-    acik_marjin = 0.0
+    aktif_marjin_toplami = 0.0
     acik_kz_toplam = 0.0
     if not acik_df.empty:
-        acik_marjin = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum()
+        aktif_marjin_toplami = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum()
         for _, rw in acik_df.iterrows():
             c_SYM = rw['Coin']
             g_F = float(rw['Giris_Fiyat'])
@@ -305,15 +305,16 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             acik_kz_toplam += m_M * KALDIRAC * f_y
 
     efektif_kasa = toplam_kasa + acik_kz_toplam
-    bos_bakiye = efektif_kasa - acik_marjin
-    return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye)
+    bos_bakiye = toplam_kasa - aktif_marjin_toplami
+    
+    return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def kasa_islem_ekle(islem_tipi, miktar, aciklama):
-    toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir()
+    toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim = bakiye_durumunu_getir()
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
         
     df = islem_gecmisi_getir()
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
@@ -350,7 +351,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
     if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda, işlem açılamaz!"
-    _, _, mevcut_bakiye = bakiye_durumunu_getir()
+    _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -359,7 +360,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
-    toplam_kasa, _, _ = bakiye_durumunu_getir()
+    toplam_kasa, _, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
         "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
         "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
@@ -524,18 +525,18 @@ if aktif_coinler:
 else:
     for v in islenen_veriler: v["Sepet_Orani"] = 0.0
 
-toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir(ortak_fiyat_havuzu)
+toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-# --- ÜST BİLGİ PANELİ ---
+# --- ÜST BİLGİ PANELİ (AKTİF YATIRIM, EFEKTİF KASA, TOPLAM KASA) ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5 = st.columns([2, 2, 2, 2, 1.5])
 with col_ust1:
     st.markdown(f"""
         <div class="metric-container">
-            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">🟢 Boştaki Nakit</p>
-            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1>
+            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">📊 Aktif Yatırım</p>
+            <h1 style="color: #0d6efd; margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1>
         </div>
     """, unsafe_allow_html=True)
 with col_ust2:
@@ -640,7 +641,7 @@ with b_col5:
         st.session_state['risk_yuzde_potansi'] = 100.0
         st.rerun()
 
-risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+risk_yuzdesi = st.slider("🎛️️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
 
 table_html = """
 <table class="custom-table">

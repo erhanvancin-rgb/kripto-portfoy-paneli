@@ -274,7 +274,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
     
-    # Açık olmayan (kapanmış veya sermaye işlemi olan) TÜM satırların net kar/zarar ve transfer toplamını al
     kapanan_df = df[df['Durum'] != 'Acik']
     toplam_hareketler = pd.to_numeric(kapanan_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not kapanan_df.empty else 0.0
     
@@ -289,10 +288,8 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                     baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
         except: pass
     
-    # 1. Toplam Kasa (Başlangıç bakiyesi + kapatılan tüm işlemlerin ve kasa yatırma/çekmelerinin net toplamı)
     toplam_kasa = baz_bakiye + toplam_hareketler
     
-    # Açık pozisyonların anlık kâr/zararı ve kilitli marjinleri
     acik_df = df[df['Durum'] == 'Acik']
     acik_marjin = 0.0
     acik_kz_toplam = 0.0
@@ -307,19 +304,16 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             f_y = ((anl_F - g_F) / g_F) if 'Long' in y_Y else ((g_F - anl_F) / g_F)
             acik_kz_toplam += m_M * KALDIRAC * f_y
 
-    # 2. Efektif Kasa (Toplam Kasa + Açık Pozisyonların Anlık Canlı K/Z'si)
     efektif_kasa = toplam_kasa + acik_kz_toplam
-    
-    # 3. Boşta Kalan Nakit (Efektif Kasa - Açık Pozisyon Marjinleri)
     bos_bakiye = efektif_kasa - acik_marjin
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye)
 
 def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir()
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
-        return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz! Tüm paranız işlemlerdeyse önce açık bir işlemi kapatarak boşa nakit çıkarmalısınız."
+        return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
         
     df = islem_gecmisi_getir()
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
@@ -336,7 +330,6 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     }])
     df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
     
-    # Tüm tablo boyunca Guncel_Kasa sütununu kümülatif olarak yeniden hesapla
     baz_bakiye = BASLANGIC_BAKIYE
     if os.path.exists(ARSIV_KLASORU):
         try:
@@ -356,7 +349,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
-    if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok), işlem açılamaz!"
+    if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda, işlem açılamaz!"
     _, _, mevcut_bakiye = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
@@ -531,7 +524,6 @@ if aktif_coinler:
 else:
     for v in islenen_veriler: v["Sepet_Orani"] = 0.0
 
-# Değerleri al
 toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler:
@@ -561,10 +553,7 @@ with col_ust3:
         </div>
     """, unsafe_allow_html=True)
 with col_ust4:
-    st.markdown("""
-        <div class="metric-container" style="padding: 11px !important;">
-            <p style="color: #495057; margin: 0px; font-size: 13px; font-weight: bold;">👝 Kasa Sermaye</p>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="metric-container" style="padding: 11px !important;"><p style="color: #495057; margin: 0px; font-size: 13px; font-weight: bold;">👝 Kasa Sermaye</p>', unsafe_allow_html=True)
     if st.button("💸 Para Yatır / Çek", use_container_width=True):
         st.session_state['kasa_islem_acik'] = not st.session_state['kasa_islem_acik']
         st.rerun()
@@ -689,7 +678,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
+    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
     
     secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
     hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -881,3 +870,26 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
                 <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
                 <hr style="border-color: #ced4da; margin: 8px 0px;">
+                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
+                <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("---")
+        st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
+        if os.path.exists(ARSIV_KLASORU):
+            try:
+                arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
+                if arsiv_dosyalari:
+                    arsiv_dosyalari.sort()
+                    secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
+                    if secilen_arsiv:
+                        df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
+                        st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
+                else: st.info("Henüz 50 işleme ulaşılmadı.")
+            except: st.info("Arşiv yüklenirken bilgi alınamadı.")
+        else: st.info("Arşiv klasörü henüz oluşturulmadı.")
+    else:
+        st.info("Henüz kapanmış işlem bulunmuyor.")
+else: 
+    st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")

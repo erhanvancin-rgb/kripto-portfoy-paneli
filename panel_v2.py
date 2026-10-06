@@ -291,7 +291,10 @@ def bakiye_durumunu_getir():
     toplam_kasa = baz_bakiye + toplam_hareketler
     acik_df = df[df['Durum'] == 'Acik']
     acik_marjin = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum() if not acik_df.empty else 0.0
-    return float(toplam_kasa), float(toplam_kasa - acik_marjin)
+    
+    # DÜZELTME: Mevcut boş bakiye = Toplam Kasa - Açık Pozisyon Marjinleri
+    bos_bakiye = toplam_kasa - acik_marjin
+    return float(toplam_kasa), float(bos_bakiye)
 
 def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()

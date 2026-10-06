@@ -272,8 +272,9 @@ def elli_islem_arsiv_kontrol():
 
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df = islem_gecmisi_getir(sheet_guncelle=False)
-    if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
+    if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
     
+    # Kapanmış işlemlerin ve para yatırma/çekme işlemlerinin net toplamı (Toplam Kasa)
     kapanan_df = df[df['Durum'].isin(['Kar', 'Zarar', 'Para_Yatir', 'Para_Cek'])]
     toplam_hareketler = pd.to_numeric(kapanan_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not kapanan_df.empty else 0.0
     
@@ -288,9 +289,10 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                     baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
         except: pass
     
+    # 1. Toplam Kasa (Yalnızca kapatılan işlemler + para yatırma/çekme net sonucu)
     toplam_kasa = baz_bakiye + toplam_hareketler
     
-    # Açık pozisyonların anlık kâr/zararını hesapla
+    # Açık pozisyonların anlık kâr/zararı ve kilitli marjinleri
     acik_df = df[df['Durum'] == 'Acik']
     acik_marjin = 0.0
     acik_kz_toplam = 0.0
@@ -305,15 +307,15 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             f_y = ((anl_F - g_F) / g_F) if 'Long' in y_Y else ((g_F - anl_F) / g_F)
             acik_kz_toplam += m_M * KALDIRAC * f_y
 
-    # Efektif Kasa (Toplam Kasa + Açık Pozisyonların Anlık K/Z'si)
+    # 2. Efektif Kasa (Toplam Kasa + Açık Pozisyonların Anlık Canlı K/Z'si)
     efektif_kasa = toplam_kasa + acik_kz_toplam
     
-    # Boşta kalan nakit bakiye (Efektif Kasa - Açık Pozisyon Marjinleri)
+    # 3. Boşta Kalan Nakit (Efektif Kasa - Açık Pozisyon Marjinleri)
     bos_bakiye = efektif_kasa - acik_marjin
-    return float(efektif_kasa), float(bos_bakiye)
+    return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye)
 
 def kasa_islem_ekle(islem_tipi, miktar, aciklama):
-    toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
+    toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir()
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz! Tüm paranız işlemlerdeyse önce açık bir işlemi kapatarak boşa nakit çıkarmalısınız."
     if miktar <= 0:
@@ -339,7 +341,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
     if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok), işlem açılamaz!"
-    _, mevcut_bakiye = bakiye_durumunu_getir()
+    _, _, mevcut_bakiye = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -348,7 +350,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
-    toplam_kasa, _ = bakiye_durumunu_getir()
+    toplam_kasa, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
         "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
         "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
@@ -513,9 +515,8 @@ if aktif_coinler:
 else:
     for v in islenen_veriler: v["Sepet_Orani"] = 0.0
 
-# Güncel efektif kasa ve boş bakiye hesaplaması
-efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir(ortak_fiyat_havuzu)
-toplam_kasa, _ = bakiye_durumunu_getir(ortak_fiyat_havuzu)
+# Değerleri al
+toplam_kasa, efektif_kasa, mevcut_bakiye = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
@@ -532,14 +533,14 @@ with col_ust1:
 with col_ust2:
     st.markdown(f"""
         <div class="metric-container">
-            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa (Canlı)</p>
+            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa (Canlı Portföy)</p>
             <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1>
         </div>
     """, unsafe_allow_html=True)
 with col_ust3:
     st.markdown(f"""
         <div class="metric-container">
-            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa (Ana)</p>
+            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa (Net Kapanan)</p>
             <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1>
         </div>
     """, unsafe_allow_html=True)

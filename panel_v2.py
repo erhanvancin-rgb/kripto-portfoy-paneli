@@ -173,7 +173,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. ANA MATRİS İVMELİ MOTORu
+# 1. ANA MATRİS İVMELİ MOTORU (Kademeli 120 / 180 / 220 Baraj Sınırı)
 def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
@@ -204,7 +204,7 @@ def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     elif k_yuzde >= gereken_baraj_yuzdesi and k_yuzde > y_yuzde:
         matris_yon = "Short"
 
-    return anlik_fiyat, matris_yon, y_yuzde, gereken_baraj_yuzdesi
+    return anlik_fiyat, matris_yon, y_yuzde, gereken_baraj_yuzdesi, toplam_y, toplam_k
 
 # 2. D (DOMİNANS) SÜZGECİ
 def d_puanli_ivmeli_analiz(risk_yuzdesi):
@@ -631,7 +631,7 @@ islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
 
 for sembol in coinler:
-    anlik_fiyat, m_yon, y_yuzde, baraj_yuzdesi = matris_ivmeli_analiz(sembol, risk_yuzdesi)
+    anlik_fiyat, m_yon, y_yuzde, baraj_yuzdesi, toplam_y, toplam_k = matris_ivmeli_analiz(sembol, risk_yuzdesi)
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
 
     gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
@@ -656,7 +656,9 @@ for sembol in coinler:
         "anlik_fiyat": anlik_fiyat, 
         "m_yon": suanki_filtrelenmis_yon, 
         "y_yuzde": y_yuzde,
-        "baraj_yuzdesi": baraj_yuzdesi
+        "baraj_yuzdesi": baraj_yuzdesi,
+        "toplam_y": toplam_y,
+        "toplam_k": toplam_k
     })
 
 # ANLIK OLARAK OTOMATİK STOP VE TP KONTROLÜ
@@ -677,8 +679,11 @@ for data in islenen_ham_veriler:
     anlik_fiyat = data["anlik_fiyat"]
     filtrelenmis_yon = data["m_yon"]
     baraj_yuzdesi = data["baraj_yuzdesi"]
+    toplam_y = data["toplam_y"]
+    toplam_k = data["toplam_k"]
     
     matris_farki = abs(y_yuzde - 50.0) * 2.0 
+    matris_puani = matris_farki * 50.0  # Net puan hesaplaması
 
     y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
     k_gorsel = 10 - y_gorsel
@@ -695,12 +700,11 @@ for data in islenen_ham_veriler:
         is_notr = False
         aktif_yon_turu = filtrelenmis_yon
         
+        aktif_yon_bar_sayisi = toplam_y if aktif_yon_turu == "Long" else toplam_k
         aktif_yon_yuzdesi = y_yuzde if aktif_yon_turu == "Long" else k_yuzde
         
-        # KESİN PUAN KONTROLÜ: 100 Puanın altındaysa ASLA Güçlü Trend olamaz!
-        gercek_matris_puani = matris_farki * 50.0 
-        
-        if aktif_yon_yuzdesi >= baraj_yuzdesi and gercek_matris_puani >= 100.0:
+        # KESİN KURAL: Güçlü Trend olabilmesi için HEM puanın >= 101 OLMASI HEM DE bar sayısının >= 181 OLMASI ŞARTTIR!
+        if aktif_yon_yuzdesi >= baraj_yuzdesi and matris_puani >= 101.0 and aktif_yon_bar_sayisi >= 181:
             trend = f"Güçlü Trend {aktif_yon_turu}"
         elif aktif_yon_yuzdesi >= baraj_yuzdesi:
             trend = f"{aktif_yon_turu} (Onaylı)"
@@ -1041,7 +1045,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Gires_Fiyat_Str'] if 'Gires_Fiyat_Str' in row else row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(portfoy_html, unsafe_allow_html=True)
 

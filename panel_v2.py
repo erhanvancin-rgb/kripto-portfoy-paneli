@@ -347,7 +347,7 @@ toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
 if 'trend_gecmisleri' not in st.session_state:
     st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
 
-# --- 1. AÇILIŞ RİSKİ DOĞRUDAN %75 GÜVENLİ ---
+# --- AÇILIŞ RİSKİ DOĞRUDAN %75 GÜVENLİ ---
 if 'risk_yuzde_potansi' not in st.session_state:
     st.session_state['risk_yuzde_potansi'] = 75.0
 
@@ -361,7 +361,7 @@ with col_m1:
     st.markdown(f"""
         <div class="metric-container">
             <p style="color: #495057; margin: 0px; font-size: 16px; font-weight: bold;">💰 Anlık Toplam Kasa</p>
-            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{toplam_kasa:,.2f} $ <span style="font-size: 18px; color: rgb(130, 0, 0) if toplam_kasa - BASLANGIC_BAKIYE < 0 else rgb(0, 130, 0);">({toplam_kasa - BASLANGIC_BAKIYE:+,.2f} $)</span></h1>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 32px;">{toplam_kasa:,.2f} $ <span style="font-size: 18px; color: {'rgb(130, 0, 0)' if toplam_kasa - BASLANGIC_BAKIYE < 0 else 'rgb(0, 130, 0)'};">({toplam_kasa - BASLANGIC_BAKIYE:+,.2f} $)</span></h1>
         </div>
     """, unsafe_allow_html=True)
 with col_m2:
@@ -641,18 +641,15 @@ if not df_gecmis.empty:
         anlik_fiyat_str = f"{row['Anlik_Fiyat_Deger']:,.4f}&nbsp;$" if row['Coin'] == 'XRP/USDT' else f"{row['Anlik_Fiyat_Deger']:,.2f}&nbsp;$"
         anlik_fiyat_h = f'<div style="background-color: {fiyat_stil}; padding: 5px; font-weight: bold;">{anlik_fiyat_str}</div>'
         
-        # Kapanış Fiyatı sütunu mantığı ve renklendirmesi
         d_val = row['Durum']
         if d_val == 'Acik':
             kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
             durum_h = '<div style="background-color: rgba(13, 110, 253, 0.2); color: rgb(13, 110, 253); padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
         else:
-            # Kapanan işlem kar/zarar durumuna göre kapanış fiyatı hücresini renklendir
             is_kar = row['Net_Kar_Zarar'] >= 0
             k_stil = "rgba(0, 130, 0, 0.2)" if is_kar else "rgba(130, 0, 0, 0.2)"
             k_renk_txt = "rgb(0, 130, 0)" if is_kar else "rgb(130, 0, 0)"
             
-            # Kapanış fiyatını yaklaşık simüle edelim veya anlık fiyattan basalım
             k_fiyat_val = row['Anlik_Fiyat_Deger']
             k_fiyat_str = f"{k_fiyat_val:,.4f}&nbsp;$" if row['Coin'] == 'XRP/USDT' else f"{k_fiyat_val:,.2f}&nbsp;$"
             kapanis_fiyat_h = f'<div style="background-color: {k_stil}; color: {k_renk_txt}; padding: 5px; font-weight: bold;">{k_fiyat_str}</div>'
@@ -675,4 +672,56 @@ if not df_gecmis.empty:
     if not kapananlar_df.empty:
         karli_sayisi, zararli_sayisi = 0, 0
         toplam_kazanc_dolar, toplam_kayip_dolar = 0.0, 0.0
-        for idx, r in kapananlar
+        for idx, r in kapananlar_df.iterrows():
+            val = float(pd.to_numeric(r['Net_Kar_Zarar'], errors='coerce') or 0.0)
+            if val >= 0: karli_sayisi += 1; toplam_kazanc_dolar += val
+            else: zararli_sayisi += 1; toplam_kayip_dolar += abs(val)
+                
+        toplam_kapanan = len(kapananlar_df)
+        karli_oran = (karli_sayisi / toplam_kapanan) * 100 if toplam_kapanan > 0 else 0
+        zararli_oran = (zararli_sayisi / toplam_kapanan) * 100 if toplam_kapanan > 0 else 0
+        net_fark_dolar = toplam_kazanc_dolar - toplam_kayip_dolar
+        
+        col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
+        with col_p1:
+            df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+            fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#00FF00', 'Zararlı İşlemler': '#FF0000'})
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col_p2:
+            st.markdown("#### 📈 Strateji Metrikleri")
+            st.metric("Toplam Kapanan İşlem", f"{toplam_kapanan} Adet")
+            st.metric("🟢 Kârlı Kapanma", f"{karli_sayisi} Adet (%{karli_oran:.1f})")
+            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oran:.1f})")
+            
+        with col_p3:
+            st.markdown("#### 💰 Para Değerleri Bloku")
+            st.markdown(f"""
+            <div class="para-blogu">
+                <p style="color: rgb(0, 130, 0); margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
+                <h3 style="color: rgb(0, 130, 0); margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
+                <p style="color: rgb(130, 0, 0); margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
+                <h3 style="color: rgb(130, 0, 0); margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
+                <hr style="border-color: #ced4da; margin: 8px 0px;">
+                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
+                <h3 style="color: {"rgb(0, 130, 0)" if net_fark_dolar >= 0 else "rgb(130, 0, 0)"}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("---")
+        st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
+        if os.path.exists(ARSIV_KLASORU):
+            arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
+            if arsiv_dosyalari:
+                arsiv_dosyalari.sort()
+                secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
+                if secilen_arsiv:
+                    df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
+                    st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
+            else: st.info("Henüz 50 işleme ulaşılmadı.")
+        else: st.info("Arşiv klasörü henüz oluşturulmadı.")
+    else:
+        st.info("Henüz kapanmış işlem bulunmuyor.")
+else: 
+    st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")

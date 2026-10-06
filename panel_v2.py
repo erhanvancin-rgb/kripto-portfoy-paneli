@@ -147,9 +147,7 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
 def makro_kline_analiz(symbol_or_type, interval_str="1h", limit_adet=1200):
     headers = {'User-Agent': 'Mozilla/5.0'}
     ts = int(time.time() * 1000)
-    # Eğer symbol_or_type 'TOTAL' veya 'USDT.D' ise simüle edelim ya da Binance genel proxy verisi kullanalım
     try:
-        # Gerçek Binance sembolleri üzerinden simüle veya doğrudan kline çekme
         url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval_str}&limit={limit_adet}&_t={ts}"
         r = requests.get(url, headers=headers, timeout=2.0)
         if r.status_code == 200:
@@ -158,7 +156,6 @@ def makro_kline_analiz(symbol_or_type, interval_str="1h", limit_adet=1200):
             for bar in data:
                 o, c = float(bar[1]), float(bar[4])
                 if symbol_or_type == 'USDT.D':
-                    # USDT.D için ters mantık (düşüş yeşil sayılır)
                     if c < o: yesil += 1
                     elif c > o: kirmizi += 1
                 else:
@@ -168,7 +165,7 @@ def makro_kline_analiz(symbol_or_type, interval_str="1h", limit_adet=1200):
             puan = (yesil / toplam * 100.0) if toplam > 0 else 50.0
             return puan
     except: pass
-    return 76.0 # Varsayılan güvenli skor
+    return 76.0
 
 def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
@@ -337,210 +334,3 @@ def elli_islem_arsiv_kontrol():
             if not os.path.exists(ARSIV_KLASORU):
                 os.makedirs(ARSIV_KLASORU)
             blok_sayisi = toplam_islem // 50
-            for b in range(blok_sayisi):
-                bas_i = b * 50
-                bit_i = (b + 1) * 50
-                blok_df = df.iloc[bas_i:bit_i]
-                yol = os.path.join(ARSIV_KLASORU, f"islem_arsivi_{bas_i+1}_{bit_i}.csv")
-                if not os.path.exists(yol):
-                    blok_df.to_csv(yol, sep=';', index=False)
-    except: pass
-
-def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
-    df_trade = islem_gecmisi_getir(sheet_guncelle=False)
-    df_kasa = kasa_defteri_getir()
-    
-    net_kasa_hareketleri = BASLANGIC_BAKIYE
-    
-    if not df_kasa.empty:
-        net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
-        
-    if not df_trade.empty:
-        kap_trades = df_trade[df_trade['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
-        if not kap_trades.empty:
-            trade_sonuc_defterde = 0.0
-            if not df_kasa.empty and 'Islem_Turu' in df_kasa.columns:
-                ts_df = df_kasa[df_kasa['Islem_Turu'] == 'Trade_Sonuc']
-                if not ts_df.empty:
-                    trade_sonuc_defterde = pd.to_numeric(ts_df['Tutar'], errors='coerce').fillna(0.0).sum()
-            
-            gercek_trade_toplam = pd.to_numeric(kap_trades['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum()
-            if gercek_trade_toplam != trade_sonuc_defterde:
-                net_kasa_hareketleri += (gercek_trade_toplam - trade_sonuc_defterde)
-        
-    toplam_kasa = net_kasa_hareketleri
-    
-    acik_df = df_trade[df_trade['Durum'] == 'Acik'] if not df_trade.empty else pd.DataFrame()
-    aktif_marjin_toplami = 0.0
-    acik_kz_toplam = 0.0
-    
-    if not acik_df.empty:
-        aktif_marjin_toplami = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum()
-        for _, rw in acik_df.iterrows():
-            c_SYM = rw['Coin']
-            g_F = float(rw['Giris_Fiyat'])
-            m_M = float(rw['Islem_Miktari'])
-            y_Y = rw['Yon']
-            anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
-            f_y = ((anl_F - g_F) / g_F) if 'Long' in y_Y else ((g_F - anl_F) / g_F)
-            acik_kz_toplam += m_M * KALDIRAC * f_y
-
-    efektif_kasa = toplam_kasa + acik_kz_toplam
-    bos_bakiye = toplam_kasa - aktif_marjin_toplami
-    
-    return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
-
-def kasa_islem_ekle(islem_tipi, miktar, aciklama):
-    toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim = bakiye_durumunu_getir()
-    if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
-        return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
-    if miktar <= 0:
-        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
-        
-    tutar_val = miktar if islem_tipi == "Para_Yatir" else -miktar
-    kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
-    return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
-
-def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
-    if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda, işlem açılamaz!"
-    _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
-    islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
-    if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
-    if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
-        
-    df = islem_gecmisi_getir()
-    yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
-    
-    toplam_kasa, _, _, _ = bakiye_durumunu_getir()
-    yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
-        "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
-        "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, "Durum": "Acik", 
-        "Net_Kar_Zarar": 0.0, "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0
-    }])
-    df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
-    dataframe_guncelle_gsheets(df)
-    elli_islem_arsiv_kontrol()
-    return True, f"✅ {coin} emri başarıyla verildi!"
-
-def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
-    df = islem_gecmisi_getir()
-    idx = df[df['Islem_ID'] == islem_id].index
-    if idx.empty: return False, "İşlem bulunamadı!"
-    row = df.loc[idx[0]]
-    if row['Durum'] != 'Acik': return False, "Bu işlem kapalı!"
-    try:
-        giris_f = float(row['Giris_Fiyat'])
-        miktar = float(row['Islem_Miktari'])
-        fark_yuzde = ((anlik_kapatma_fiyati - giris_f) / giris_f) if 'Long' in row['Yon'] else ((giris_f - anlik_kapatma_fiyati) / giris_f)
-        net_kar = miktar * KALDIRAC * fark_yuzde
-        suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
-        
-        durum_metni = 'Kapandi (Kar)' if net_kar >= 0 else 'Kapandi (Zarar)'
-        df.at[idx[0], 'Durum'] = durum_metni
-        df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
-        df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
-        df.at[idx[0], 'Kapanis_Fiyati'] = float(round(anlik_kapatma_fiyati, 4))
-        
-        toplam_kasa, _, _, _ = bakiye_durumunu_getir()
-        df.at[idx[0], 'Guncel_Kasa'] = float(round(toplam_kasa + net_kar, 2))
-        
-        dataframe_guncelle_gsheets(df)
-        
-        trade_aciklama = f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})"
-        kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
-        
-        elli_islem_arsiv_kontrol()
-        return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
-    except Exception as e: return False, f"Hata: {str(e)}"
-
-# --- OTOMATİK STOP VE KÂR AL (TP) KONTROL MEKANİZMASI ---
-def otomatik_pozisyon_kontrolu(ortak_fiyat_havuzu):
-    df = islem_gecmisi_getir(sheet_guncelle=False)
-    if df.empty or 'Durum' not in df.columns: return
-    
-    acik_pozlar = df[df['Durum'] == 'Acik']
-    if acik_pozlar.empty: return
-    
-    degisiklik_oldu = False
-    for _, row in acik_pozlar.iterrows():
-        is_id = int(row['Islem_ID'])
-        coin = row['Coin']
-        yon = row['Yon']
-        stop_f = float(row['Stop'])
-        kar_al_f = float(row['Kar_Al'])
-        
-        anlik_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 0.0))
-        if anlik_f <= 0: continue
-        
-        kapat_gerekli = False
-        kapanis_fiyat_degeri = anlik_f
-        
-        if 'Long' in yon:
-            if stop_f > 0 and anlik_f <= stop_f:
-                kapat_gerekli = True
-                kapanis_fiyat_degeri = stop_f
-            elif kar_al_f > 0 and anlik_f >= kar_al_f:
-                kapat_gerekli = True
-                kapanis_fiyat_degeri = kar_al_f
-        elif 'Short' in yon:
-            if stop_f > 0 and anlik_f >= stop_f:
-                kapat_gerekli = True
-                kapanis_fiyat_degeri = stop_f
-            elif kar_al_f > 0 and anlik_f <= kar_al_f:
-                kapat_gerekli = True
-                kapanis_fiyat_degeri = kar_al_f
-                
-        if kapat_gerekli:
-            manuel_islem_kapat(is_id, kapanis_fiyat_degeri)
-            degisiklik_oldu = True
-            
-    if degisiklik_oldu:
-        st.toast("⚡ Otomatik Stop/TP Kontrolü: Hedefe ulaşan pozisyonlar otomatik kapatıldı!", icon="🚨")
-
-# --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli")
-elli_islem_arsiv_kontrol()
-
-if 'trend_gecmisleri' not in st.session_state:
-    st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
-
-if 'risk_yuzde_potansi' not in st.session_state:
-    st.session_state['risk_yuzde_potansi'] = 75.0
-
-if 'kasa_islem_acik' not in st.session_state:
-    st.session_state['kasa_islem_acik'] = False
-
-if 'kasa_islem_turu' not in st.session_state:
-    st.session_state['kasa_islem_turu'] = "Para Yatır"
-
-if 'sadece_aktifleri_goster' not in st.session_state:
-    st.session_state['sadece_aktifleri_goster'] = False
-
-islenen_ham_veriler = []
-ortak_fiyat_havuzu = {} 
-
-for sembol in coinler:
-    anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, st.session_state['risk_yuzde_potansi'])
-    ortak_fiyat_havuzu[sembol] = anlik_fiyat 
-
-    gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
-    gecmis_liste.append(m_yon)
-    if len(gecmis_liste) > 20:
-        gecmis_liste.pop(0)
-
-    long_sayisi = gecmis_liste.count("Long")
-    short_sayisi = gecmis_liste.count("Short")
-
-    mevcut_uzunluk = len(gecmis_liste)
-    gereken_onay = max(1, int(mevcut_uzunluk * 0.7))
-    
-    suanki_filtrelenmis_yon = "Notr"
-    if long_sayisi >= gereken_onay:
-        suanki_filtrelenmis_yon = "Long"
-    elif short_sayisi >= gereken_onay:
-        suanki_filtrelenmis_yon = "Short"
-
-    islenen_ham_veriler.append({
-        "sembol": sembol, "anlik_fiyat

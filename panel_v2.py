@@ -171,7 +171,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. ANA MATRİS İVMELİ İSTEMCİ (Kademeli Baraj Hesaplaması)
+# 1. ANA MATRİS İVMELİ MOTORU (5 Zaman x 240 Bar Tarama)
 def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
@@ -187,13 +187,11 @@ def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = (toplam_k / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
-    # Kademeli İvme Hesaplama: %50 -> 120 bar (%50), %75 -> 180 bar (%75), %100 -> 220 bar (~%91.6)
+    # Kademeli Bar Sınırı: %50 -> 120 bar, %75 -> 180 bar, %100 -> 220 bar
     if risk_yuzdesi <= 75.0:
-        # %50 ile %75 arası doğrusal geçiş (120 bar -> 180 bar)
         oran_f = (risk_yuzdesi - 50.0) / 25.0
         gereken_bar = 120 + (180 - 120) * oran_f
     else:
-        # %75 ile %100 arası ivmeli geçiş (180 bar -> 220 bar)
         oran_f = (risk_yuzdesi - 75.0) / 25.0
         gereken_bar = 180 + (220 - 180) * oran_f
 
@@ -207,7 +205,7 @@ def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
 
     return anlik_fiyat, matris_yon, y_yuzde, gereken_baraj_yuzdesi
 
-# 2. D (DOMİNANS) SÜZGECİ (İvmeli Puan ve Baraj Kurgusu)
+# 2. D (DOMİNANS) SÜZGECİ (%50'de 120 bar, %75'te 180 bar, %100'de 220 bar tarama x 5 zaman)
 def d_puanli_ivmeli_analiz(risk_yuzdesi):
     y32, k32 = makro_kline_analiz('BTC.D', "8m", 240)
     y16, k16 = makro_kline_analiz('BTC.D', "4m", 240)
@@ -215,7 +213,6 @@ def d_puanli_ivmeli_analiz(risk_yuzdesi):
     y4, k4 = makro_kline_analiz('BTC.D', "1m", 240)
     y2, k2 = makro_kline_analiz('BTC.D', "30s", 240)
 
-    # Risk oranına göre katman barajları ve max puanlar kademelendirilir
     if risk_yuzdesi <= 75.0:
         f = (risk_yuzdesi - 50.0) / 25.0
         aranan_onay_bar = int(120 + (180 - 120) * f)
@@ -254,8 +251,9 @@ def d_puanli_ivmeli_analiz(risk_yuzdesi):
     elif toplam_puan <= -hedef_puan_baraji: return "Short"
     return "Notr"
 
-# 3. UT SÜZGECİ (TOTAL vs USDT.D Saf Çoğunluk Çaprazlaması)
+# 3. UT SÜZGECİ (5 Zaman x 240 Bar Sayısal Çoğunluk ve Market Renklendirme Yapısı)
 def ut_cogunluk_analiz():
+    # TOTAL (5 Zaman x 240 Bar)
     t_y32, t_k32 = makro_kline_analiz('TOTAL', "8m", 240)
     t_y16, t_k16 = makro_kline_analiz('TOTAL', "4m", 240)
     t_y8, t_k8 = makro_kline_analiz('TOTAL', "2m", 240)
@@ -266,6 +264,7 @@ def ut_cogunluk_analiz():
     tot_k = t_k32 + t_k16 + t_k8 + t_k4 + t_k2
     total_yon = "Long" if tot_y > tot_k else ("Short" if tot_k > tot_y else "Notr")
     
+    # USDT.D (5 Zaman x 240 Bar)
     u_y32, u_k32 = makro_kline_analiz('USDT.D', "8m", 240)
     u_y16, u_k16 = makro_kline_analiz('USDT.D', "4m", 240)
     u_y8, u_k8 = makro_kline_analiz('USDT.D', "2m", 240)
@@ -460,7 +459,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
         
     tutar_val = miktar if islem_tipi == "Para_Yatir" else -miktar
     kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
@@ -679,11 +678,20 @@ for data in islenen_ham_veriler:
         aktif_yon_turu = filtrelenmis_yon
         
         aktif_yon_yuzdesi = y_yuzde if aktif_yon_turu == "Long" else k_yuzde
-        # Tam barajda veya üstünde "Onaylı", barajı 1 milim geçtiği an "Güçlü Trend" (100 puan / güçlü eşik üstü)
-        if aktif_yon_yuzdesi > baraj_yuzdesi:
+        
+        # Puan veya Baraj Puanı 100 ve üzerindeyse "Güçlü Trend", aksi takdirde "(Onaylı)"
+        # %50 riskte 50 puan, %75 riskte 75 puan, %100 riskte 100+ puan barajı baz alınır.
+        hedef_puan_esigi = 50.0 + (risk_yuzdesi - 50.0) * (50.0 / 50.0) # 50 ile 100 arası ölçek
+        mevcut_tahmini_puan = matris_farki * 50.0 # Yaklaşık puan karşılığı
+        
+        if aktif_yon_yuzdesi >= baraj_yuzdesi and mevcut_tahmini_puan >= 100.0:
             trend = f"Güçlü Trend {aktif_yon_turu}"
-        else:
+        elif aktif_yon_yuzdesi >= baraj_yuzdesi:
             trend = f"{aktif_yon_turu} (Onaylı)"
+        else:
+            is_notr = True
+            aktif_yon_turu = "Nötr"
+            trend = "Nötr (Beklemede)"
 
     if aktif_yon_turu == "Long":
         stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025

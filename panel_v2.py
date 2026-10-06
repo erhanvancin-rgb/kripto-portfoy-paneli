@@ -155,7 +155,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
             yesil, kirmizi = 0, 0
             for bar in data:
                 o, c = float(bar[1]), float(bar[4])
-                if symbol_or_type == 'USDT.D': # USDT.D için ters orantı kurgusu korunuyor
+                if symbol_or_type == 'USDT.D':
                     if c < o: yesil += 1
                     elif c > o: kirmizi += 1
                 else:
@@ -171,8 +171,8 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. YENİ MATRİS MOTORU (1200 Bar Saf Çoğunluk)
-def matris_cogunluk_hesapla(coin_symbol):
+# 1. ANA MATRİS İVMELİ İSTEMCİ (Kademeli Baraj Hesaplaması)
+def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
     y32, k32 = kline_cek_detayli(coin_symbol, "8m", 240)
@@ -185,52 +185,77 @@ def matris_cogunluk_hesapla(coin_symbol):
     toplam_k = k32 + k16 + k8 + k4 + k2
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
+    k_yuzde = (toplam_k / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
 
-    if toplam_y > toplam_k:
-        matris_yon = "Long"
-    elif toplam_k > toplam_y:
-        matris_yon = "Short"
+    # Kademeli İvme Hesaplama: %50 -> 120 bar (%50), %75 -> 180 bar (%75), %100 -> 220 bar (~%91.6)
+    if risk_yuzdesi <= 75.0:
+        # %50 ile %75 arası doğrusal geçiş (120 bar -> 180 bar)
+        oran_f = (risk_yuzdesi - 50.0) / 25.0
+        gereken_bar = 120 + (180 - 120) * oran_f
     else:
-        matris_yon = "Notr"
+        # %75 ile %100 arası ivmeli geçiş (180 bar -> 220 bar)
+        oran_f = (risk_yuzdesi - 75.0) / 25.0
+        gereken_bar = 180 + (220 - 180) * oran_f
 
-    return anlik_fiyat, matris_yon, y_yuzde
+    gereken_baraj_yuzdesi = (gereken_bar / 240.0) * 100.0
 
-# 2. YENİ D (DOMİNANS) SÜZGECİ (Ağırlıklı Puanlı ve "> Karşıt Renk" Korumalı)
-def d_puanli_analiz(risk_yuzdesi):
+    matris_yon = "Notr"
+    if y_yuzde >= gereken_baraj_yuzdesi and y_yuzde > k_yuzde:
+        matris_yon = "Long"
+    elif k_yuzde >= gereken_baraj_yuzdesi and k_yuzde > y_yuzde:
+        matris_yon = "Short"
+
+    return anlik_fiyat, matris_yon, y_yuzde, gereken_baraj_yuzdesi
+
+# 2. D (DOMİNANS) SÜZGECİ (İvmeli Puan ve Baraj Kurgusu)
+def d_puanli_ivmeli_analiz(risk_yuzdesi):
     y32, k32 = makro_kline_analiz('BTC.D', "8m", 240)
     y16, k16 = makro_kline_analiz('BTC.D', "4m", 240)
     y8, k8 = makro_kline_analiz('BTC.D', "2m", 240)
     y4, k4 = makro_kline_analiz('BTC.D', "1m", 240)
     y2, k2 = makro_kline_analiz('BTC.D', "30s", 240)
 
-    oran_faktor = (risk_yuzdesi - 50.0) / 50.0
-    aranan_onay_bar = int(90 + (180 - 90) * oran_faktor)
-    hedef_baraj = 50.0 + (100.0 - 50.0) * oran_faktor
+    # Risk oranına göre katman barajları ve max puanlar kademelendirilir
+    if risk_yuzdesi <= 75.0:
+        f = (risk_yuzdesi - 50.0) / 25.0
+        aranan_onay_bar = int(120 + (180 - 120) * f)
+        hedef_puan_baraji = 50.0 + (75.0 - 50.0) * f
+        max_p_32 = 2.5 + (5.0 - 2.5) * f
+        max_p_16 = 5.0 + (10.0 - 5.0) * f
+        max_p_8 = 7.5 + (15.0 - 7.5) * f
+        max_p_4 = 15.0 + (30.0 - 15.0) * f
+        max_p_2 = 20.0 + (40.0 - 20.0) * f
+    else:
+        f = (risk_yuzdesi - 75.0) / 25.0
+        aranan_onay_bar = int(180 + (220 - 180) * f)
+        hedef_puan_baraji = 75.0 + (100.0 - 75.0) * f
+        max_p_32 = 5.0 + (10.0 - 5.0) * f
+        max_p_16 = 10.0 + (20.0 - 10.0) * f
+        max_p_8 = 15.0 + (30.0 - 15.0) * f
+        max_p_4 = 30.0 + (60.0 - 30.0) * f
+        max_p_2 = 40.0 + (80.0 - 40.0) * f
 
-    def katman_hesapla(y_sayisi, k_sayisi, max_puan_100):
-        max_puan = max_puan_100 * (0.5 + 0.5 * oran_faktor)
-        # KURAL: Hem risk barajını geçmeli, HEM DE karşıt yönden sayıca üstün olmalı
+    def katman_hesapla(y_sayisi, k_sayisi, max_p):
         if y_sayisi >= aranan_onay_bar and y_sayisi > k_sayisi:
-            return max_puan * (y_sayisi / 240.0)
+            return max_p * (y_sayisi / 240.0)
         elif k_sayisi >= aranan_onay_bar and k_sayisi > y_sayisi:
-            return -max_puan * (k_sayisi / 240.0)
+            return -max_p * (k_sayisi / 240.0)
         return 0.0
 
-    s_32 = katman_hesapla(y32, k32, 5.0)
-    s_16 = katman_hesapla(y16, k16, 10.0)
-    s_8 = katman_hesapla(y8, k8, 15.0)
-    s_4 = katman_hesapla(y4, k4, 30.0)
-    s_2 = katman_hesapla(y2, k2, 40.0)
+    s_32 = katman_hesapla(y32, k32, max_p_32)
+    s_16 = katman_hesapla(y16, k16, max_p_16)
+    s_8 = katman_hesapla(y8, k8, max_p_8)
+    s_4 = katman_hesapla(y4, k4, max_p_4)
+    s_2 = katman_hesapla(y2, k2, max_p_2)
 
     toplam_puan = s_32 + s_16 + s_8 + s_4 + s_2
     
-    if toplam_puan >= hedef_baraj: return "Long"
-    elif toplam_puan <= -hedef_baraj: return "Short"
+    if toplam_puan >= hedef_puan_baraji: return "Long"
+    elif toplam_puan <= -hedef_puan_baraji: return "Short"
     return "Notr"
 
-# 3. YENİ UT SÜZGECİ (TOTAL vs USDT.D 1200 Bar Saf Çoğunluk Çaprazlaması)
+# 3. UT SÜZGECİ (TOTAL vs USDT.D Saf Çoğunluk Çaprazlaması)
 def ut_cogunluk_analiz():
-    # TOTAL 1200 Bar Taraması
     t_y32, t_k32 = makro_kline_analiz('TOTAL', "8m", 240)
     t_y16, t_k16 = makro_kline_analiz('TOTAL', "4m", 240)
     t_y8, t_k8 = makro_kline_analiz('TOTAL', "2m", 240)
@@ -241,7 +266,6 @@ def ut_cogunluk_analiz():
     tot_k = t_k32 + t_k16 + t_k8 + t_k4 + t_k2
     total_yon = "Long" if tot_y > tot_k else ("Short" if tot_k > tot_y else "Notr")
     
-    # USDT.D 1200 Bar Taraması
     u_y32, u_k32 = makro_kline_analiz('USDT.D', "8m", 240)
     u_y16, u_k16 = makro_kline_analiz('USDT.D', "4m", 240)
     u_y8, u_k8 = makro_kline_analiz('USDT.D', "2m", 240)
@@ -252,7 +276,6 @@ def ut_cogunluk_analiz():
     usdt_k = u_k32 + u_k16 + u_k8 + u_k4 + u_k2
     usdt_yon = "Long" if usdt_y > usdt_k else ("Short" if usdt_k > usdt_y else "Notr")
     
-    # Çapraz Karar Mantığı
     if total_yon == "Long" and usdt_yon == "Short": return "Long"
     if total_yon == "Short" and usdt_yon == "Long": return "Short"
     return "Notr"
@@ -591,7 +614,7 @@ islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
 
 for sembol in coinler:
-    anlik_fiyat, m_yon, y_yuzde = matris_cogunluk_hesapla(sembol)
+    anlik_fiyat, m_yon, y_yuzde, baraj_yuzdesi = matris_ivmeli_analiz(sembol, risk_yuzdesi)
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
 
     gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
@@ -615,14 +638,15 @@ for sembol in coinler:
         "sembol": sembol, 
         "anlik_fiyat": anlik_fiyat, 
         "m_yon": suanki_filtrelenmis_yon, 
-        "y_yuzde": y_yuzde
+        "y_yuzde": y_yuzde,
+        "baraj_yuzdesi": baraj_yuzdesi
     })
 
 # ANLIK OLARAK OTOMATİK STOP VE TP KONTROLÜ
 otomatik_pozisyon_kontrolu(ortak_fiyat_havuzu)
 
-# --- MAKRO ANALİZ: D (Puanlı) ve UT (Çapraz Çoğunluk) ---
-d_yon = d_puanli_analiz(risk_yuzdesi)
+# --- MAKRO ANALİZ: D (Puanlı İvmeli) ve UT (Çoğunluk) ---
+d_yon = d_puanli_ivmeli_analiz(risk_yuzdesi)
 ut_yon = ut_cogunluk_analiz()
 
 d_durum_led = "🟢" if d_yon == "Long" else ("🔴" if d_yon == "Short" else "🟡")
@@ -635,8 +659,8 @@ for data in islenen_ham_veriler:
     k_yuzde = 100.0 - y_yuzde
     anlik_fiyat = data["anlik_fiyat"]
     filtrelenmis_yon = data["m_yon"]
+    baraj_yuzdesi = data["baraj_yuzdesi"]
     
-    # Yeni sepet oranı hesaplaması için netlik farkını kullanıyoruz
     matris_farki = abs(y_yuzde - 50.0) * 2.0 
 
     y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
@@ -653,9 +677,13 @@ for data in islenen_ham_veriler:
     if filtrelenmis_yon != "Notr":
         is_notr = False
         aktif_yon_turu = filtrelenmis_yon
-        trend = f"{aktif_yon_turu} (Onaylı)"
-        if matris_farki > 10.0: # %55 / %45 barajını geçerse Güçlü Trend olarak sunulur
+        
+        aktif_yon_yuzdesi = y_yuzde if aktif_yon_turu == "Long" else k_yuzde
+        # Tam barajda veya üstünde "Onaylı", barajı 1 milim geçtiği an "Güçlü Trend" (100 puan / güçlü eşik üstü)
+        if aktif_yon_yuzdesi > baraj_yuzdesi:
             trend = f"Güçlü Trend {aktif_yon_turu}"
+        else:
+            trend = f"{aktif_yon_turu} (Onaylı)"
 
     if aktif_yon_turu == "Long":
         stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025

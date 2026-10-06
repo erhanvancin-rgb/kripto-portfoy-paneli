@@ -73,7 +73,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- SABİTLER ---
-GOOGLE_SHEET_ADRESI = "KriptoPortfoyVeritabani"  
+GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"  
 ARSIV_KLASORU = "arsiv"
 BASLANGIC_BAKIYE = 500.0
 KALDIRAC = 3 
@@ -194,7 +194,7 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
 
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
 
-def google_sheets_baglan(sayfa_adi="Sayfa1"):
+def google_sheets_baglan(sayfa_adi):
     try:
         if "gcp_service_account" in st.secrets:
             sec_dict = dict(st.secrets["gcp_service_account"])
@@ -203,13 +203,13 @@ def google_sheets_baglan(sayfa_adi="Sayfa1"):
             client = gspread.service_account_from_dict(sec_dict)
         else:
             client = gspread.service_account(filename="credentials.json")
-        return client.open(GOOGLE_SHEET_ADRESI).worksheet(sayfa_adi)
+        return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     except Exception:
         return None
 
 def islem_gecmisi_getir(sheet_guncelle=True):
     beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
-    sheet = google_sheets_baglan("Sayfa1")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None: 
         return pd.DataFrame(columns=beklenen_kolonlar)
     try:
@@ -244,7 +244,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     return df
 
 def dataframe_guncelle_gsheets(df):
-    sheet = google_sheets_baglan("Sayfa1")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is not None:
         try:
             sheet.clear()
@@ -324,7 +324,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df_trade = islem_gecmisi_getir(sheet_guncelle=False)
     df_kasa = kasa_defteri_getir()
     
-    # 1. Net Sermaye Hareketi (Para Yatır / Çek + Kapanan Trade K/Z'leri KasaDefteri'nden okunur)
     net_kasa_hareketleri = BASLANGIC_BAKIYE
     if not df_kasa.empty:
         net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
@@ -356,7 +355,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
         
     tutar_val = miktar if islem_tipi == "Para_Yatir" else -miktar
     kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
@@ -409,7 +408,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         
         dataframe_guncelle_gsheets(df)
         
-        # Kapanan işlemin net kâr veya zararını KasaDefteri'ne otomatik işle
         trade_aciklama = f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})"
         kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
         

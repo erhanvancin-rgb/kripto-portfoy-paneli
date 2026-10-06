@@ -274,8 +274,8 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
     
-    # Kapanmış işlemlerin ve para yatırma/çekme işlemlerinin net toplamı
-    kapanan_df = df[df['Durum'].isin(['Kar', 'Zarar', 'Para_Yatir', 'Para_Cek'])]
+    # Açık olmayan (kapanmış veya sermaye işlemi olan) TÜM satırların net kar/zarar ve transfer toplamını al
+    kapanan_df = df[df['Durum'] != 'Acik']
     toplam_hareketler = pd.to_numeric(kapanan_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not kapanan_df.empty else 0.0
     
     baz_bakiye = BASLANGIC_BAKIYE
@@ -289,7 +289,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                     baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
         except: pass
     
-    # 1. Toplam Kasa (Yalnızca kapatılan işlemler + para yatırma/çekme net sonucu)
+    # 1. Toplam Kasa (Başlangıç bakiyesi + kapatılan tüm işlemlerin ve kasa yatırma/çekmelerinin net toplamı)
     toplam_kasa = baz_bakiye + toplam_hareketler
     
     # Açık pozisyonların anlık kâr/zararı ve kilitli marjinleri
@@ -332,9 +332,25 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
         "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
         "Coin": f"KASA: {aciklama}", "Yon": durum_etiketi, "Zaman_Dilimi": "Sermaye İşlemi", "Giris_Fiyat": 0.0, 
         "Islem_Miktari": 0.0, "Stop": 0.0, "Kar_Al": 0.0, "Durum": durum_etiketi, 
-        "Net_Kar_Zarar": round(net_tutar, 2), "Guncel_Kasa": round(toplam_kasa + net_tutar, 2), "Kapanis_Zamani": suan_tr, "Kapanis_Fiyati": 0.0
+        "Net_Kar_Zarar": round(net_tutar, 2), "Guncel_Kasa": 0.0, "Kapanis_Zamani": suan_tr, "Kapanis_Fiyati": 0.0
     }])
     df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
+    
+    # Tüm tablo boyunca Guncel_Kasa sütununu kümülatif olarak yeniden hesapla
+    baz_bakiye = BASLANGIC_BAKIYE
+    if os.path.exists(ARSIV_KLASORU):
+        try:
+            arsivler = os.listdir(ARSIV_KLASORU)
+            if arsivler:
+                arsivler.sort()
+                son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
+                if not son_arsiv_df.empty: baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
+        except: pass
+        
+    df['Net_Kar_Zarar'] = pd.to_numeric(df['Net_Kar_Zarar'], errors='coerce').fillna(0.0)
+    kapanan_mask = df['Durum'] != 'Acik'
+    df.loc[kapanan_mask, 'Guncel_Kasa'] = baz_bakiye + df.loc[kapanan_mask, 'Net_Kar_Zarar'].cumsum()
+    
     dataframe_guncelle_gsheets(df)
     elli_islem_arsiv_kontrol()
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
@@ -391,7 +407,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
                     if not son_arsiv_df.empty: baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
             except: pass
         df['Net_Kar_Zarar'] = pd.to_numeric(df['Net_Kar_Zarar'], errors='coerce').fillna(0.0)
-        kapanan_mask = df['Durum'].isin(['Kar', 'Zarar', 'Para_Yatir', 'Para_Cek'])
+        kapanan_mask = df['Durum'] != 'Acik'
         df.loc[kapanan_mask, 'Guncel_Kasa'] = baz_bakiye + df.loc[kapanan_mask, 'Net_Kar_Zarar'].cumsum()
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
@@ -865,26 +881,3 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
                 <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
                 <hr style="border-color: #ced4da; margin: 8px 0px;">
-                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
-                <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        st.markdown("---")
-        st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
-        if os.path.exists(ARSIV_KLASORU):
-            try:
-                arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
-                if arsiv_dosyalari:
-                    arsiv_dosyalari.sort()
-                    secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
-                    if secilen_arsiv:
-                        df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
-                        st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
-                else: st.info("Henüz 50 işleme ulaşılmadı.")
-            except: st.info("Arşiv yüklenirken bilgi alınamadı.")
-        else: st.info("Arşiv klasörü henüz oluşturulmadı.")
-    else:
-        st.info("Henüz kapanmış işlem bulunmuyor.")
-else: 
-    st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")

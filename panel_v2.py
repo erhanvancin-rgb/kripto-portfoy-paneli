@@ -334,3 +334,38 @@ def elli_islem_arsiv_kontrol():
             if not os.path.exists(ARSIV_KLASORU):
                 os.makedirs(ARSIV_KLASORU)
             blok_sayisi = toplam_islem // 50
+            for b in range(blok_sayisi):
+                bas_i = b * 50
+                bit_i = (b + 1) * 50
+                blok_df = df.iloc[bas_i:bit_i]
+                yol = os.path.join(ARSIV_KLASORU, f"islem_arsivi_{bas_i+1}_{bit_i}.csv")
+                if not os.path.exists(yol):
+                    blok_df.to_csv(yol, sep=';', index=False)
+    except Exception:
+        pass
+
+def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
+    df_trade = islem_gecmisi_getir(sheet_guncelle=False)
+    df_kasa = kasa_defteri_getir()
+    
+    net_kasa_hareketleri = BASLANGIC_BAKIYE
+    
+    if not df_kasa.empty:
+        net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
+        
+    if not df_trade.empty:
+        kap_trades = df_trade[df_trade['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
+        if not kap_trades.empty:
+            trade_sonuc_defterde = 0.0
+            if not df_kasa.empty and 'Islem_Turu' in df_kasa.columns:
+                ts_df = df_kasa[df_kasa['Islem_Turu'] == 'Trade_Sonuc']
+                if not ts_df.empty:
+                    trade_sonuc_defterde = pd.to_numeric(ts_df['Tutar'], errors='coerce').fillna(0.0).sum()
+            
+            gercek_trade_toplam = pd.to_numeric(kap_trades['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum()
+            if gercek_trade_toplam != trade_sonuc_defterde:
+                net_kasa_hareketleri += (gercek_trade_toplam - trade_sonuc_defterde)
+        
+    toplam_kasa = net_kasa_hareketleri
+    
+    acik_df = df_trade[df_trade['Durum'] == 'Acik'] if not df_trade

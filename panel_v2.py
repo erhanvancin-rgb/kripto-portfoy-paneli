@@ -194,7 +194,7 @@ def detayli_matris_hesapla(coin_symbol, risk_yuzdesi):
 
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
 
-def google_sheets_baglan():
+def google_sheets_baglan(sayfa_adi="Sayfa1"):
     try:
         if "gcp_service_account" in st.secrets:
             sec_dict = dict(st.secrets["gcp_service_account"])
@@ -203,13 +203,13 @@ def google_sheets_baglan():
             client = gspread.service_account_from_dict(sec_dict)
         else:
             client = gspread.service_account(filename="credentials.json")
-        return client.open(GOOGLE_SHEET_ADRESI).worksheet("Sayfa1")
+        return client.open(GOOGLE_SHEET_ADRESI).worksheet(sayfa_adi)
     except Exception:
         return None
 
 def islem_gecmisi_getir(sheet_guncelle=True):
     beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
-    sheet = google_sheets_baglan()
+    sheet = google_sheets_baglan("Sayfa1")
     if sheet is None: 
         return pd.DataFrame(columns=beklenen_kolonlar)
     try:
@@ -244,13 +244,63 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     return df
 
 def dataframe_guncelle_gsheets(df):
-    sheet = google_sheets_baglan()
+    sheet = google_sheets_baglan("Sayfa1")
     if sheet is not None:
         try:
             sheet.clear()
             sheet.append_row(list(df.columns))
             for _, row in df.iterrows(): sheet.append_row(list(row.values))
         except: pass
+
+def kasa_defteri_getir():
+    kolonlar = ["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"]
+    sheet = google_sheets_baglan("KasaDefteri")
+    if sheet is None:
+        return pd.DataFrame(columns=kolonlar)
+    try:
+        ham = sheet.get_all_values()
+    except:
+        return pd.DataFrame(columns=kolonlar)
+        
+    if not ham or len(ham) == 0:
+        try: sheet.append_row(kolonlar)
+        except: pass
+        return pd.DataFrame(columns=kolonlar)
+        
+    satirlar = ham[1:] if len(ham) > 1 else []
+    duz_satirlar = []
+    for s in satirlar:
+        if len(s) < len(kolonlar): s.extend([""] * (len(kolonlar) - len(s)))
+        elif len(s) > len(kolonlar): s = s[:len(kolonlar)]
+        duz_satirlar.append(s)
+        
+    df = pd.DataFrame(duz_satirlar, columns=kolonlar)
+    if not df.empty and 'Islem_ID' in df.columns:
+        df = df[df['Islem_ID'].notna() & (df['Islem_ID'] != "") & (df['Islem_ID'].astype(str) != "Islem_ID")]
+        df['Islem_ID'] = pd.to_numeric(df['Islem_ID'], errors='coerce').fillna(0).astype(int)
+        df['Tutar'] = pd.to_numeric(df['Tutar'].astype(str).str.replace(',', '.').str.strip(), errors='coerce').fillna(0.0).astype(float)
+    return df
+
+def kasa_defteri_guncelle_gsheets(df):
+    sheet = google_sheets_baglan("KasaDefteri")
+    if sheet is not None:
+        try:
+            sheet.clear()
+            sheet.append_row(list(df.columns))
+            for _, row in df.iterrows(): sheet.append_row(list(row.values))
+        except: pass
+
+def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
+    df_kasa = kasa_defteri_getir()
+    yeni_id = 1 if df_kasa.empty else int(pd.to_numeric(df_kasa['Islem_ID'], errors='coerce').max() or 0) + 1
+    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    
+    yeni_kayit = pd.DataFrame([{
+        "Islem_ID": yeni_id, "Zaman": suan_tr,
+        "Islem_Turu": islem_turu, "Tutar": round(tutar, 2), "Aciklama": aciklama
+    }])
+    df_kasa = pd.concat([df_kasa, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
+    kasa_defteri_guncelle_gsheets(df_kasa)
 
 def elli_islem_arsiv_kontrol():
     try:
@@ -271,28 +321,20 @@ def elli_islem_arsiv_kontrol():
     except: pass
 
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
-    df = islem_gecmisi_getir(sheet_guncelle=False)
-    if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, 0.0
+    df_trade = islem_gecmisi_getir(sheet_guncelle=False)
+    df_kasa = kasa_defteri_getir()
     
-    pasif_df = df[df['Durum'] != 'Acik']
-    toplam_hareketler = pd.to_numeric(pasif_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not pasif_df.empty else 0.0
+    # 1. Net Sermaye Hareketi (Para Yatır / Çek + Kapanan Trade K/Z'leri KasaDefteri'nden okunur)
+    net_kasa_hareketleri = BASLANGIC_BAKIYE
+    if not df_kasa.empty:
+        net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
+        
+    toplam_kasa = net_kasa_hareketleri
     
-    baz_bakiye = BASLANGIC_BAKIYE
-    if os.path.exists(ARSIV_KLASORU):
-        try:
-            arsivler = os.listdir(ARSIV_KLASORU)
-            if arsivler:
-                arsivler.sort()
-                son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
-                if not son_arsiv_df.empty: 
-                    baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
-        except: pass
-    
-    toplam_kasa = baz_bakiye + toplam_hareketler
-    
-    acik_df = df[df['Durum'] == 'Acik']
+    acik_df = df_trade[df_trade['Durum'] == 'Acik'] if not df_trade.empty else pd.DataFrame()
     aktif_marjin_toplami = 0.0
     acik_kz_toplam = 0.0
+    
     if not acik_df.empty:
         aktif_marjin_toplami = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum()
         for _, rw in acik_df.iterrows():
@@ -314,39 +356,10 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
         
-    df = islem_gecmisi_getir()
-    yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
-    
-    net_tutar = miktar if islem_tipi == "Para_Yatir" else -miktar
-    durum_etiketi = "Para_Yatir" if islem_tipi == "Para_Yatir" else "Para_Cek"
-    
-    yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
-        "Coin": f"KASA: {aciklama}", "Yon": durum_etiketi, "Zaman_Dilimi": "Sermaye İşlemi", "Giris_Fiyat": 0.0, 
-        "Islem_Miktari": 0.0, "Stop": 0.0, "Kar_Al": 0.0, "Durum": durum_etiketi, 
-        "Net_Kar_Zarar": round(net_tutar, 2), "Guncel_Kasa": 0.0, "Kapanis_Zamani": suan_tr, "Kapanis_Fiyati": 0.0
-    }])
-    df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
-    
-    baz_bakiye = BASLANGIC_BAKIYE
-    if os.path.exists(ARSIV_KLASORU):
-        try:
-            arsivler = os.listdir(ARSIV_KLASORU)
-            if arsivler:
-                arsivler.sort()
-                son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
-                if not son_arsiv_df.empty: baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
-        except: pass
-        
-    df['Net_Kar_Zarar'] = pd.to_numeric(df['Net_Kar_Zarar'], errors='coerce').fillna(0.0)
-    kapanan_mask = df['Durum'] != 'Acik'
-    df.loc[kapanan_mask, 'Guncel_Kasa'] = baz_bakiye + df.loc[kapanan_mask, 'Net_Kar_Zarar'].cumsum()
-    
-    dataframe_guncelle_gsheets(df)
-    elli_islem_arsiv_kontrol()
+    tutar_val = miktar if islem_tipi == "Para_Yatir" else -miktar
+    kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
@@ -391,19 +404,15 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
         df.at[idx[0], 'Kapanis_Fiyati'] = float(round(anlik_kapatma_fiyati, 4))
         
-        baz_bakiye = BASLANGIC_BAKIYE
-        if os.path.exists(ARSIV_KLASORU):
-            try:
-                arsivler = os.listdir(ARSIV_KLASORU)
-                if arsivler:
-                    arsivler.sort()
-                    son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
-                    if not son_arsiv_df.empty: baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
-            except: pass
-        df['Net_Kar_Zarar'] = pd.to_numeric(df['Net_Kar_Zarar'], errors='coerce').fillna(0.0)
-        kapanan_mask = df['Durum'] != 'Acik'
-        df.loc[kapanan_mask, 'Guncel_Kasa'] = baz_bakiye + df.loc[kapanan_mask, 'Net_Kar_Zarar'].cumsum()
+        toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+        df.at[idx[0], 'Guncel_Kasa'] = float(round(toplam_kasa + net_kar, 2))
+        
         dataframe_guncelle_gsheets(df)
+        
+        # Kapanan işlemin net kâr veya zararını KasaDefteri'ne otomatik işle
+        trade_aciklama = f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})"
+        kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
+        
         elli_islem_arsiv_kontrol()
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
@@ -803,11 +812,6 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         if d_val == 'Acik':
             kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
             durum_h = '<div style="background-color: #0000FF; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
-        elif d_val in ['Para_Yatir', 'Para_Cek']:
-            kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
-            p_renk = "#00FF00" if d_val == 'Para_Yatir' else "#FF0000"
-            p_etiket = "Para Yatırma" if d_val == 'Para_Yatir' else "Para Çekme"
-            durum_h = f'<div style="background-color: {p_renk}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{p_etiket}</div>'
         else:
             net_kz_degeri = float(row['Net_Kar_Zarar'])
             is_kar = net_kz_degeri >= 0

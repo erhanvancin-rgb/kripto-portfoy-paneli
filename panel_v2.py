@@ -576,7 +576,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
+    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
     
     secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
     hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -592,7 +592,7 @@ if secilen_coin:
             st.error(mesaj)
 
 st.markdown("---")
-st.markdown("### 💼 Sanal Portföy ve Açık Pozisyonlar")
+st.markdown(f"### 💼 Sanal Portföy ve Açık Pozisyonlar")
 
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
@@ -694,7 +694,10 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             is_kar = row['Net_Kar_Zarar'] >= 0
             k_stil = "#00FF00" if is_kar else "#FF0000"
             
-            k_fiyat_val = float(row['Kapanis_Fiyati']) if pd.notna(row['Kapanis_Fiyati']) and float(row['Kapanis_Fiyati']) > 0 else row['Anlik_Fiyat_Deger']
+            # --- DÜZELTME: KAPANMIŞ İŞLEMLERDE GOOGLE SHEETS'TEKİ GERÇEK KAPANIŞ FİYATINI SABİTLE ---
+            sheet_kapanis_f = float(row.get('Kapanis_Fiyati', 0.0) or 0.0)
+            k_fiyat_val = sheet_kapanis_f if sheet_kapanis_f > 0 else row['Anlik_Fiyat_Deger']
+            
             k_fiyat_str = f"{k_fiyat_val:,.4f}&nbsp;$" if row['Coin'] == 'XRP/USDT' else f"{k_fiyat_val:,.2f}&nbsp;$"
             kapanis_fiyat_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{k_fiyat_str}</div>'
             
@@ -745,27 +748,4 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
                 <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
                 <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
-                <hr style="border-color: #ced4da; margin: 8px 0px;">
-                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
-                <h3 style="color: {"#00FF00" if net_fark_dolar >= 0 else "#FF0000"}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        st.markdown("---")
-        st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
-        if os.path.exists(ARSIV_KLASORU):
-            try:
-                arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
-                if arsiv_dosyalari:
-                    arsiv_dosyalari.sort()
-                    secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
-                    if secilen_arsiv:
-                        df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
-                        st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
-                else: st.info("Henüz 50 işleme ulaşılmadı.")
-            except: st.info("Arşiv yüklenirken bilgi alınamadı.")
-        else: st.info("Arşiv klasörü henüz oluşturulmadı.")
-    else:
-        st.info("Henüz kapanmış işlem bulunmuyor.")
-else: 
-    st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")
+                <hr

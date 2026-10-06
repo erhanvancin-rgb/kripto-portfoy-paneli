@@ -174,22 +174,21 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
 def cok_katmanli_matris_hesapla(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # 32 Saat (8m x 240 bar, %5 ağırlık -> max 5 puan)
     y32, k32 = kline_cek_detayli(coin_symbol, "8m", 240)
-    # 16 Saat (4m x 240 bar, %10 ağırlık -> max 10 puan)
     y16, k16 = kline_cek_detayli(coin_symbol, "4m", 240)
-    # 8 Saat (2m x 240 bar, %15 ağırlık -> max 15 puan)
     y8, k8 = kline_cek_detayli(coin_symbol, "2m", 240)
-    # 4 Saat (1m x 240 bar, %30 ağırlık -> max 30 puan)
     y4, k4 = kline_cek_detayli(coin_symbol, "1m", 240)
-    # 2 Saat (0.5m/30s destekli simülasyon barları x 240 bar, %40 ağırlık -> max 40 puan)
     y2, k2 = kline_cek_detayli(coin_symbol, "30s", 240)
 
-    oran_faktor = (risk_yuzdesi - 50.0) / 50.0  # 0.0 ile 1.0 arası
-    aranan_onay_bar = int(140 + (190 - 140) * oran_faktor) # 180 baz alınarak risk moduna göre esner
+    # %50 riskte 90 onay ve 50 puan barajı; %100 riskte 180 onay ve 100 puan barajı
+    oran_faktor = (risk_yuzdesi - 50.0) / 50.0  # 0.0 (50 risk) ile 1.0 (100 risk) arası
+    aranan_onay_bar = int(90 + (180 - 90) * oran_faktor)
+    hedef_puan_baraji = 50.0 + (100.0 - 50.0) * oran_faktor
 
-    # Puan katsayıları ve yön belirleme
-    def katman_hesapla(y_sayisi, k_sayisi, max_puan):
+    def katman_hesapla(y_sayisi, k_sayisi, max_puan_100):
+        # %50 riskte max puanlar yarıya iner (5->2.5, 10->5, 15->7.5, 30->15, 40->20)
+        max_puan = max_puan_100 * (0.5 + 0.5 * oran_faktor)
+        
         if y_sayisi >= aranan_onay_bar:
             return "Long", max_puan * (y_sayisi / 240.0)
         elif k_sayisi >= aranan_onay_bar:
@@ -201,11 +200,11 @@ def cok_katmanli_matris_hesapla(coin_symbol, risk_yuzdesi):
                 return "Notr", -max_puan * 0.2 * (k_sayisi / 240.0)
             return "Notr", 0.0
 
-    y_32_yon, s_32 = katman_hesapla(y32, k32, 5.0)
-    y_16_yon, s_16 = katman_hesapla(y16, k16, 10.0)
-    y_8_yon, s_8 = katman_hesapla(y8, k8, 15.0)
-    y_4_yon, s_4 = katman_hesapla(y4, k4, 30.0)
-    y_2_yon, s_2 = katman_hesapla(y2, k2, 40.0)
+    _, s_32 = katman_hesapla(y32, k32, 5.0)
+    _, s_16 = katman_hesapla(y16, k16, 10.0)
+    _, s_8 = katman_hesapla(y8, k8, 15.0)
+    _, s_4 = katman_hesapla(y4, k4, 30.0)
+    _, s_2 = katman_hesapla(y2, k2, 40.0)
 
     toplam_net_puan = s_32 + s_16 + s_8 + s_4 + s_2
 
@@ -213,9 +212,6 @@ def cok_katmanli_matris_hesapla(coin_symbol, risk_yuzdesi):
     toplam_k = k32 + k16 + k8 + k4 + k2
     net_aktif_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
-
-    # Risk oranına göre dinamik baraj (100 puan üzerinden şekillenir)
-    hedef_puan_baraji = 50.0 + (risk_yuzdesi - 50.0) * 0.6  # Risk arttıkça baraj esner/yükselir
 
     matris_yon = "Notr"
     if toplam_net_puan >= hedef_puan_baraji:
@@ -226,15 +222,18 @@ def cok_katmanli_matris_hesapla(coin_symbol, risk_yuzdesi):
     return anlik_fiyat, toplam_net_puan, hedef_puan_baraji, matris_yon, y_yuzde
 
 def makro_cok_katmanli_analiz(symbol_or_type, risk_yuzdesi):
-    # D ve UT için de aynı 5 katmanlı mimari
     y32, k32 = makro_kline_analiz(symbol_or_type, "8m", 240)
     y16, k16 = makro_kline_analiz(symbol_or_type, "4m", 240)
     y8, k8 = makro_kline_analiz(symbol_or_type, "2m", 240)
     y4, k4 = makro_kline_analiz(symbol_or_type, "1m", 240)
     y2, k2 = makro_kline_analiz(symbol_or_type, "30s", 240)
 
-    aranan_onay_bar = 180
-    def katman_hesapla(y_sayisi, k_sayisi, max_puan):
+    oran_faktor = (risk_yuzdesi - 50.0) / 50.0
+    aranan_onay_bar = int(90 + (180 - 90) * oran_faktor)
+    hedef_baraj = 50.0 + (100.0 - 50.0) * oran_faktor
+
+    def katman_hesapla(y_sayisi, k_sayisi, max_puan_100):
+        max_puan = max_puan_100 * (0.5 + 0.5 * oran_faktor)
         if y_sayisi >= aranan_onay_bar:
             return max_puan * (y_sayisi / 240.0)
         elif k_sayisi >= aranan_onay_bar:
@@ -251,7 +250,6 @@ def makro_cok_katmanli_analiz(symbol_or_type, risk_yuzdesi):
     s_2 = katman_hesapla(y2, k2, 40.0)
 
     toplam_puan = s_32 + s_16 + s_8 + s_4 + s_2
-    hedef_baraj = 40.0 + (risk_yuzdesi - 50.0) * 0.4
     
     if toplam_puan >= hedef_baraj: return "Long", toplam_puan
     elif toplam_puan <= -hedef_baraj: return "Short", toplam_puan
@@ -616,7 +614,7 @@ for sembol in coinler:
 # ANLIK OLARAK OTOMATİK STOP VE TP KONTROLÜ
 otomatik_pozisyon_kontrolu(ortak_fiyat_havuzu)
 
-# --- MAKRO ANALİZ: D ve UT (Çok Katmanlı 5 Periyot ve Risk Oranı Barajı) ---
+# --- MAKRO ANALİZ: D ve UT (Çok Katmanlı 5 Periyot ve 50/100 Barajı) ---
 d_yon, d_puan = makro_cok_katmanli_analiz('BTCUSDT', risk_yuzdesi)
 ut_yon, ut_puan = makro_cok_katmanli_analiz('TOTAL', risk_yuzdesi)
 
@@ -647,7 +645,7 @@ for data in islenen_ham_veriler:
     if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj:
         is_notr = False
         aktif_yon_turu = filtrelenmis_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > 80.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > (baraj * 1.5) else f"{aktif_yon_turu} (Onaylı)"
 
     if aktif_yon_turu == "Long":
         stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025

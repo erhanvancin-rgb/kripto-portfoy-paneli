@@ -50,7 +50,7 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    # SLIDER ÇUBUĞU GRADYAN STİLİ
+    /* SLIDER ÇUBUĞU GRADYAN STİLİ */
     div[data-baseweb="slider"] div[data-testid="stSliderTickBar"] { display: none !important; }
     div[data-baseweb="slider"] > div:first-child > div:first-child {
         background: linear-gradient(90deg, #ffc107 0%, #dc3545 100%) !important;
@@ -282,4 +282,15 @@ def bakiye_durumunu_getir():
             arsivler.sort()
             try:
                 son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
-                if not son_arsiv_df.empty: baz
+                if not son_arsiv_df.empty: 
+                    baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
+            except: 
+                pass
+    toplam_kasa = baz_bakiye + kapanan_kar
+    acik_df = df[df['Durum'] == 'Acik']
+    acik_marjin = pd.to_numeric(acik_df['Islem_Miktari'], errors='coerce').fillna(0.0).sum() if not acik_df.empty else 0.0
+    return float(toplam_kasa), float(toplam_kasa - acik_marjin)
+
+def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
+    if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (Yeterli onay yok), işlem açılamaz!"
+    toplam_kasa, mevcut_bakiye = bakiye_dur

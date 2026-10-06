@@ -326,13 +326,27 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     
     net_kasa_hareketleri = BASLANGIC_BAKIYE
     
+    # 1. KasaDefteri'ndeki tüm hareketleri ekle
     if not df_kasa.empty:
         net_kasa_hareketleri += pd.to_numeric(df_kasa['Tutar'], errors='coerce').fillna(0.0).sum()
         
-    if df_kasa.empty and not df_trade.empty:
+    # 2. KasaDefteri'ne işlenmemiş olan geçmiş tüm kapalı trade kâr/zararlarını KriptoPortfoyVeritabani'ndan otomatik ekle
+    if not df_trade.empty:
         kap_trades = df_trade[df_trade['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
         if not kap_trades.empty:
-            net_kasa_hareketleri += pd.to_numeric(kap_trades['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum()
+            # Eğer KasaDefteri'nde bu trade'ler "Trade_Sonuc" olarak zaten kayıtlı değilse, mükerrer olmaması için farkı ya da direkt tüm kapalı trade'leri ekleyelim
+            # En güvenlisi: KasaDefteri'nde "Trade_Sonuc" türü hiç yoksa veya eksikse, tüm geçmiş kapalı trade toplamını dahil et
+            trade_sonuc_defterde = 0.0
+            if not df_kasa.empty and 'Islem_Turu' in df_kasa.columns:
+                ts_df = df_kasa[df_kasa['Islem_Turu'] == 'Trade_Sonuc']
+                if not ts_df.empty:
+                    trade_sonuc_defterde = pd.to_numeric(ts_df['Tutar'], errors='coerce').fillna(0.0).sum()
+            
+            gercek_trade_toplam = pd.to_numeric(kap_trades['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum()
+            
+            # Eğer deftere henüz kaydedilmemiş geçmiş kârlar varsa aradaki farkı ekle
+            if gercek_trade_toplam != trade_sonuc_defterde:
+                net_kasa_hareketleri += (gercek_trade_toplam - trade_sonuc_defterde)
         
     toplam_kasa = net_kasa_hareketleri
     

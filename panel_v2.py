@@ -568,4 +568,204 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(table_html, unsafe_allow_html=True)
 
-st.markdown("###
+st.markdown("### 🛒 Hızlı İşlem Emri Ver")
+df_gosterge = pd.DataFrame(islenen_veriler)
+
+secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="secilen_coin_select")
+
+if secilen_coin:
+    coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
+    onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
+    if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda (Yeterli onay yok).")
+    
+    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
+    hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
+    st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Mevcut Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+    
+    if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
+        st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
+        basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe Motoru")
+        if basari: 
+            st.success(mesaj)
+            st.balloons()
+        else: 
+            st.error(mesaj)
+
+st.markdown("---")
+st.markdown("### 💼 Sanal Portföy ve Açık Pozisyonlar")
+
+df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
+if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
+    acik_islem_listesi = df_gecmis[df_gecmis['Durum'] == 'Acik']['Islem_ID'].tolist()
+    if acik_islem_listesi:
+        st.markdown("#### 🛑 İşlem Kapatma Paneli")
+        col_kapat1, col_kapat2, col_kapat3 = st.columns([2, 2, 1])
+        with col_kapat1: kapatilacak_id = st.selectbox("Kapatılacak İşlem ID:", acik_islem_listesi, key="kapat_id_select")
+        with col_kapat2: onay_verildi = st.checkbox(f"ID #{kapatilacak_id} işlemini kapatmayı onaylıyorum", key="onay_chk")
+        with col_kapat3:
+            st.write("") 
+            if st.button("🔒 İşlemi Sonlandır", key="kapat_btn"):
+                if onay_verildi:
+                    kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
+                    kapatma_fiyati = ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0))
+                    b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, kapatma_fiyati)
+                    if b_durum: st.success(b_mesaj)
+                    else: st.error(b_mesaj)
+                else: st.warning("Onay kutusunu işaretleyin!")
+        st.markdown("---")
+
+    df_gecmis_copy = df_gecmis.copy()
+    anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
+    for idx, row in df_gecmis_copy.iterrows():
+        islem_id = row['Islem_ID']
+        coin = row['Coin']
+        giris_f = float(row['Giris_Fiyat'])
+        miktar = float(row['Islem_Miktari'])
+        kar_al_f = float(row['Kar_Al'])
+        stop_f = float(row['Stop'])
+        yon = row['Yon']
+        
+        anlik_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
+        anlik_fiyat_sozluk[islem_id] = anlik_f
+        
+        if giris_f > 0 and kar_al_f > 0 and stop_f > 0:
+            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - kar_al_f) / giris_f)), 2)
+            olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - stop_f) / giris_f)), 2)
+        else:
+            hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
+
+        if row['Durum'] == 'Acik':
+            fark_y = ((anlik_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - anlik_f) / giris_f)
+            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * fark_y, 2)
+        else:
+            anlik_kz_sozluk[islem_id] = float(row['Net_Kar_Zarar'])
+
+    df_gecmis_copy['Anlik_Fiyat_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_fiyat_sozluk)
+    df_gecmis_copy['Hedef_Kar'] = df_gecmis_copy['Islem_ID'].map(hedef_kar_sozluk)
+    df_gecmis_copy['Olasi_Stop'] = df_gecmis_copy['Islem_ID'].map(olasi_stop_sozluk)
+    df_gecmis_copy['Anlik_KZ_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_kz_sozluk)
+    
+    df_gecmis_copy['Yatırım_Bedeli'] = df_gecmis_copy['Islem_Miktari'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+    df_gecmis_copy['Hedef_Kar_Str'] = df_gecmis_copy['Hedef_Kar'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+    df_gecmis_copy['Olasi_Stop_Str'] = df_gecmis_copy['Olasi_Stop'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+    df_gecmis_copy['Kasa_Str'] = df_gecmis_copy['Guncel_Kasa'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+
+    df_gecmis_copy['Giris_Fiyat_Str'] = df_gecmis_copy.apply(lambda r: f"{float(r['Giris_Fiyat']):,.{4 if r['Coin']=='XRP/USDT' else 2}f}&nbsp;$", axis=1)
+    df_gecmis_copy['Stop_Str'] = df_gecmis_copy.apply(lambda r: f"{float(r['Stop']):,.{4 if r['Coin']=='XRP/USDT' else 2}f}&nbsp;$", axis=1)
+    df_gecmis_copy['Kar_Al_Str'] = df_gecmis_copy.apply(lambda r: f"{float(r['Kar_Al']):,.{4 if r['Coin']=='XRP/USDT' else 2}f}&nbsp;$", axis=1)
+
+    def format_yon_hucre(y):
+        if "Güçlü Trend" in y:
+            k_renk = "#00FF00" if "Long" in y else "#FF0000"
+            return f'<div style="background-color: {k_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{y}</div>'
+        elif "Long" in y:
+            return '<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">' + y + '</div>'
+        elif "Short" in y:
+            return '<div style="background-color: #FF0000; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">' + y + '</div>'
+        else:
+            return f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{y}</div>'
+
+    portfoy_html = """
+    <table class="custom-table">
+        <thead>
+            <tr>
+                <th>ID</th><th>Açılış<br>Zamanı</th><th>Logo</th><th>Coin</th><th>İşlem<br>Yönü</th>
+                <th>Giriş<br>Fiyatı</th><th>Anlık<br>Fiyat</th><th>Kapanış<br>Fiyatı</th><th>Yatırım<br>Tutarı</th>
+                <th>Stop<br>Seviyesi</th><th>Kar Al<br>Hedefi</th><th>Beklenen<br>Kar</th><th>Olası<br>Stop</th>
+                <th>İşlem<br>Durumu</th><th>Anlık<br>K/Z</th><th>Kapanış<br>Zamanı</th><th>Güncel<br>Kasa</th>
+            </tr>
+        </thead><tbody>
+    """
+
+    for _, row in df_gecmis_copy.iterrows():
+        l_url = logo_urls.get(row['Coin'], "")
+        logo_h = f'<img src="{l_url}" width="24" height="24">'
+        yon_h = format_yon_hucre(row['Yon'])
+        
+        fiyat_stil = "#00FF00" if row['Anlik_Fiyat_Deger'] > float(row['Giris_Fiyat']) else "#FF0000"
+        anlik_fiyat_str = f"{row['Anlik_Fiyat_Deger']:,.4f}&nbsp;$" if row['Coin'] == 'XRP/USDT' else f"{row['Anlik_Fiyat_Deger']:,.2f}&nbsp;$"
+        anlik_fiyat_h = f'<div style="background-color: {fiyat_stil}; color: white; padding: 5px; font-weight: bold;">{anlik_fiyat_str}</div>'
+        
+        d_val = row['Durum']
+        if d_val == 'Acik':
+            kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
+            durum_h = '<div style="background-color: #0000FF; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+        else:
+            is_kar = row['Net_Kar_Zarar'] >= 0
+            k_stil = "#00FF00" if is_kar else "#FF0000"
+            
+            k_fiyat_val = float(row['Kapanis_Fiyati']) if pd.notna(row['Kapanis_Fiyati']) and float(row['Kapanis_Fiyati']) > 0 else row['Anlik_Fiyat_Deger']
+            k_fiyat_str = f"{k_fiyat_val:,.4f}&nbsp;$" if row['Coin'] == 'XRP/USDT' else f"{k_fiyat_val:,.2f}&nbsp;$"
+            kapanis_fiyat_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{k_fiyat_str}</div>'
+            
+            durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{d_val}</div>'
+
+        kz_val = row['Anlik_KZ_Deger']
+        kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
+        kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
+
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+    portfoy_html += "</tbody></table>"
+    st.markdown(portfoy_html, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi")
+    kapananlar_df = df_gecmis[df_gecmis['Durum'] != 'Acik']
+    if not kapananlar_df.empty:
+        karli_sayisi, zararli_sayisi = 0, 0
+        toplam_kazanc_dolar, toplam_kayip_dolar = 0.0, 0.0
+        for idx, r in kapananlar_df.iterrows():
+            val = float(pd.to_numeric(r['Net_Kar_Zarar'], errors='coerce') or 0.0)
+            if val >= 0: karli_sayisi += 1; toplam_kazanc_dolar += val
+            else: zararli_sayisi += 1; toplam_kayip_dolar += abs(val)
+                
+        toplam_kapanan = len(kapananlar_df)
+        karli_oran = (karli_sayisi / toplam_kapanan) * 100 if toplam_kapanan > 0 else 0
+        zararli_oran = (zararli_sayisi / toplam_kapanan) * 100 if toplam_kapanan > 0 else 0
+        net_fark_dolar = toplam_kazanc_dolar - toplam_kayip_dolar
+        
+        col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
+        with col_p1:
+            df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+            fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#00FF00', 'Zararlı İşlemler': '#FF0000'})
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col_p2:
+            st.markdown("#### 📈 Strateji Metrikleri")
+            st.metric("Toplam Kapanan İşlem", f"{toplam_kapanan} Adet")
+            st.metric("🟢 Kârlı Kapanma", f"{karli_sayisi} Adet (%{karli_oran:.1f})")
+            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oran:.1f})")
+            
+        with col_p3:
+            st.markdown("#### 💰 Para Değerleri Bloku")
+            st.markdown(f"""
+            <div class="para-blogu">
+                <p style="color: #00FF00; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
+                <h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
+                <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
+                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
+                <hr style="border-color: #ced4da; margin: 8px 0px;">
+                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
+                <h3 style="color: {"#00FF00" if net_fark_dolar >= 0 else "#FF0000"}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("---")
+        st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
+        if os.path.exists(ARSIV_KLASORU):
+            try:
+                arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
+                if arsiv_dosyalari:
+                    arsiv_dosyalari.sort()
+                    secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
+                    if secilen_arsiv:
+                        df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
+                        st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
+                else: st.info("Henüz 50 işleme ulaşılmadı.")
+            except: st.info("Arşiv yüklenirken bilgi alınamadı.")
+        else: st.info("Arşiv klasörü henüz oluşturulmadı.")
+    else:
+        st.info("Henüz kapanmış işlem bulunmuyor.")
+else: 
+    st.info("ℹ️ Henüz açılmış bir sanal pozisyonunuz bulunmuyor.")

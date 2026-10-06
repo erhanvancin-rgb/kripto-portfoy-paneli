@@ -173,7 +173,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. ANA MATRİS İVMELİ MOTORU
+# 1. ANA MATRİS İVMELİ MOTORu
 def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
@@ -206,7 +206,7 @@ def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
 
     return anlik_fiyat, matris_yon, y_yuzde, gereken_baraj_yuzdesi, toplam_y, toplam_k
 
-# 2. YEREL "D" (DOMİNANS / SERMAYE AKIŞI) SÜZGECİ (Coin Paritesine Göre Dinamik)
+# 2. YEREL "D" (DOMİNANS / SERMAYE AKIŞI) SÜZGECİ (Anlık ve Dinamik Barajlı)
 def yerel_d_analiz(coin_symbol, risk_yuzdesi):
     y32, k32 = kline_cek_detayli(coin_symbol, "8m", 240)
     y16, k16 = kline_cek_detayli(coin_symbol, "4m", 240)
@@ -462,7 +462,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     if islem_tipi == "Para_Cek" and miktar > mevcut_bakiye:
         return False, f"⚠️ Çekilmek istenen tutar ({miktar} $) boştaki nakit bakiyenizden ({mevcut_bakiye:.2f} $) büyük olamaz!"
     if miktar <= 0:
-        return False, "⚠️️ Tutar 0'dan büyük olmalıdır!"
+        return False, "⚠️ Tutar 0'dan büyük olmalıdır!"
         
     tutar_val = miktar if islem_tipi == "Para_Yatir" else -miktar
     kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
@@ -573,9 +573,6 @@ elli_islem_arsiv_kontrol()
 if 'trend_gecmisleri' not in st.session_state:
     st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
 
-if 'd_trend_gecmisleri' not in st.session_state:
-    st.session_state['d_trend_gecmisleri'] = {c: [] for c in coinler}
-
 if 'risk_yuzde_potansi' not in st.session_state:
     st.session_state['risk_yuzde_potansi'] = 75.0
 
@@ -618,25 +615,8 @@ for sembol in coinler:
     elif short_sayisi >= gereken_onay or (mevcut_uzunluk < 5 and m_yon == "Short"):
         suanki_filtrelenmis_yon = "Short"
 
-    # 2. Yerel D Süzgeci (Coin Paritesi Bazlı Sermaye Akışı) 14/20 ve Dinamik Baraj Kuralı
-    d_raw_yon = yerel_d_analiz(sembol, risk_yuzdesi)
-    d_gecmis_liste = st.session_state['d_trend_gecmisleri'][sembol]
-    if len(d_gecmis_liste) == 0:
-        d_gecmis_liste.extend([d_raw_yon] * 20)
-    else:
-        d_gecmis_liste.append(d_raw_yon)
-        if len(d_gecmis_liste) > 20:
-            d_gecmis_liste.pop(0)
-
-    d_long_sayisi = d_gecmis_liste.count("Long")
-    d_short_sayisi = d_gecmis_liste.count("Short")
-    d_gereken_onay = max(1, int(len(d_gecmis_liste) * 0.7))
-
-    filtrelenmis_d_yon = "Notr"
-    if d_long_sayisi >= d_gereken_onay or (len(d_gecmis_liste) < 5 and d_raw_yon == "Long"):
-        filtrelenmis_d_yon = "Long"
-    elif d_short_sayisi >= d_gereken_onay or (len(d_gecmis_liste) < 5 and d_raw_yon == "Short"):
-        filtrelenmis_d_yon = "Short"
+    # 2. Yerel D Süzgeci (Anlık ve Dinamik Barajlı - Hafıza Kuralı Kaldırıldı)
+    d_yon = yerel_d_analiz(sembol, risk_yuzdesi)
 
     islenen_ham_veriler.append({
         "sembol": sembol, 
@@ -646,7 +626,7 @@ for sembol in coinler:
         "baraj_yuzdesi": baraj_yuzdesi,
         "toplam_y": toplam_y,
         "toplam_k": toplam_k,
-        "d_yon": filtrelenmis_d_yon
+        "d_yon": d_yon
     })
 
 # ANLIK OLARAK OTOMATİK STOP VE TP KONTROLÜ

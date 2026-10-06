@@ -274,7 +274,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty: return BASLANGIC_BAKIYE, BASLANGIC_BAKIYE, BASLANGIC_BAKIYE
     
-    # Kapanmış işlemlerin ve para yatırma/çekme işlemlerinin net toplamı (Toplam Kasa)
+    # Kapanmış işlemlerin ve para yatırma/çekme işlemlerinin net toplamı
     kapanan_df = df[df['Durum'].isin(['Kar', 'Zarar', 'Para_Yatir', 'Para_Cek'])]
     toplam_hareketler = pd.to_numeric(kapanan_df['Net_Kar_Zarar'], errors='coerce').fillna(0.0).sum() if not kapanan_df.empty else 0.0
     
@@ -533,14 +533,14 @@ with col_ust1:
 with col_ust2:
     st.markdown(f"""
         <div class="metric-container">
-            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa (Canlı Portföy)</p>
+            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa</p>
             <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1>
         </div>
     """, unsafe_allow_html=True)
 with col_ust3:
     st.markdown(f"""
         <div class="metric-container">
-            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa (Net Kapanan)</p>
+            <p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa</p>
             <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1>
         </div>
     """, unsafe_allow_html=True)

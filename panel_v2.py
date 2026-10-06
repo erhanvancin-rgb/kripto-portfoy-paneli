@@ -313,4 +313,257 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     return True, f"✅ {coin} emri başarıyla verildi!"
 
 def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
-    df = islem
+    df = islem_gecmisi_getir()
+    idx = df[df['Islem_ID'] == islem_id].index
+    if idx.empty: return False, "İşlem bulunamadı!"
+    row = df.loc[idx[0]]
+    if row['Durum'] != 'Acik': return False, "Bu işlem kapalı!"
+    try:
+        giris_f = float(row['Giris_Fiyat'])
+        miktar = float(row['Islem_Miktari'])
+        fark_yuzde = ((anlik_kapatma_fiyati - giris_f) / giris_f) if 'Long' in row['Yon'] else ((giris_f - anlik_kapatma_fiyati) / giris_f)
+        net_kar = miktar * KALDIRAC * fark_yuzde
+        suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+        
+        durum_metni = 'Kar' if net_kar >= 0 else 'Zarar'
+        df.at[idx[0], 'Durum'] = durum_metni
+        df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
+        df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
+        df.at[idx[0], 'Kapanis_Fiyati'] = float(round(anlik_kapatma_fiyati, 4))
+        
+        baz_bakiye = BASLANGIC_BAKIYE
+        if os.path.exists(ARSIV_KLASORU):
+            try:
+                arsivler = os.listdir(ARSIV_KLASORU)
+                if arsivler:
+                    arsivler.sort()
+                    son_arsiv_df = pd.read_csv(os.path.join(ARSIV_KLASORU, arsivler[-1]), delimiter=';')
+                    if not son_arsiv_df.empty: baz_bakiye = float(pd.to_numeric(son_arsiv_df.iloc[-1]['Guncel_Kasa'], errors='coerce') or BASLANGIC_BAKIYE)
+            except: pass
+        df['Net_Kar_Zarar'] = pd.to_numeric(df['Net_Kar_Zarar'], errors='coerce').fillna(0.0)
+        kapanan_mask = df['Durum'] != 'Acik'
+        df.loc[kapanan_mask, 'Guncel_Kasa'] = baz_bakiye + df.loc[kapanan_mask, 'Net_Kar_Zarar'].cumsum()
+        dataframe_guncelle_gsheets(df)
+        elli_islem_arsiv_kontrol()
+        return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
+    except Exception as e: return False, f"Hata: {str(e)}"
+
+# --- ARAYÜZ AKIŞI ---
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli")
+elli_islem_arsiv_kontrol()
+
+toplam_kasa, mevcut_bakiye = bakiye_durumunu_getir()
+
+if 'trend_gecmisleri' not in st.session_state:
+    st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
+
+if 'risk_yuzde_potansi' not in st.session_state:
+    st.session_state['risk_yuzde_potansi'] = 75.0
+
+islenen_ham_veriler = []
+ortak_fiyat_havuzu = {} 
+
+for sembol in coinler:
+    anlik_fiyat, net_puan, baraj, m_yon, y_yuzde = detayli_matris_hesapla(sembol, st.session_state['risk_yuzde_potansi'])
+    ortak_fiyat_havuzu[sembol] = anlik_fiyat 
+
+    gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
+    gecmis_liste.append(m_yon)
+    if len(gecmis_liste) > 20:
+        gecmis_liste.pop(0)
+
+    long_sayisi = gecmis_liste.count("Long")
+    short_sayisi = gecmis_liste.count("Short")
+
+    mevcut_uzunluk = len(gecmis_liste)
+    gereken_onay = max(1, int(mevcut_uzunluk * 0.7))
+    
+    suanki_filtrelenmis_yon = "Notr"
+    if long_sayisi >= gereken_onay:
+        suanki_filtrelenmis_yon = "Long"
+    elif short_sayisi >= gereken_onay:
+        suanki_filtrelenmis_yon = "Short"
+
+    islenen_ham_veriler.append({
+        "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
+        "baraj": baraj, "m_yon": suanki_filtrelenmis_yon, "y_yuzde": y_yuzde
+    })
+
+usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
+
+islenen_veriler = []
+for data in islenen_ham_veriler:
+    sembol = data["sembol"]
+    net_puan = data["net_puan"]
+    baraj = data["baraj"]
+    y_yuzde = data["y_yuzde"]
+    k_yuzde = 100.0 - y_yuzde
+    anlik_fiyat = data["anlik_fiyat"]
+    filtrelenmis_yon = data["m_yon"]
+    
+    c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 50.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -50.0) else "🟡")
+    u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 50.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -50.0) else "🟡")
+
+    y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
+    k_gorsel = 10 - y_gorsel
+    
+    yesil_top = "🟢" * y_gorsel
+    kirmizi_top = "🔴" * k_gorsel
+    detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
+
+    is_notr = True
+    trend = "Nötr (Beklemede)"
+    aktif_yon_turu = "Nötr"
+
+    if filtrelenmis_yon != "Notr" and abs(net_puan) >= baraj and abs(net_puan) >= 50.0:
+        is_notr = False
+        aktif_yon_turu = filtrelenmis_yon
+        trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > 100.0 else f"{aktif_yon_turu} (Onaylı)"
+
+    if aktif_yon_turu == "Long":
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+    elif aktif_yon_turu == "Short":
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
+    else:
+        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+    
+    dom_html = '<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">' + c_durum_led + u_durum_led + c_durum_led + '</div><div style="font-size: 10px; color: #495057; font-weight: 500;">C:' + c_durum_led + ' | U:' + u_durum_led + '</div></div>'
+
+    basamak = 4 if anlik_fiyat < 10 else 2
+    logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
+    
+    if "Güçlü Trend" in trend:
+        t_renk = "#00FF00" if "Long" in trend else "#FF0000"
+        yon_html = f'<div style="background-color: {t_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">🔥 {trend}</div>'
+    elif "Long" in trend:
+        yon_html = '<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">' + trend + '</div>'
+    elif "Short" in trend:
+        yon_html = '<div style="background-color: #FF0000; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">' + trend + '</div>'
+    else:
+        yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
+    
+    islenen_veriler.append({
+        "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), 
+        "Yon": yon_html, "Teyit_Sunumu": detay_matris_html, "Dom_Sunumu": dom_html, 
+        "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak), 
+        "Skor": abs(net_puan) * 10000 + sum([ord(c) for c in sembol]) if not is_notr else 0, 
+        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Matris_Orani": abs(net_puan), "Aktif_Yon": aktif_yon_turu
+    })
+
+islenen_veriler = sorted(islenen_veriler, key=lambda x: x["Skor"], reverse=True)
+aktif_coinler = [v for v in islenen_veriler if not v["Notr"]]
+
+if aktif_coinler:
+    toplam_aktif_matris = sum([v["Matris_Orani"] for v in aktif_coinler])
+    if toplam_aktif_matris <= 0: toplam_aktif_matris = 1.0
+    for v in islenen_veriler:
+        v["Sepet_Orani"] = round((v["Matris_Orani"] / toplam_aktif_matris) * 100.0, 1) if not v["Notr"] else 0.0
+else:
+    for v in islenen_veriler: v["Sepet_Orani"] = 0.0
+
+for v in islenen_veriler:
+    v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
+
+# --- EFEKTİF KASA HESAPLAMASI ---
+df_gecmis_anlik = islem_gecmisi_getir(sheet_guncelle=False)
+acik_islem_toplam_kz = 0.0
+if not df_gecmis_anlik.empty and 'Durum' in df_gecmis_anlik.columns:
+    acik_df_mask = df_gecmis_anlik['Durum'] == 'Acik'
+    if acik_df_mask.any():
+        for _, rw in df_gecmis_anlik[acik_df_mask].iterrows():
+            c_SYM = rw['Coin']
+            g_F = float(rw['Giris_Fiyat'])
+            m_M = float(rw['Islem_Miktari'])
+            y_Y = rw['Yon']
+            anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
+            f_y = ((anl_F - g_F) / g_F) if 'Long' in y_Y else ((g_F - anl_F) / g_F)
+            acik_islem_toplam_kz += m_M * KALDIRAC * f_y
+efektif_kasa = toplam_kasa + acik_islem_toplam_kz
+
+# --- ÜST BİLGİ PANELİ ---
+col_ust1, col_ust2, col_ust3, col_ust4 = st.columns([2, 2, 2, 1.5])
+with col_ust1:
+    st.markdown(f"""
+        <div class="metric-container">
+            <p style="color: #495057; margin: 0px; font-size: 15px; font-weight: bold;">🟢 Mevcut Bakiye (Boştaki)</p>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 26px;">{mevcut_bakiye:,.2f} $</h1>
+        </div>
+    """, unsafe_allow_html=True)
+with col_ust2:
+    efektif_renk = '#FF0000' if efektif_kasa - toplam_kasa < 0 else '#00FF00'
+    st.markdown(f"""
+        <div class="metric-container">
+            <p style="color: #495057; margin: 0px; font-size: 15px; font-weight: bold;">💎 Efektif Kasa</p>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 26px;">{efektif_kasa:,.2f} $ <span style="font-size: 14px; color: {efektif_renk};">({efektif_kasa - toplam_kasa:+,.2f} $)</span></h1>
+        </div>
+    """, unsafe_allow_html=True)
+with col_ust3:
+    toplam_renk = '#FF0000' if toplam_kasa - BASLANGIC_BAKIYE < 0 else '#00FF00'
+    st.markdown(f"""
+        <div class="metric-container">
+            <p style="color: #495057; margin: 0px; font-size: 15px; font-weight: bold;">💰 Anlık Toplam Kasa</p>
+            <h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 26px;">{toplam_kasa:,.2f} $ <span style="font-size: 14px; color: {toplam_renk};">({toplam_kasa - BASLANGIC_BAKIYE:+,.2f} $)</span></h1>
+        </div>
+    """, unsafe_allow_html=True)
+with col_ust4:
+    st.write("")
+    st.write("")
+    if st.button("🔄 Piyasayı Yenile", use_container_width=True):
+        st.rerun()
+
+st.markdown("---")
+
+# --- HIZLI RİSK MODU SEÇİM BUTONLARI ---
+st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
+b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+
+with b_col1:
+    if st.button("%50 Esnek", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 50.0
+        st.rerun()
+with b_col2:
+    if st.button("%60 Dengeli", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 60.0
+        st.rerun()
+with b_col3:
+    if st.button("%75 Güvenli", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 75.0
+        st.rerun()
+with b_col4:
+    if st.button("%90 Güçlü", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 90.0
+        st.rerun()
+with b_col5:
+    if st.button("%100 Ultra", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 100.0
+        st.rerun()
+
+risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+
+table_html = """
+<table class="custom-table">
+    <thead>
+        <tr>
+            <th>Logo</th><th>Coin<br>Adı</th><th>Güncel<br>Fiyat</th><th>Trend<br>Durumu</th>
+            <th>Matris Teyit</th><th>Piyasa &<br>Dominans</th><th>Önerilen<br>Oran</th>
+            <th>Yatırım<br>Tutarı</th><th>Kar Al<br>Hedefi</th><th>Stop<br>Seviyesi</th>
+        </tr>
+    </thead><tbody>
+"""
+for v in islenen_veriler:
+    fiyat_str = f"{v['Fiyat']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Fiyat']:,.2f}&nbsp;$"
+    kar_al_str = f"{v['Kar_Al']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Kar_Al']:,.2f}&nbsp;$"
+    stopla_str = f"{v['Stopla']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Stopla']:,.2f}&nbsp;$"
+    sepet_val = v['Sepet_Orani']
+    val_str = f"%{sepet_val:.1f}" if sepet_val != int(sepet_val) else f"%{int(sepet_val)}"
+    
+    if v['Notr']: 
+        oran_html = f'<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
+    else:
+        t_bg = "#00FF00" if "Long" in v["Ham_Yon"] else "#FF0000"
+        t_tip = "Güçlü Trend" if "Güçlü Trend" in v['Ham_Yon'] else "Onaylı"
+        oran_html = f'<div style="background-color: {t_bg}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>({t_tip})</div>'
+
+    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td></tr>"
+table_html += "</tbody></table>"
+st.markdown(table_html, unsafe_

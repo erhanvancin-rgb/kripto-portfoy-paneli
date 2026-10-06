@@ -173,7 +173,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. ANA MATRİS İVMELİ MOTORu (Kademeli 120 / 180 / 220 Baraj Sınırı)
+# 1. ANA MATRİS İVMELİ MOTORu
 def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
@@ -600,32 +600,7 @@ if 'kasa_islem_turu' not in st.session_state:
 if 'sadece_aktifleri_goster' not in st.session_state:
     st.session_state['sadece_aktifleri_goster'] = False
 
-# --- HIZLI RİSK MODU SEÇİMİ ARAYÜZÜ ---
-st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
-b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
-
-with b_col1:
-    if st.button("%50 Esnek", use_container_width=True):
-        st.session_state['risk_yuzde_potansi'] = 50.0
-        st.rerun()
-with b_col2:
-    if st.button("%60 Dengeli", use_container_width=True):
-        st.session_state['risk_yuzde_potansi'] = 60.0
-        st.rerun()
-with b_col3:
-    if st.button("%75 Güvenli", use_container_width=True):
-        st.session_state['risk_yuzde_potansi'] = 75.0
-        st.rerun()
-with b_col4:
-    if st.button("%90 Güçlü", use_container_width=True):
-        st.session_state['risk_yuzde_potansi'] = 90.0
-        st.rerun()
-with b_col5:
-    if st.button("%100 Ultra", use_container_width=True):
-        st.session_state['risk_yuzde_potansi'] = 100.0
-        st.rerun()
-
-risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+risk_yuzdesi = st.session_state['risk_yuzde_potansi']
 
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -635,9 +610,13 @@ for sembol in coinler:
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
 
     gecmis_liste = st.session_state['trend_gecmisleri'][sembol]
-    gecmis_liste.append(m_yon)
-    if len(gecmis_liste) > 20:
-        gecmis_liste.pop(0)
+    if len(gecmis_liste) == 0:
+        # Sayfa ilk açılışta 20 veri dolu başlasın (bekleme süresi olmasın)
+        gecmis_liste.extend([m_yon] * 20)
+    else:
+        gecmis_liste.append(m_yon)
+        if len(gecmis_liste) > 20:
+            gecmis_liste.pop(0)
 
     long_sayisi = gecmis_liste.count("Long")
     short_sayisi = gecmis_liste.count("Short")
@@ -800,11 +779,40 @@ with col_ust6:
     if st.button("🔄 Yenile", use_container_width=True):
         st.rerun()
 
+st.markdown("---")
+
+# --- HIZLI RİSK MODU SEÇİMİ ARAYÜZÜ (Metriklerin Altında) ---
+st.markdown("<p style='font-weight: bold; margin-bottom: 5px;'>⚡ Hızlı Risk Modu Seçimi:</p>", unsafe_allow_html=True)
+b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+
+with b_col1:
+    if st.button("%50 Esnek", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 50.0
+        st.rerun()
+with b_col2:
+    if st.button("%60 Dengeli", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 60.0
+        st.rerun()
+with b_col3:
+    if st.button("%75 Güvenli", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 75.0
+        st.rerun()
+with b_col4:
+    if st.button("%90 Güçlü", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 90.0
+        st.rerun()
+with b_col5:
+    if st.button("%100 Ultra", use_container_width=True):
+        st.session_state['risk_yuzde_potansi'] = 100.0
+        st.rerun()
+
+st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
+
 # --- KASA İŞLEMLERİ AÇILIR PANELİ ---
 if st.session_state['kasa_islem_acik']:
     with st.container():
         st.markdown("""
-            <div style="background-color: #ffffff; padding: 20px; border: 2px solid #0d6efd; border-radius: 10px; margin-bottom: 20px;">
+            <div style="background-color: #ffffff; padding: 20px; border: 2px solid #0d6efd; border-radius: 10px; margin-bottom: 20px; margin-top: 15px;">
                 <h4 style="margin-top: 0px; color: #0d6efd;">👝 Kasa Sermaye Yönetimi (Para Yatırma / Çekme)</h4>
                 <p style="font-weight: bold; margin-bottom: 8px;">İşlem Türünü Seçin:</p>
         """, unsafe_allow_html=True)
@@ -887,7 +895,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda.")
+    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
     
     secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
     hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)

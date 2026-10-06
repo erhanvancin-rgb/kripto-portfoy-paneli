@@ -92,8 +92,8 @@ logo_urls = {
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
 
-# --- RAM / BELLEK OPTİMİZASYONLU API ÇEKME (TTL Cache) ---
-@st.cache_data(ttl=15, show_spinner=False)
+# --- RAM / BELLEK OPTİMİZASYONLU API ÇEKME (Stabil Uzatılmış TTL Cache) ---
+@st.cache_data(ttl=60, show_spinner=False)
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
@@ -102,7 +102,7 @@ def fiyat_cek_guvenli(coin_symbol):
     
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.0)
+        resp = requests.get(url, headers=headers, timeout=3.0)
         if resp.status_code == 200:
             val = float(resp.json().get('price', 0))
             if val > 0: return val
@@ -110,7 +110,7 @@ def fiyat_cek_guvenli(coin_symbol):
 
     try:
         url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.0)
+        resp = requests.get(url, headers=headers, timeout=3.0)
         if resp.status_code == 200:
             data = resp.json().get('data', {})
             val = float(data.get('data', {}).get('price', 0) or data.get('price', 0))
@@ -119,7 +119,7 @@ def fiyat_cek_guvenli(coin_symbol):
 
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
@@ -127,7 +127,7 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
 
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}"
-        r = requests.get(url, headers=headers, timeout=2.0)
+        r = requests.get(url, headers=headers, timeout=3.0)
         if r.status_code == 200:
             data = r.json()
             if len(data) > 0:
@@ -146,12 +146,12 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval={interval_str}&limit={limit_adet}"
-        r = requests.get(url, headers=headers, timeout=2.0)
+        r = requests.get(url, headers=headers, timeout=3.0)
         if r.status_code == 200:
             data = r.json()
             yesil, kirmizi = 0, 0
@@ -173,7 +173,7 @@ def makro_kline_analiz(symbol_or_type, interval_str, limit_adet):
     k = limit_adet - y
     return y, k
 
-# 1. ANA MATRİS İVMELİ MOTORU (Kademeli 120 / 180 / 220 Baraj Sınırı)
+# 1. ANA MATRİS İVMELİ MOTORu (Kademeli 120 / 180 / 220 Baraj Sınırı)
 def matris_ivmeli_analiz(coin_symbol, risk_yuzdesi):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
@@ -683,7 +683,6 @@ for data in islenen_ham_veriler:
     toplam_k = data["toplam_k"]
     
     matris_farki = abs(y_yuzde - 50.0) * 2.0 
-    matris_puani = matris_farki * 50.0  # Net puan hesaplaması
 
     y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
     k_gorsel = 10 - y_gorsel
@@ -703,8 +702,8 @@ for data in islenen_ham_veriler:
         aktif_yon_bar_sayisi = toplam_y if aktif_yon_turu == "Long" else toplam_k
         aktif_yon_yuzdesi = y_yuzde if aktif_yon_turu == "Long" else k_yuzde
         
-        # KESİN KURAL: Güçlü Trend olabilmesi için HEM puanın >= 101 OLMASI HEM DE bar sayısının >= 181 OLMASI ŞARTTIR!
-        if aktif_yon_yuzdesi >= baraj_yuzdesi and matris_puani >= 101.0 and aktif_yon_bar_sayisi >= 181:
+        # 1200 bar üzerinden 901 bar ve üzeri aynı yönde onay aldıysa Güçlü Trend yazabilir!
+        if aktif_yon_yuzdesi >= baraj_yuzdesi and aktif_yon_bar_sayisi >= 901:
             trend = f"Güçlü Trend {aktif_yon_turu}"
         elif aktif_yon_yuzdesi >= baraj_yuzdesi:
             trend = f"{aktif_yon_turu} (Onaylı)"
@@ -888,7 +887,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
+    if coin_verisi['Notr']: st.warning("⚠️️ Bu coin şu an Nötr konumda.")
     
     secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
     hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -1045,7 +1044,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Gires_Fiyat_Str'] if 'Gires_Fiyat_Str' in row else row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(portfoy_html, unsafe_allow_html=True)
 

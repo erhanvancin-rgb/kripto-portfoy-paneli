@@ -186,14 +186,21 @@ def kurgusal_matris_hesapla(coin_symbol):
     net_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
     
-    # KESİN UYUM: Yön her zaman bar yüzdesinin baskın olduğu tarafa atanır
-    aktif_yon = "Long" if y_yuzde >= 50.0 else "Short"
+    # 32s ve 16s ana omurga korunurken, 8s, 4s ve 2s için günlük işlem duyarlılığı ve 
+    # %55 Hysteresis (Koruma Bariyeri) Mantığı Entegrasyonu
+    if y_yuzde >= 55.0:
+        aktif_yon = "Long"
+    elif y_yuzde <= 45.0:
+        aktif_yon = "Short"
+    else:
+        aktif_yon = "Nötr"
     
-    b_32s = y32s if aktif_yon == "Long" else k32s
-    b_16s = y16s if aktif_yon == "Long" else k16s
-    b_8s  = y8s  if aktif_yon == "Long" else k8s
-    b_4s  = y4s  if aktif_yon == "Long" else k4s
-    b_2s  = y2s  if aktif_yon == "Long" else k2s
+    # Puanlama için aktif yöne göre ağırlıklı bar hesaplaması
+    b_32s = y32s if (y_yuzde >= 50.0) else k32s
+    b_16s = y16s if (y_yuzde >= 50.0) else k16s
+    b_8s  = y8s  if (y_yuzde >= 50.0) else k8s
+    b_4s  = y4s  if (y_yuzde >= 50.0) else k4s
+    b_2s  = y2s  if (y_yuzde >= 50.0) else k2s
     
     p_32s = (b_32s / 240.0) * 80.0
     p_16s = (b_16s / 240.0) * 60.0
@@ -204,8 +211,8 @@ def kurgusal_matris_hesapla(coin_symbol):
     toplam_puan = p_32s + p_16s + p_8s + p_4s + p_2s
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
     
-    if abs(y_yuzde - 50.0) < 1.0:
-        aktif_yon = "Nötr"
+    if aktif_yon == "Nötr":
+        nihai_puan = min(nihai_puan, 49.9)
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
@@ -489,7 +496,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Otomatik Stop Korumalı)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Hysteresis & Gün içi Koruma Korumalı)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -542,7 +549,7 @@ for data in islenen_ham_veriler:
     kirmizi_top = "🔴" * k_gorsel
     detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
     
-    is_notr = aktif_yon == "Nötr"
+    is_notr = (aktif_yon == "Nötr")
     if is_notr:
         trend = "Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
@@ -555,7 +562,6 @@ for data in islenen_ham_veriler:
         
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     
-    # KESİN MATEMATİKSEL DÜZELTME: Long ve Short için Stop ve Kar Al Yönleri
     if aktif_yon_turu == "Long":
         stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
         hedef_fiyat = anlik_fiyat * (1.0 + hedef_uzde / 100.0)
@@ -750,7 +756,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Otomatik Stop Korumalı Motor")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Hysteresis Koruma Modu")
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -899,7 +905,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{dur_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(portfoy_html, unsafe_allow_html=True)
 
@@ -929,7 +935,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             
         with col_p2:
             st.markdown("#### 📈 Strateji Metrikleri")
-            st.metric("Toplam Kapanan İşlem", f"{toplam_kapanan} Adet")
+            st.metric("Toplam Kapanan İşlem", f"{toplam_karanan} Adet")
             st.metric("🟢 Kârlı Kapanma", f"{karli_sayisi} Adet (%{karli_oran:.1f})")
             st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oran:.1f})")
             

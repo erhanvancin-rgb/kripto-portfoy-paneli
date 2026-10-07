@@ -13,7 +13,7 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # --- SAYFA YAPILANDIRMASI ---
-st.set_page_config(page_title="Pro Kripto Canlı Akış ve Risk Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
@@ -184,7 +184,16 @@ def kurgusal_matris_hesapla(coin_symbol):
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_bar = toplam_y + toplam_k
-    y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
+    anlik_y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
+
+    # Yön değişimini ve ani sıçramaları frenlemek için Hafıza (Smoothing / EMA) Mekanizması
+    if 'trend_hafiza' not in st.session_state:
+        st.session_state['trend_hafiza'] = {}
+    
+    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, anlik_y_yuzde)
+    # %70 önceki eğilim korunur, %30 yeni veriye güncellenir (fren etkisi)
+    y_yuzde = (onceki_y_yuzde * 0.7) + (anlik_y_yuzde * 0.3)
+    st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
     # %55 Hysteresis Kuralı (Yön Belirleme Filtresi)
     if y_yuzde >= 55.0:
@@ -194,7 +203,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     else:
         aktif_yon = "Nötr"
     
-    # Doğal Ağırlıklı Puan Hesaplaması (Sabitlenmiş skor kısıtlaması kaldırıldı)
+    # Doğal Ağırlıklı Puan Hesaplaması
     b_32s = y32s if (y_yuzde >= 50.0) else k32s
     b_16s = y16s if (y_yuzde >= 50.0) else k16s
     b_8s  = y8s  if (y_yuzde >= 50.0) else k8s
@@ -492,7 +501,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Hysteresis & Doğal Puan Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Hysteresis & Frenli Trend Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -551,7 +560,7 @@ for data in islenen_ham_veriler:
         aktif_yon_turu = "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        if nihai_puan >= 120.0:
+        if nihai_puan >= 145.0:  # Güçlü Trend Eşiği 145 Puan
             trend = f"Güçlü Trend {aktif_yon_turu}"
         else:
             trend = f"{aktif_yon_turu} (Onaylı)"
@@ -607,7 +616,9 @@ for data in islenen_ham_veriler:
         "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
-islenen_veriler = sorted(islenen_veriler, key=lambda x: x["Skor"], reverse=True)
+# Sıralama Mantığı: Önce aktif olanlar (Notr olmayanlar) puanına göre büyükten küçüğe, en altta ise Nötr olanlar puanına göre büyükten küçüğe sıralanır.
+islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
+
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler:
@@ -752,7 +763,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Hysteresis Doğal Puan Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Hysteresis Frenli Motor")
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -938,17 +949,18 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         with col_p3:
             st.markdown("#### 💰 Para Değerleri Bloku")
             net_fark_renk = "#00FF00" if net_fark_dolar >= 0 else "#FF0000"
-            st.markdown(f"""
-                <div class="para-blogu">
-                <p style="color: #00FF00; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
-                <h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
-                <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
-                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
-                <hr style="border-color: #ced4da; margin: 8px 0px;">
-                <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
-                <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="para-blogu">'
+                '<p style="color: #00FF00; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>'
+                f'<h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>'
+                '<p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>'
+                f'<h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>'
+                '<hr style="border-color: #ced4da; margin: 8px 0px;">'
+                '<p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>'
+                f'<h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>'
+                '</div>',
+                unsafe_allow_html=True
+            )
             
     st.markdown("---")
     st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")

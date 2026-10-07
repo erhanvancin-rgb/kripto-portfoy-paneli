@@ -946,4 +946,10 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
                 <hr style="border-color: #ced4da; margin: 8px 0px;">
                 <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
-                <h3 style="color: {net_fark_renk}; margin:
+                <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            
+    st.markdown("---")
+    st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
+    st.info("Arşiv bilgileri güncel.")

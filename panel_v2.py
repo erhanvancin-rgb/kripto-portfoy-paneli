@@ -194,7 +194,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     b_4s  = y4s  if aktif_yon == "Long" else k4s
     b_2s  = y2s  if aktif_yon == "Long" else k2s
     
-    # Esnek Kademeli Puan Hesaplama (Sıkışmayı Önleyen Oransal Taban)
     p_32s = (b_32s / 240.0) * 80.0
     p_16s = (b_16s / 240.0) * 60.0
     p_8s  = (b_8s  / 240.0) * 30.0
@@ -444,7 +443,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
-# --- OTOMATİK STOP KONTROLÜ (ANLİK FİYAT STOPU GEÇTİYse KAPAT) ---
+# --- OTOMATİK STOP KONTROLÜ ---
 def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty or 'Durum' not in df.columns: return
@@ -482,7 +481,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
                 
                 trade_aciklama = f"Otomatik Stop: #{islem_id} {coin} (Zarar)"
                 kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
-                degisiklik_oldu = true
+                degisiklik_oldu = True  # DÜZELTME: Python büyük harf True yapıldı
                 
     if degisiklik_oldu:
         dataframe_guncelle_gsheets(df)
@@ -517,8 +516,7 @@ for sembol in coinler:
         "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan
     })
 
-# Anlık fiyatlar çekildikten hemen sonra otomatik stop kontrolünü çalıştırıyoruz
-otomatik_stop_kontrolü(ortak_fiyat_havuzu)
+otomatik_stop_kontrolu(ortak_fiyat_havuzu)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
 

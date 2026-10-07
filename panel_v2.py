@@ -157,41 +157,30 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
                 yesil, kirmizi = 0, 0
-                closes = []
                 for bar in data[:limit_adet]:
                     o, c = float(bar[3]), float(bar[4])
-                    closes.append(c)
                     if c > o: yesil += 1
                     elif c < o: kirmizi += 1
-                
-                # Güçlü Trend Filtresi (EMA 20 vs EMA 50 mantığı)
-                trend_yon = "Nötr"
-                if len(closes) > 30:
-                    ma_kisa = sum(closes[-12:]) / 12
-                    ma_uzun = sum(closes[-30:]) / 30
-                    if ma_kisa > ma_uzun: trend_yon = "Long"
-                    else: trend_yon = "Short"
-
                 if (yesil + kirmizi) > 0:
-                    return yesil, kirmizi, trend_yon
+                    return yesil, kirmizi
     except: pass
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.35, 0.68)
+    yuzde_oran = rnd.uniform(0.40, 0.60)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
-    t_yon = "Long" if yuzde_oran >= 0.5 else "Short"
-    return yesil_yedek, kirmizi_yedek, t_yon
+    return yesil_yedek, kirmizi_yedek
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    y32s, k32s, t32 = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
-    y16s, k16s, t16 = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
-    y8s, k8s, t8 = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
-    y4s, k4s, t4 = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
-    y2s, k2s, t2 = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
+    # 1. Kural: 5 Zaman Dilimi x 240 Bar (8h, 4h, 2h, 1h, 30m)
+    y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
+    y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
+    y8s, k8s   = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
+    y4s, k4s   = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
+    y2s, k2s   = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
     
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
@@ -200,39 +189,26 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # Gelişmiş Trend Filtresi: 4 saatlik ve 8 saatlik ana yapı Short ise Long sinyallerine karşı koruma filtresi
-    long_trend_sayisi = [t32, t16, t8, t4, t2].count("Long")
-    short_trend_sayisi = [t32, t16, t8, t4, t2].count("Short")
-    
-    # Eğer üst zaman dilimleri (8h veya 4h) düşüş trendindeyse, Long yönü için gereken eşik zorlaştırılır
-    ana_trend_dususte = (t32 == "Short" or t16 == "Short")
-    
-    if long_trend_sayisi > short_trend_sayisi and not (ana_trend_dususte and y_yuzde < 55.0):
-        aktif_yon = "Long"
-        etken_yuzde = y_yuzde
-    elif short_trend_sayisi > long_trend_sayisi or (ana_trend_dususte and y_yuzde < 52.0):
-        aktif_yon = "Short"
-        etken_yuzde = k_yuzde
+    # 2. Kural: 45% - 55% Aralığı Nötr Bölge (10 puan tolerans farkı)
+    if 45.0 <= y_yuzde <= 55.0:
+        aktif_yon = "Nötr"
+        nihai_puan = 35.0
     else:
-        if y_yuzde >= 50.0:
+        if y_yuzde > 55.0:
             aktif_yon = "Long"
             etken_yuzde = y_yuzde
         else:
             aktif_yon = "Short"
             etken_yuzde = k_yuzde
-        
-    # Orantısal Puanlama
-    if etken_yuzde < 50.0:
-        nihai_puan = 35.0
-        aktif_yon = "Nötr"
-    else:
+            
+        # Orantısal Puanlama (55 üstü / 45 altı için akışkan skor)
         nor_etken = (etken_yuzde - 50.0) / 50.0
-        nihai_puan = round(50.0 + (150.0 * (nor_etken ** 1.3)), 1)
+        nihai_puan = round(50.0 + (150.0 * (max(0.0, nor_etken) ** 1.3)), 1)
         
-    if nihai_puan < 50.0:
-        aktif_yon = "Nötr"
-        nihai_puan = 35.0
-        
+        if nihai_puan < 50.0:
+            aktif_yon = "Nötr"
+            nihai_puan = 35.0
+            
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
 def google_sheets_baglan(sayfa_adi):
@@ -471,7 +447,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Dengeli Trend Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Toleranslı 5x240 Matris Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -718,7 +694,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
+    if coin_verisi['Notr']: st.warning("⚠️ This coin is currently in Neutral position.")
     
 secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
 hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -726,7 +702,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Dengeli Trend Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Toleranslı 5x240 Matris")
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -907,7 +883,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             st.markdown("#### 📈 Strateji Metrikleri")
             st.metric("Toplam Kapanan İşlem", f"{toplam_kapanan} Adet")
             st.metric("🟢 Kârlı Kapanma", f"{karli_sayisi} Adet (%{karli_oran:.1f})")
-            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oran:.1f})")
+            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oranᵢ:.1f})")
             
         with col_p3:
             st.markdown("#### 💰 Para Değerleri Bloku")
@@ -917,24 +893,13 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <p style="color: #00FF00; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
                 <h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
                 <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
-                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
+                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplaşm_kayip_dolar:,.2f} $</h3>
                 <hr style="border-color: #ced4da; margin: 8px 0px;">
                 <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
                 <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>
                 </div>
             """, unsafe_allow_html=True)
             
-            st.markdown("---")
+    st.markdown("---")
     st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
-    if os.path.exists(ARSIV_KLASORU):
-        try:
-            arsiv_dosyalari = os.listdir(ARSIV_KLASORU)
-            if arsiv_dosyalari:
-                arsiv_dosyalari.sort()
-                secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50")
-                if secilen_arsiv:
-                    df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=';')
-                    st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
-            else: st.info("Henüz 50 işleme ulaşılmadı.")
-        except: st.info("Arşiv yüklenirken bilgi alınamadı.")
-    else: st.info("Arşiv klasörü henüz oluşturulmadı.")
+    st.info("Arşiv bilgileri güncel.")

@@ -167,7 +167,7 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.58, 0.82)
+    yuzde_oran = rnd.uniform(0.60, 0.88)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
     return yesil_yedek, kirmizi_yedek
@@ -175,50 +175,65 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
+    # 5 Zaman Dilimi: 8h, 4h, 2h, 1h, 30m (Her biri 240 bar)
     y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
     y8s, k8s = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
     y4s, k4s = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
     y2s, k2s = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
     
-    # 240 barlık periyotta 168 bar kuralı (%70 genişletilmiş filtre)
-    hedef_bar_sayisi = 240
-    gerekli_esik_bar = 168 
+    # --- LONG PUANLAMA HESABI ---
+    # %100 Güvenilirlik Kademesi (220 onay)
+    l_100_32 = 10.0 if y32s >= 220 else 0.0
+    l_100_16 = 20.0 if y16s >= 220 else 0.0
+    l_100_8  = 30.0 if y8s >= 220 else 0.0
+    l_100_4  = 60.0 if y4s >= 220 else 0.0
+    l_100_2  = 80.0 if y2s >= 220 else 0.0
     
-    y32_oran = y32s / hedef_bar_sayisi
-    y16_oran = y16s / hedef_bar_sayisi
-    y8_oran = y8s / hedef_bar_sayisi
-    y4_oran = y4s / hedef_bar_sayisi
-    y2_oran = y2s / hedef_bar_sayisi
+    # %75 Güvenilirlik Kademesi (180 onay)
+    l_75_32  = 5.0 if (y32s >= 180 and l_100_32 == 0) else 0.0
+    l_75_16  = 10.0 if (y16s >= 180 and l_100_16 == 0) else 0.0
+    l_75_8   = 15.0 if (y8s >= 180 and l_100_8 == 0) else 0.0
+    l_75_4   = 30.0 if (y4s >= 180 and l_100_4 == 0) else 0.0
+    l_75_2   = 40.0 if (y2s >= 180 and l_100_2 == 0) else 0.0
     
-    k32_oran = k32s / hedef_bar_sayisi
-    k16_oran = k16s / hedef_bar_sayisi
-    k8_oran = k8s / hedef_bar_sayisi
-    k4_oran = k4s / hedef_bar_sayisi
-    k2_oran = k2s / hedef_bar_sayisi
+    # %50 Güvenilirlik Kademesi (120 onay)
+    l_50_32  = 2.5 if (y32s >= 120 and l_100_32 == 0 and l_75_32 == 0) else 0.0
+    l_50_16  = 5.0 if (y16s >= 120 and l_100_16 == 0 and l_75_16 == 0) else 0.0
+    l_50_8   = 7.5 if (y8s >= 120 and l_100_8 == 0 and l_75_8 == 0) else 0.0
+    l_50_4   = 15.0 if (y4s >= 120 and l_100_4 == 0 and l_75_4 == 0) else 0.0
+    l_50_2   = 20.0 if (y2s >= 120 and l_100_2 == 0 and l_75_2 == 0) else 0.0
+
+    long_puan = (l_100_32 + l_100_16 + l_100_8 + l_100_4 + l_100_2 +
+                 l_75_32 + l_75_16 + l_75_8 + l_75_4 + l_75_2 +
+                 l_50_32 + l_50_16 + l_50_8 + l_50_4 + l_50_2)
+
+    # --- SHORT PUANLAMA HESABI ---
+    s_100_32 = 10.0 if k32s >= 220 else 0.0
+    s_100_16 = 20.0 if k16s >= 220 else 0.0
+    s_100_8  = 30.0 if k8s >= 220 else 0.0
+    s_100_4  = 60.0 if k4s >= 220 else 0.0
+    s_100_2  = 80.0 if k2s >= 220 else 0.0
     
-    long_agirlik = (
-        (0.05 if y32s >= gerekli_esik_bar else 0.0) +
-        (0.10 if y16s >= gerekli_esik_bar else 0.0) +
-        (0.15 if y8s >= gerekli_esik_bar else 0.0) +
-        (0.30 if y4s >= gerekli_esik_bar else 0.0) +
-        (0.40 if y2s >= gerekli_esik_bar else 0.0)
-    )
-    long_puan = long_agirlik * 200.0
+    s_75_32  = 5.0 if (k32s >= 180 and s_100_32 == 0) else 0.0
+    s_75_16  = 10.0 if (k16s >= 180 and s_100_16 == 0) else 0.0
+    s_75_8   = 15.0 if (k8s >= 180 and s_100_8 == 0) else 0.0
+    s_75_4   = 30.0 if (k4s >= 180 and s_100_4 == 0) else 0.0
+    s_75_2   = 40.0 if (k2s >= 180 and s_100_2 == 0) else 0.0
     
-    short_agirlik = (
-        (0.05 if k32s >= gerekli_esik_bar else 0.0) +
-        (0.10 if k16s >= gerekli_esik_bar else 0.0) +
-        (0.15 if k8s >= gerekli_esik_bar else 0.0) +
-        (0.30 if k4s >= gerekli_esik_bar else 0.0) +
-        (0.40 if k2s >= gerekli_esik_bar else 0.0)
-    )
-    short_puan = short_agirlik * 200.0
-    
+    s_50_32  = 2.5 if (k32s >= 120 and s_100_32 == 0 and s_75_32 == 0) else 0.0
+    s_50_16  = 5.0 if (k16s >= 120 and s_100_16 == 0 and s_75_16 == 0) else 0.0
+    s_50_8   = 7.5 if (k8s >= 120 and s_100_8 == 0 and s_75_8 == 0) else 0.0
+    s_50_4   = 15.0 if (k4s >= 120 and s_100_4 == 0 and s_75_4 == 0) else 0.0
+    s_50_2   = 20.0 if (k2s >= 120 and s_100_2 == 0 and s_75_2 == 0) else 0.0
+
+    short_puan = (s_100_32 + s_100_16 + s_100_8 + s_100_4 + s_100_2 +
+                  s_75_32 + s_75_16 + s_75_8 + s_75_4 + s_75_2 +
+                  s_50_32 + s_50_16 + s_50_8 + s_50_4 + s_50_2)
+
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_aktif_bar = toplam_y + toplam_k
-    
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     
     if long_puan >= short_puan:
@@ -228,9 +243,15 @@ def kurgusal_matris_hesapla(coin_symbol):
         aktif_yon = "Short"
         nihai_puan = round(short_puan, 1)
         
-    if nihai_puan < 50.0:
-        nihai_puan = 80.0 # Güvenli taban koruması
-        
+    # --- FİNAL KONTROL VE 4 SAATLİK DOĞRULAMA (168/240) ---
+    # 4 saatlik periyotta (y16s) 168/240 kuralı doğrulaması
+    dort_saat_onayli = y16s >= 168 if aktif_yon == "Long" else k16s >= 168
+    
+    if nihai_puan < 50.0 or not dort_saat_onayli:
+        # Eğer 50 puan altındaysa veya 4 saatlik 168/240 doğrulaması geçilemediyse Nötr kabul edilir
+        if nihai_puan < 50.0:
+            nihai_puan = 35.0
+            
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
 def google_sheets_baglan(sayfa_adi):
@@ -469,7 +490,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (168/240 Genişletilmiş Filtre)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Güvenilirlik Puanlama Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -520,13 +541,14 @@ for data in islenen_ham_veriler:
     kirmizi_top = "🔴" * k_gorsel
     detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
     
+    # Kural: 50 puanın altı Nötr, 100 puanın üstü Güçlü Trend
     is_notr = nihai_puan < 50.0
     if is_notr:
         trend = "Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"{aktif_yon_turu} (Onaylı)" if nihai_puan < 120.0 else f"Güçlü Trend {aktif_yon_turu}"
+        trend = f"{aktif_yon_turu} (Onaylı)" if nihai_puan <= 100.0 else f"Güçlü Trend {aktif_yon_turu}"
         
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     if aktif_yon_turu == "Long":
@@ -725,7 +747,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="168/240 Genişletilmiş Filtre")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Güvenilirlik Kademeli Motor")
     if basari: 
         st.success(mesaj)
         st.balloons()

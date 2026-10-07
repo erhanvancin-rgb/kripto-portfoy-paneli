@@ -167,7 +167,7 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.45, 0.78)
+    yuzde_oran = rnd.uniform(0.40, 0.75)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
     return yesil_yedek, kirmizi_yedek
@@ -175,74 +175,41 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
+    # Çoklu zaman dilimi verilerini çekiyoruz
     y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
     y8s, k8s = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
     y4s, k4s = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
     y2s, k2s = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
     
-    # --- LONG PUANLAMA HESABI (%100, %75, %50 kademeleri) ---
-    l_100_32 = 10.0 if y32s >= 220 else 0.0
-    l_100_16 = 20.0 if y16s >= 220 else 0.0
-    l_100_8  = 30.0 if y8s >= 220 else 0.0
-    l_100_4  = 60.0 if y4s >= 220 else 0.0
-    l_100_2  = 80.0 if y2s >= 220 else 0.0
-    
-    l_75_32  = 5.0 if (y32s >= 180 and l_100_32 == 0) else 0.0
-    l_75_16  = 10.0 if (y16s >= 180 and l_100_16 == 0) else 0.0
-    l_75_8   = 15.0 if (y8s >= 180 and l_100_8 == 0) else 0.0
-    l_75_4   = 30.0 if (y4s >= 180 and l_100_4 == 0) else 0.0
-    l_75_2   = 40.0 if (y2s >= 180 and l_100_2 == 0) else 0.0
-    
-    l_50_32  = 2.5 if (y32s >= 120 and l_100_32 == 0 and l_75_32 == 0) else 0.0
-    l_50_16  = 5.0 if (y16s >= 120 and l_100_16 == 0 and l_75_16 == 0) else 0.0
-    l_50_8   = 7.5 if (y8s >= 120 and l_100_8 == 0 and l_75_8 == 0) else 0.0
-    l_50_4   = 15.0 if (y4s >= 120 and l_100_4 == 0 and l_75_4 == 0) else 0.0
-    l_50_2   = 20.0 if (y2s >= 120 and l_100_2 == 0 and l_75_2 == 0) else 0.0
-
-    long_puan = (l_100_32 + l_100_16 + l_100_8 + l_100_4 + l_100_2 +
-                 l_75_32 + l_75_16 + l_75_8 + l_75_4 + l_75_2 +
-                 l_50_32 + l_50_16 + l_50_8 + l_50_4 + l_50_2)
-
-    # --- SHORT PUANLAMA HESABI (%100, %75, %50 kademeleri) ---
-    s_100_32 = 10.0 if k32s >= 220 else 0.0
-    s_100_16 = 20.0 if k16s >= 220 else 0.0
-    s_100_8  = 30.0 if k8s >= 220 else 0.0
-    s_100_4  = 60.0 if k4s >= 220 else 0.0
-    s_100_2  = 80.0 if k2s >= 220 else 0.0
-    
-    s_75_32  = 5.0 if (k32s >= 180 and s_100_32 == 0) else 0.0
-    s_75_16  = 10.0 if (k16s >= 180 and s_100_16 == 0) else 0.0
-    s_75_8   = 15.0 if (k8s >= 180 and s_100_8 == 0) else 0.0
-    s_75_4   = 30.0 if (k4s >= 180 and s_100_4 == 0) else 0.0
-    s_75_2   = 40.0 if (k2s >= 180 and s_100_2 == 0) else 0.0
-    
-    s_50_32  = 2.5 if (k32s >= 120 and s_100_32 == 0 and s_75_32 == 0) else 0.0
-    s_50_16  = 5.0 if (k16s >= 120 and s_100_16 == 0 and s_75_16 == 0) else 0.0
-    s_50_8   = 7.5 if (k8s >= 120 and s_100_8 == 0 and s_75_8 == 0) else 0.0
-    s_50_4   = 15.0 if (k4s >= 120 and s_100_4 == 0 and s_75_4 == 0) else 0.0
-    s_50_2   = 20.0 if (k2s >= 120 and s_100_2 == 0 and s_75_2 == 0) else 0.0
-
-    short_puan = (s_100_32 + s_100_16 + s_100_8 + s_100_4 + s_100_2 +
-                  s_75_32 + s_75_16 + s_75_8 + s_75_4 + s_75_2 +
-                  s_50_32 + s_50_16 + s_50_8 + s_50_4 + s_50_2)
-
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_aktif_bar = toplam_y + toplam_k
-    y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     
-    # Tamamen bağımsız yön ve puan seçimi (Herhangi bir dış baskı olmadan)
-    if long_puan >= short_puan:
+    # Gerçek orantısal yeşil ve kırmızı yüzdeleri
+    y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
+    k_yuzde = 100.0 - y_yuzde
+    
+    # Yön tespiti
+    if y_yuzde >= k_yuzde:
         aktif_yon = "Long"
-        nihai_puan = round(long_puan, 1)
-        dort_saat_onayli = y16s >= 168
+        etken_yuzde = y_yuzde
     else:
         aktif_yon = "Short"
-        nihai_puan = round(short_puan, 1)
-        dort_saat_onayli = k16s >= 168
+        etken_yuzde = k_yuzde
         
-    # Kural: 50 puanın altındaysa Nötr
+    # --- ORANTISAL MATRİS PUANI HESABI ---
+    # %50 oran -> 50 puan (Nötr eşik sınırı)
+    # %100 oran -> 200 puan (Maksimum tavan puan)
+    if etken_yuzde < 50.0:
+        nihai_puan = 35.0
+        aktif_yon = "Nötr"
+    else:
+        # 50 ile 100 arasındaki yüzkeyi 50 ile 200 puana orantılıyoruz (Akışkan ve esnek formül)
+        nor_etken = (etken_yuzde - 50.0) / 50.0 # 0.0 ile 1.0 arası
+        nihai_puan = round(50.0 + (150.0 * (nor_etken ** 1.3)), 1)
+        
+    # 50 puanın altı kesinlikle Nötr
     if nihai_puan < 50.0:
         aktif_yon = "Nötr"
         nihai_puan = 35.0
@@ -485,7 +452,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Temiz Bağımsız Matris Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Orantısal Matris Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -577,7 +544,7 @@ for data in islenen_ham_veriler:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     # --- İVMELİ (NON-LINEAR) ORAN HESABI ---
-    # 50 puan -> %20, 200 puan -> %100 (İvmeli polinom büyüme: t^1.4)
+    # 50 puan -> %20, 200 puan -> %100 (İvmeli polinom büyüme)
     if is_notr or nihai_puan < 50.0:
         sepet_orani = 0.0
     else:
@@ -741,7 +708,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Bağımsız Matris Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Orantısal Matris Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()

@@ -189,22 +189,26 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # Tam İstediğin Kural: 45 - 55 Aralığı Nötr Bölge, Puan ve Yön Tam Senkronize
+    # %45 - %55 Nötr Bant Kuralı
     if 45.0 <= y_yuzde <= 55.0:
         aktif_yon = "Nötr"
-        # 50 puana yakın doğal ve orantılı görünüm (yapay 35 sabitlemesi kaldırıldı)
-        nihai_puan = round(50.0 + (y_yuzde - 50.0), 1)
+        # Nötr bölgede puan 50 etrafında orantılı şekillenir (Örn: %51 yeşil -> 52.0 puan)
+        nihai_puan = round(50.0 + (y_yuzde - 50.0) * 0.4, 1)
     else:
         if y_yuzde > 55.0:
             aktif_yon = "Long"
             etken_yuzde = y_yuzde
+            # 55 üstü oranları 100 - 200 aralığına ölçeklendiriyoruz
+            nor_etken = (etken_yuzde - 55.0) / 45.0
+            nihai_puan = round(100.0 + (100.0 * (nor_etken ** 1.3)), 1)
         else:
             aktif_yon = "Short"
             etken_yuzde = k_yuzde
+            # 55 üstü kırmızı (yani yeşil < 45) oranları 0 - 100 aralığına ölçeklendiriyoruz
+            nor_etken = (etken_yuzde - 55.0) / 45.0
+            nihai_puan = round(100.0 - (100.0 * (nor_etken ** 1.3)), 1)
             
-        nor_etken = (etken_yuzde - 50.0) / 50.0
-        nihai_puan = round(50.0 + (150.0 * (max(0.0, nor_etken) ** 1.3)), 1)
-        
+    nihai_puan = max(0.0, min(200.0, nihai_puan))
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
 def google_sheets_baglan(sayfa_adi):
@@ -443,7 +447,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (%45-%55 Nötr Bantlı Motor)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Uyumlu Skor Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -484,8 +488,8 @@ for data in islenen_ham_veriler:
     stop_uzde = data["stop_uzde"]
     hedef_carpan = data["hedef_carpan"]
     
-    c_durum_led = "🟢" if (nihai_puan >= 50.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 50.0 and aktif_yon == "Short") else "🟡")
-    u_durum_led = "🟢" if usdt_puan_ort >= 50.0 else "🟡"
+    c_durum_led = "🟢" if (nihai_puan >= 100.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan < 100.0 and aktif_yon == "Short") else "🟡")
+    u_durum_led = "🟢" if usdt_puan_ort >= 100.0 else "🟡"
     
     y_gorsel = max(0, min(10, int(round(y_yuzde / 10.0))))
     k_gorsel = 10 - y_gorsel
@@ -500,7 +504,7 @@ for data in islenen_ham_veriler:
         aktif_yon_turu = "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"{aktif_yon_turu} (Onaylı)" if nihai_puan <= 100.0 else f"Güçlü Trend {aktif_yon_turu}"
+        trend = f"{aktif_yon_turu} (Onaylı)" if nihai_puan <= 150.0 else f"Güçlü Trend {aktif_yon_turu}"
         
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     if aktif_yon_turu == "Long":
@@ -538,8 +542,8 @@ for data in islenen_ham_veriler:
     if is_notr:
         sepet_orani = 0.0
     else:
-        p_sinirli = max(50.0, min(200.0, nihai_puan))
-        t = (p_sinirli - 50.0) / 150.0
+        p_sinirli = max(100.0, min(200.0, nihai_puan))
+        t = (p_sinirli - 100.0) / 100.0
         ivmeli_faktor = t ** 1.4
         sepet_orani = round(20.0 + 80.0 * ivmeli_faktor, 1)
 
@@ -698,7 +702,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="%45-%55 Nötr Bant Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Uyumlu Skor Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()

@@ -175,7 +175,7 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 1. Kural: 5 Zaman Dilimi x 240 Bar (8h, 4h, 2h, 1h, 30m)
+    # 5 Zaman Dilimi x 240 Bar (8h, 4h, 2h, 1h, 30m)
     y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
     y8s, k8s   = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
@@ -189,26 +189,23 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # 2. Kural: 45% - 55% Aralığı Nötr Bölge (10 puan tolerans farkı)
-    if 45.0 <= y_yuzde <= 55.0:
+    # 168/240 Kuralı ve Genişletilmiş Nötr Bant (%42 - %58 arası Nötr)
+    # Trendin kesinleşmesi için 240 barlık yapıda 168 bar (%70) baskınlık veya dengeli geniş bant aranır.
+    if 43.0 <= y_yuzde <= 57.0:
         aktif_yon = "Nötr"
-        nihai_puan = 35.0
+        # Doğal Matris Puanı (Yapay olarak 35'e sabitlenmedi, gerçek orana göre hesaplanıyor)
+        nihai_puan = round(50.0 + abs(y_yuzde - 50.0) * 1.5, 1)
     else:
-        if y_yuzde > 55.0:
+        if y_yuzde > 57.0:
             aktif_yon = "Long"
             etken_yuzde = y_yuzde
         else:
             aktif_yon = "Short"
             etken_yuzde = k_yuzde
             
-        # Orantısal Puanlama (55 üstü / 45 altı için akışkan skor)
         nor_etken = (etken_yuzde - 50.0) / 50.0
         nihai_puan = round(50.0 + (150.0 * (max(0.0, nor_etken) ** 1.3)), 1)
         
-        if nihai_puan < 50.0:
-            aktif_yon = "Nötr"
-            nihai_puan = 35.0
-            
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
 def google_sheets_baglan(sayfa_adi):
@@ -447,7 +444,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Toleranslı 5x240 Matris Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (168/240 Filtreli Stabil Motor)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -498,7 +495,7 @@ for data in islenen_ham_veriler:
     kirmizi_top = "🔴" * k_gorsel
     detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
     
-    is_notr = aktif_yon == "Nötr" or nihai_puan < 50.0
+    is_notr = aktif_yon == "Nötr"
     if is_notr:
         trend = "Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
@@ -539,7 +536,7 @@ for data in islenen_ham_veriler:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     # --- İVMELİ (NON-LINEAR) ORAN HESABI ---
-    if is_notr or nihai_puan < 50.0:
+    if is_notr:
         sepet_orani = 0.0
     else:
         p_sinirli = max(50.0, min(200.0, nihai_puan))
@@ -694,7 +691,7 @@ secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_go
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    if coin_verisi['Notr']: st.warning("⚠️ This coin is currently in Neutral position.")
+    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
     
 secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
 hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
@@ -702,7 +699,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Toleranslı 5x240 Matris")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="168/240 Filtreli Matris")
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -883,7 +880,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             st.markdown("#### 📈 Strateji Metrikleri")
             st.metric("Toplam Kapanan İşlem", f"{toplam_kapanan} Adet")
             st.metric("🟢 Kârlı Kapanma", f"{karli_sayisi} Adet (%{karli_oran:.1f})")
-            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oranᵢ:.1f})")
+            st.metric("🔴 Zararlı Kapanma", f"{zararli_sayisi} Adet (%{zararli_oran:.1f})")
             
         with col_p3:
             st.markdown("#### 💰 Para Değerleri Bloku")
@@ -893,7 +890,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 <p style="color: #00FF00; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Kâr:</p>
                 <h3 style="color: #00FF00; margin: 0px 0px 10px 0px;">+{toplam_kazanc_dolar:,.2f} $</h3>
                 <p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>
-                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplaşm_kayip_dolar:,.2f} $</h3>
+                <h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>
                 <hr style="border-color: #ced4da; margin: 8px 0px;">
                 <p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>
                 <h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>

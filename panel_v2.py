@@ -86,7 +86,7 @@ def fiyat_cek_guvenli(coin_symbol):
     
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.0)
+        resp = requests.get(url, headers=headers, timeout=30.0)
         if resp.status_code == 200:
             val = float(resp.json().get('price', 0))
             if val > 0: return val
@@ -94,7 +94,7 @@ def fiyat_cek_guvenli(coin_symbol):
 
     try:
         url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
-        resp = requests.get(url, headers=headers, timeout=2.0)
+        resp = requests.get(url, headers=headers, timeout=30.0)
         if resp.status_code == 200:
             data = resp.json().get('data', {})
             val = float(data.get('data', {}).get('price', 0) or data.get('price', 0))
@@ -110,29 +110,27 @@ def load_1200_bar_market_data(coin_symbol: str):
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval=1m&limit=1200"
-        r = requests.get(url, headers=headers, timeout=3.0)
+        r = requests.get(url, headers=headers, timeout=30.0)
         if r.status_code == 200:
             data = r.json()
             if len(data) > 0:
                 df = pd.DataFrame(data, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'CloseTime', 'Qav', 'Trades', 'TBA', 'TBQ', 'Ignore'])
-                df['Open'] = df['Open'].astype(float)
-                df['High'] = df['High'].astype(float)
-                df['Low'] = df['Low'].astype(float)
-                df['Close'] = df['Close'].astype(float)
+                for col in ['Open', 'High', 'Low', 'Close']:
+                    df[col] = df[col].astype(float)
                 return df
     except: pass
     
-    np.random.seed(hash(coin_symbol) % 2**32)
-    limit = 1200
-    dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
-    base_price = baz_fiyatlar.get(coin_symbol, 100.0)
-    vol_f = base_price * 0.001
-    close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 10
-    high_prices = close_prices + np.abs(np.random.normal(0, vol_f/2, limit))
-    low_prices = close_prices - np.abs(np.random.normal(0, vol_f/2, limit))
-    return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})
+    # API hatası olursa boş DF döndürülür, sistem uydurma veri üretmez!
+    return pd.DataFrame()
 
 def calculate_coin_atr_metrics(df, skor):
+    s_sinirli = max(50.0, min(200.0, skor))
+    t = (s_sinirli - 50.0) / 150.0
+    hedef_carpan = round(2.0 + 2.0 * (t ** 1.6), 1)
+
+    if df is None or df.empty or 'Close' not in df.columns:
+        return 1.0, hedef_carpan
+
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
     df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -143,23 +141,16 @@ def calculate_coin_atr_metrics(df, skor):
     vol_percentage = (atr_val / current_price) * 100 if current_price > 0 else 1.0
     
     stop_pct = max(0.5, round(vol_percentage * 1.5, 1))
-    
-    # İvmesel Risk/Hedef Çarpanı (50 puanda 1:2, 200 puanda 1:4)
-    s_sinirli = max(50.0, min(200.0, skor))
-    t = (s_sinirli - 50.0) / 150.0
-    hedef_carpan = round(2.0 + 2.0 * (t ** 1.6), 1)
-    
     return stop_pct, hedef_carpan
 
 def kline_cek_detayli(coin_symbol, interval_str, limit_adet=240):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
     headers = {'User-Agent': 'Mozilla/5.0'}
-    ts = int(time.time() * 1000)
     
     try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}&_t={ts}"
-        r = requests.get(url, headers=headers, timeout=2.0)
+        url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}"
+        r = requests.get(url, headers=headers, timeout=30.0)
         if r.status_code == 200:
             data = r.json()
             if len(data) > 0:
@@ -171,19 +162,12 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet=240):
                 return yesil, kirmizi
     except: pass
     
-    # API limitine takılırsa çalışacak yedek jeneratör
-    # 14/20 barajını (%70) aşabilmesi için potansiyel oran tavanını 0.85'e çıkardım.
-    seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
-    import random
-    rnd = random.Random(seed_val)
-    y = int(limit_adet * rnd.uniform(0.40, 0.85)) 
-    k = limit_adet - y
-    return y, k
+    # Veri alınamazsa sistem kasayı korumak için KESİNLİKLE Nötr (0,0) döner.
+    return 0, 0
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_guvenli(coin_symbol)
     
-    # Toplam 1200 bar geriye dönük (Her zaman dilimi 240 adet)
     y32s, k32s = kline_cek_detayli(coin_symbol, "8h", 240)
     y16s, k16s = kline_cek_detayli(coin_symbol, "4h", 240)
     y8s, k8s = kline_cek_detayli(coin_symbol, "2h", 240)
@@ -205,7 +189,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     k4_oran = k4s / 240.0
     k2_oran = k2s / 240.0
     
-    # Her periyot sadece %70 eşiğini aşarsa tam puan ağırlığını verir
     long_agirlik = (
         (0.05 if y32_oran >= esik_oran else 0.0) +
         (0.10 if y16_oran >= esik_oran else 0.0) +
@@ -227,6 +210,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_aktif_bar = toplam_y + toplam_k
+    
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     
     if long_puan >= short_puan:
@@ -730,7 +714,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe 14/20 Filtreli Motor")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe Katı Algoritma")
     if basari: 
         st.success(mesaj)
         st.balloons()

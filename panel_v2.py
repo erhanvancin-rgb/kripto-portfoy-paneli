@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np  # <-- Eksik olan ve bu hataya sebep olan satır burası
 import requests
 from datetime import datetime
 import pytz

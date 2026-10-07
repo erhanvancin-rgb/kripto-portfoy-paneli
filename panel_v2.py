@@ -186,6 +186,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     net_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
     
+    # KESİN UYUM: Yön her zaman bar yüzdesinin baskın olduğu tarafa atanır
     aktif_yon = "Long" if y_yuzde >= 50.0 else "Short"
     
     b_32s = y32s if aktif_yon == "Long" else k32s
@@ -203,7 +204,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     toplam_puan = p_32s + p_16s + p_8s + p_4s + p_2s
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
     
-    if nihai_puan < 50.0:
+    if abs(y_yuzde - 50.0) < 1.0:
         aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
@@ -481,7 +482,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
                 
                 trade_aciklama = f"Otomatik Stop: #{islem_id} {coin} (Zarar)"
                 kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
-                degisiklik_oldu = True  # DÜZELTME: Python büyük harf True yapıldı
+                degisiklik_oldu = True
                 
     if degisiklik_oldu:
         dataframe_guncelle_gsheets(df)
@@ -553,6 +554,8 @@ for data in islenen_ham_veriler:
             trend = f"{aktif_yon_turu} (Onaylı)"
         
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
+    
+    # KESİN MATEMATİKSEL DÜZELTME: Long ve Short için Stop ve Kar Al Yönleri
     if aktif_yon_turu == "Long":
         stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
         hedef_fiyat = anlik_fiyat * (1.0 + hedef_uzde / 100.0)

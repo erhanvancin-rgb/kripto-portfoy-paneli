@@ -157,59 +157,68 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
                 yesil, kirmizi = 0, 0
+                closes = []
                 for bar in data[:limit_adet]:
                     o, c = float(bar[3]), float(bar[4])
+                    closes.append(c)
                     if c > o: yesil += 1
                     elif c < o: kirmizi += 1
+                
+                # Trend / Momentum Filtresi (EMA benzeri basit ortalama kıyaslaması)
+                trend_yon = "Nötr"
+                if len(closes) > 20:
+                    ma_kisa = sum(closes[-10:]) / 10
+                    ma_uzun = sum(closes[-30:]) / 30
+                    if ma_kisa > ma_uzun: trend_yon = "Long"
+                    else: trend_yon = "Short"
+
                 if (yesil + kirmizi) > 0:
-                    return yesil, kirmizi
+                    return yesil, kirmizi, trend_yon
     except: pass
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.40, 0.75)
+    yuzde_oran = rnd.uniform(0.40, 0.65)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
-    return yesil_yedek, kirmizi_yedek
+    t_yon = "Long" if yuzde_oran >= 0.5 else "Short"
+    return yesil_yedek, kirmizi_yedek, t_yon
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Çoklu zaman dilimi verilerini çekiyoruz
-    y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
-    y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
-    y8s, k8s = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
-    y4s, k4s = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
-    y2s, k2s = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
+    y32s, k32s, t32 = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
+    y16s, k16s, t16 = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
+    y8s, k8s, t8 = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
+    y4s, k4s, t4 = kline_cek_detayli_coinbase(coin_symbol, "1h", 240)
+    y2s, k2s, t2 = kline_cek_detayli_coinbase(coin_symbol, "30m", 240)
     
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_aktif_bar = toplam_y + toplam_k
     
-    # Gerçek orantısal yeşil ve kırmızı yüzdeleri
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # Yön tespiti
-    if y_yuzde >= k_yuzde:
+    # Trend onay oylaması (Daha dengeli ve gerçekçi yön tespiti)
+    long_trend_sayisi = [t32, t16, t8, t4, t2].count("Long")
+    short_trend_sayisi = [t32, t16, t8, t4, t2].count("Short")
+    
+    if long_trend_sayisi >= short_trend_sayisi and y_yuzde >= 45.0:
         aktif_yon = "Long"
         etken_yuzde = y_yuzde
     else:
         aktif_yon = "Short"
         etken_yuzde = k_yuzde
         
-    # --- ORANTISAL MATRİS PUANI HESABI ---
-    # %50 oran -> 50 puan (Nötr eşik sınırı)
-    # %100 oran -> 200 puan (Maksimum tavan puan)
+    # Orantısal Puanlama (Trend filtresiyle dengelenmiş)
     if etken_yuzde < 50.0:
         nihai_puan = 35.0
         aktif_yon = "Nötr"
     else:
-        # 50 ile 100 arasındaki yüzkeyi 50 ile 200 puana orantılıyoruz (Akışkan ve esnek formül)
-        nor_etken = (etken_yuzde - 50.0) / 50.0 # 0.0 ile 1.0 arası
+        nor_etken = (etken_yuzde - 50.0) / 50.0
         nihai_puan = round(50.0 + (150.0 * (nor_etken ** 1.3)), 1)
         
-    # 50 puanın altı kesinlikle Nötr
     if nihai_puan < 50.0:
         aktif_yon = "Nötr"
         nihai_puan = 35.0
@@ -452,7 +461,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Orantısal Matris Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Trend Filtreli Orantısal Motor)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -544,13 +553,12 @@ for data in islenen_ham_veriler:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     # --- İVMELİ (NON-LINEAR) ORAN HESABI ---
-    # 50 puan -> %20, 200 puan -> %100 (İvmeli polinom büyüme)
     if is_notr or nihai_puan < 50.0:
         sepet_orani = 0.0
     else:
         p_sinirli = max(50.0, min(200.0, nihai_puan))
-        t = (p_sinirli - 50.0) / 150.0  # 0.0 ile 1.0 arası normalize
-        ivmeli_faktor = t ** 1.4        # İvmeli eğri
+        t = (p_sinirli - 50.0) / 150.0
+        ivmeli_faktor = t ** 1.4
         sepet_orani = round(20.0 + 80.0 * ivmeli_faktor, 1)
 
     islenen_veriler.append({
@@ -708,7 +716,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Orantısal Matris Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Trend Filtreli Motor")
     if basari: 
         st.success(mesaj)
         st.balloons()

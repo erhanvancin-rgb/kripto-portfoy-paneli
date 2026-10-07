@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np  # <-- Eksik olan ve bu hataya sebep olan satır burası
+import numpy as np
 import requests
 from datetime import datetime
 import pytz
@@ -138,7 +138,6 @@ def load_1200_bar_market_data(coin_symbol: str):
                 return df
     except: pass
     
-    # Fallback simülasyon
     np.random.seed(hash(coin_symbol) % 2**32)
     limit = 1200
     dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
@@ -149,7 +148,7 @@ def load_1200_bar_market_data(coin_symbol: str):
     low_prices = close_prices - np.abs(np.random.normal(0, vol_f/2, limit))
     return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})
 
-def calculate_atr_and_recommendations(df):
+def calculate_coin_atr_metrics(df, net_puan, baraj):
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
     df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -159,9 +158,16 @@ def calculate_atr_and_recommendations(df):
     current_price = df['Close'].iloc[-1]
     vol_percentage = (atr_val / current_price) * 100 if current_price > 0 else 1.0
     
-    rec_stop = max(0.5, round(vol_percentage * 1.5, 1))
-    rec_target = round(rec_stop * 2.0, 1)
-    return rec_stop, rec_target, round(vol_percentage, 2)
+    # Stop yüzdesi ATR bazlı
+    stop_pct = max(0.5, round(vol_percentage * 1.5, 1))
+    
+    # Skor bazlı dinamik hedef katsayısı ölçeklenmesi (1:2 başlangıç standardı)
+    # Puan barajı ne kadar aşılırsa katsayı o oranda artar
+    puan_farki = max(0.0, abs(net_puan) - baraj)
+    ek_carpan = min(2.5, puan_farki / 50.0) # Güçlü trendlerde kâr hedefi katlanır
+    hedef_carpan = round(2.0 + ek_carpan, 1)
+    
+    return stop_pct, hedef_carpan
 
 def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
@@ -479,8 +485,14 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
 st.title("⚡ Pro Kripto & Canlı Piyasa Paneli")
 elli_islem_arsiv_kontrol()
 
+# İLK AÇILIŞ (BOOTSTRAP) HAFIZA DÜZELTMESİ: Boş başlamayı önler
 if 'trend_gecmisleri' not in st.session_state:
-    st.session_state['trend_gecmisleri'] = {c: [] for c in coinler}
+    baslangic_trend_sozlugu = {}
+    for c in coinler:
+        # İlk açılışta anlık hesaplanan yön ile 10 adetlik önbellek doldurulur
+        _, _, _, initial_yon, _ = detayli_matris_hesapla(c, 75.0)
+        baslangic_trend_sozlugu[c] = [initial_yon if initial_yon != "Notr" else "Long"] * 10
+    st.session_state['trend_gecmisleri'] = baslangic_trend_sozlugu
 
 if 'risk_yuzde_potansi' not in st.session_state:
     st.session_state['risk_yuzde_potansi'] = 75.0
@@ -493,12 +505,6 @@ if 'kasa_islem_turu' not in st.session_state:
 
 if 'sadece_aktifleri_goster' not in st.session_state:
     st.session_state['sadece_aktifleri_goster'] = False
-
-# Bellek Yönetimi (Stop&Lost için)
-if "slider_stop" not in st.session_state:
-    st.session_state.slider_stop = 1.5
-if "slider_target" not in st.session_state:
-    st.session_state.slider_target = 2.5
 
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -524,9 +530,14 @@ for sembol in coinler:
     elif short_sayisi >= gereken_onay:
         suanki_filtrelenmis_yon = "Short"
         
+    # Her coin için 1200 bar verisini çekip ATR tabanlı dinamik stop ve hedef katsayısını hesapla
+    df_1200 = load_1200_bar_market_data(sembol)
+    stop_uzde, hedef_carpan = calculate_coin_atr_metrics(df_1200, net_puan, baraj)
+
     islenen_ham_veriler.append({
         "sembol": sembol, "anlik_fiyat": anlik_fiyat, "net_puan": net_puan,
-        "baraj": baraj, "m_yon": suanki_filtrelenmis_yon, "y_yuzde": y_yuzde
+        "baraj": baraj, "m_yon": suanki_filtrelenmis_yon, "y_yuzde": y_yuzde,
+        "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan
     })
 
 usdt_net_puan_ort = sum([d["net_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
@@ -540,6 +551,8 @@ for data in islenen_ham_veriler:
     k_yuzde = 100.0 - y_yuzde
     anlik_fiyat = data["anlik_fiyat"]
     filtrelenmis_yon = data["m_yon"]
+    stop_uzde = data["stop_uzde"]
+    hedef_carpan = data["hedef_carpan"]
     
     c_durum_led = "🟢" if (net_puan >= baraj and net_puan >= 50.0) else ("🔴" if (net_puan <= -baraj and net_puan <= -50.0) else "🟡")
     u_durum_led = "🟢" if (usdt_net_puan_ort >= baraj and usdt_net_puan_ort >= 50.0) else ("🔴" if (usdt_net_puan_ort <= -baraj and usdt_net_puan_ort <= -50.0) else "🟡")
@@ -560,12 +573,17 @@ for data in islenen_ham_veriler:
         aktif_yon_turu = filtrelenmis_yon
         trend = f"Güçlü Trend {aktif_yon_turu}" if abs(net_puan) > 100.0 else f"{aktif_yon_turu} (Onaylı)"
         
+    # Dinamik stop ve skora göre ölçeklenen kar hedefi hesaplaması
+    hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     if aktif_yon_turu == "Long":
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+        stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
+        hedef_fiyat = anlik_fiyat * (1.0 + hedef_uzde / 100.0)
     elif aktif_yon_turu == "Short":
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 1.008, anlik_fiyat * 0.975
+        stop_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0)
+        hedef_fiyat = anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else:
-        stop_fiyat, hedef_fiyat = anlik_fiyat * 0.992, anlik_fiyat * 1.025
+        stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
+        hedef_fiyat = anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
     dom_html = '<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">' + c_durum_led + u_durum_led + c_durum_led + '</div><div style="font-size: 10px; color: #495057; font-weight: 500;">C:' + c_durum_led + ' | U:' + u_durum_led + '</div></div>'
     
@@ -587,7 +605,8 @@ for data in islenen_ham_veriler:
         "Yon": yon_html, "Teyit_Sunumu": detay_matris_html, "Dom_Sunumu": dom_html, 
         "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak), 
         "Skor": abs(net_puan) * 10000 + sum([ord(c) for c in sembol]) if not is_notr else 0, 
-        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Matris_Orani": abs(net_puan), "Aktif_Yon": aktif_yon_turu
+        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Matris_Orani": abs(net_puan), "Aktif_Yon": aktif_yon_turu,
+        "Risk_Hedef_Metin": f"{stop_uzde} / {hedef_uzde}"
     })
 
 islenen_veriler = sorted(islenen_veriler, key=lambda x: x["Skor"], reverse=True)
@@ -726,44 +745,9 @@ with b_col5:
 
 risk_yuzdesi = st.slider("🎛️ Panel Güvenli Bölge Risk Oranı (%50 - %100):", min_value=50.0, max_value=100.0, step=1.0, key="risk_yuzde_potansi")
 
-# --- YENİ EKLENEN: 1200 BAR ATR & STOP&LOST ENTEGRASYONU ---
-st.markdown("---")
-st.markdown("### ⚙️ 1200 Bar ATR Bazlı Akıllı Stop & Lost Kalibrasyonu")
-
-# Seçilen parite için 1200 bar veriyi yükle ve ATR önerisi üret
-secilen_atr_coin = st.selectbox("ATR Hesaplama Paritesi", coinler, key="atr_parite_secim")
-df_1200 = load_1200_bar_market_data(secilen_atr_coin)
-rec_stop, rec_target, current_vol = calculate_atr_and_recommendations(df_1200)
-
-col_btn, col_slider, col_info = st.columns([1.2, 3, 1.5])
-
-with col_btn:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🛡️ Stop&Lost Öner", use_container_width=True, help="1200 bar ATR verisine göre en ideal stop ve hedef oranını hesaplar ve slider'a atar."):
-        st.session_state.slider_stop = rec_stop
-        st.session_state.slider_target = rec_target
-        st.success(f"Uygulandı! Stop: {rec_stop} / Hedef: {rec_target}")
-
-with col_slider:
-    st.session_state.slider_stop = st.slider(
-        f"Dinamik Stop Seviyesi ({secilen_atr_coin})", 
-        min_value=0.5, 
-        max_value=5.0, 
-        step=0.1, 
-        value=float(st.session_state.slider_stop)
-    )
-
-with col_info:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"""
-        <div class="metric-container">
-        <b>ATR Volatilite:</b> %{current_vol}<br>
-        <b>Önerilen Oran:</b> <code>{rec_stop} / {rec_target}</code>
-        </div>
-    """, unsafe_allow_html=True)
-
 st.markdown("---")
 
+# --- ANA TABLO (ATR ve Skor Bazlı Risk / Hedef Otomatik Entegre) ---
 table_html = """
 <table class="custom-table">
  <thead class="custom-table-header">
@@ -789,9 +773,7 @@ for v in islenen_veriler:
         t_tip = "Güçlü Trend" if "Güçlü Trend" in v['Ham_Yon'] else "Onaylı"
         oran_html = f'<div style="background-color: {t_bg}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>({t_tip})</div>'
 
-    risk_hedef_hucre = f"{st.session_state.slider_stop} / {st.session_state.slider_target}"
-
-    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #d63384;'>{risk_hedef_hucre}</td></tr>"
+    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #d63384;'>{v['Risk_Hedef_Metin']}</td></tr>"
 table_html += "</tbody></table>"
 st.markdown(table_html, unsafe_allow_html=True)
 

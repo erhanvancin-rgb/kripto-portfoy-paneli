@@ -146,7 +146,6 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
     cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
     
-    # 32s, 16s, 8s, 4s, 2s Zaman Dilimleri (Saniye Karşılıkları)
     granularity_map = {"32h": 115200, "16h": 57600, "8h": 28800, "4h": 14400, "2h": 7200}
     gran = granularity_map.get(interval_label, 14400)
     
@@ -176,25 +175,29 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 5 Zaman Dilimi (32s, 16s, 8s, 4s, 2s) x 240 Bar
+    # Zaman Dilimleri Veri Çekme
     y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "32h", 240)
     y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "16h", 240)
     y8s, k8s   = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
     y4s, k4s   = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
     y2s, k2s   = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
     
-    toplam_y = y32s + y16s + y8s + y4s + y2s
-    toplam_k = k32s + k16s + k8s + k4s + k2s
-    net_aktif_bar = toplam_y + toplam_k
+    # Tersine Çevrilmiş Ağırlık Matrisi (Büyük Zaman Dilimlerine Ana Ağırlık: %30, %25, %20, %15, %10)
+    agirlik_32s, agirlik_16s, agirlik_8s, agirlik_4s, agirlik_2s = 0.30, 0.25, 0.20, 0.15, 0.10
     
-    y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
+    toplam_bar = 240.0
+    y_32_oran = (y32s / toplam_bar) * 100.0
+    y_16_oran = (y16s / toplam_bar) * 100.0
+    y_8_oran  = (y8s / toplam_bar) * 100.0
+    y_4_oran  = (y4s / toplam_bar) * 100.0
+    y_2_oran  = (y2s / toplam_bar) * 100.0
+    
+    y_yuzde = (y_32_oran * agirlik_32s) + (y_16_oran * agirlik_16s) + (y_8_oran * agirlik_8s) + (y_4_oran * agirlik_4s) + (y_2_oran * agirlik_2s)
     k_yuzde = 100.0 - y_yuzde
     
-    # Nötr Bant Kaldırıldı: Doğrudan Net Ağırlık ve Puanlama
     if y_yuzde >= 50.0:
         aktif_yon = "Long"
         etken_yuzde = y_yuzde
-        # 50 ile 200 arasında ölçeklendirme
         nor_etken = (etken_yuzde - 50.0) / 50.0
         nihai_puan = round(50.0 + (150.0 * (nor_etken ** 1.3)), 1)
     else:
@@ -441,7 +444,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (32s-16s-8s-4s-2s Matris Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Dinamik Risk/Hedef & Kararlı Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -680,7 +683,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="32s-16s-8s-4s-2s Matris")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Dinamik Matris v2")
     if basari: 
         st.success(mesaj)
         st.balloons()

@@ -6,4 +6,4 @@ gspread
 google-auth
 pytz
 streamlit-autorefresh
-
+numpy

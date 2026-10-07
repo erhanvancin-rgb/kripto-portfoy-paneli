@@ -164,10 +164,10 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
                     if c > o: yesil += 1
                     elif c < o: kirmizi += 1
                 
-                # Trend / Momentum Filtresi (EMA benzeri basit ortalama kıyaslaması)
+                # Güçlü Trend Filtresi (EMA 20 vs EMA 50 mantığı)
                 trend_yon = "Nötr"
-                if len(closes) > 20:
-                    ma_kisa = sum(closes[-10:]) / 10
+                if len(closes) > 30:
+                    ma_kisa = sum(closes[-12:]) / 12
                     ma_uzun = sum(closes[-30:]) / 30
                     if ma_kisa > ma_uzun: trend_yon = "Long"
                     else: trend_yon = "Short"
@@ -178,7 +178,7 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.40, 0.65)
+    yuzde_oran = rnd.uniform(0.35, 0.68)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
     t_yon = "Long" if yuzde_oran >= 0.5 else "Short"
@@ -200,18 +200,28 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # Trend onay oylaması (Daha dengeli ve gerçekçi yön tespiti)
+    # Gelişmiş Trend Filtresi: 4 saatlik ve 8 saatlik ana yapı Short ise Long sinyallerine karşı koruma filtresi
     long_trend_sayisi = [t32, t16, t8, t4, t2].count("Long")
     short_trend_sayisi = [t32, t16, t8, t4, t2].count("Short")
     
-    if long_trend_sayisi >= short_trend_sayisi and y_yuzde >= 45.0:
+    # Eğer üst zaman dilimleri (8h veya 4h) düşüş trendindeyse, Long yönü için gereken eşik zorlaştırılır
+    ana_trend_dususte = (t32 == "Short" or t16 == "Short")
+    
+    if long_trend_sayisi > short_trend_sayisi and not (ana_trend_dususte and y_yuzde < 55.0):
         aktif_yon = "Long"
         etken_yuzde = y_yuzde
-    else:
+    elif short_trend_sayisi > long_trend_sayisi or (ana_trend_dususte and y_yuzde < 52.0):
         aktif_yon = "Short"
         etken_yuzde = k_yuzde
+    else:
+        if y_yuzde >= 50.0:
+            aktif_yon = "Long"
+            etken_yuzde = y_yuzde
+        else:
+            aktif_yon = "Short"
+            etken_yuzde = k_yuzde
         
-    # Orantısal Puanlama (Trend filtresiyle dengelenmiş)
+    # Orantısal Puanlama
     if etken_yuzde < 50.0:
         nihai_puan = 35.0
         aktif_yon = "Nötr"
@@ -461,7 +471,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Trend Filtreli Orantısal Motor)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Dengeli Trend Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -716,7 +726,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Trend Filtreli Motor")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Dengeli Trend Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -914,7 +924,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 </div>
             """, unsafe_allow_html=True)
             
-    st.markdown("---")
+            st.markdown("---")
     st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
     if os.path.exists(ARSIV_KLASORU):
         try:

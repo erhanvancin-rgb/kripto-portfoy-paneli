@@ -174,7 +174,7 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet):
     seed_val = sum([ord(c) for c in coin_symbol]) + int(time.time() / 300)
     import random
     rnd = random.Random(seed_val)
-    y = int(limit_adet * rnd.uniform(0.45, 0.75))
+    y = int(limit_adet * rnd.uniform(0.40, 0.65))
     k = limit_adet - y
     return y, k
 
@@ -187,21 +187,36 @@ def kurgusal_matris_hesapla(coin_symbol):
     y4s, k4s = kline_cek_detayli(coin_symbol, "1h", 240)
     y2s, k2s = kline_cek_detayli(coin_symbol, "30m", 240)
     
-    # 200 Puan Tavanına Göre Ağırlıklı Long ve Short Puan Hesaplama
+    # 14/20 Kuralı Filtreleme Oranı (%70 Minimum Baskı Eşiği)
+    esik_oran = 0.70 
+    
+    y32_oran = y32s / 240.0
+    y16_oran = y16s / 240.0
+    y8_oran = y8s / 240.0
+    y4_oran = y4s / 240.0
+    y2_oran = y2s / 240.0
+    
+    k32_oran = k32s / 240.0
+    k16_oran = k16s / 240.0
+    k8_oran = k8s / 240.0
+    k4_oran = k4s / 240.0
+    k2_oran = k2s / 240.0
+    
+    # 14/20 kuralı uygulanarak filtrelenmiş ağırlıklı puanlar (200 Tavan)
     long_puan = (
-        (y32s / 240.0) * 0.05 +
-        (y16s / 240.0) * 0.10 +
-        (y8s / 240.0) * 0.15 +
-        (y4s / 240.0) * 0.30 +
-        (y2s / 240.0) * 0.40
+        (y32_oran * 0.05 if y32_oran >= esik_oran else 0.0) +
+        (y16_oran * 0.10 if y16_oran >= esik_oran else 0.0) +
+        (y8_oran * 0.15 if y8_oran >= esik_oran else 0.0) +
+        (y4_oran * 0.30 if y4_oran >= esik_oran else 0.0) +
+        (y2_oran * 0.40 if y2_oran >= esik_oran else 0.0)
     ) * 200.0
     
     short_puan = (
-        (k32s / 240.0) * 0.05 +
-        (k16s / 240.0) * 0.10 +
-        (k8s / 240.0) * 0.15 +
-        (k4s / 240.0) * 0.30 +
-        (k2s / 240.0) * 0.40
+        (k32_oran * 0.05 if k32_oran >= esik_oran else 0.0) +
+        (k16_oran * 0.10 if k16_oran >= esik_oran else 0.0) +
+        (k8_oran * 0.15 if k8_oran >= esik_oran else 0.0) +
+        (k4_oran * 0.30 if k4_oran >= esik_oran else 0.0) +
+        (k2_oran * 0.40 if k2_oran >= esik_oran else 0.0)
     ) * 200.0
     
     toplam_y = y32s + y16s + y8s + y4s + y2s
@@ -526,7 +541,7 @@ for data in islenen_ham_veriler:
         
     dom_html = '<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">' + c_durum_led + u_durum_led + c_durum_led + '</div><div style="font-size: 10px; color: #495057; font-weight: 500;">C:' + c_durum_led + ' | U:' + u_durum_led + '</div></div>'
     
-    # Matris Puanı Sütunu (Nihai Puan ve Yön Gösterimi)
+    # Matris Puanı Sütunu (14/20 filtrelenmiş net puan ve yön)
     if is_notr:
         puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else:
@@ -556,7 +571,7 @@ for data in islenen_ham_veriler:
         "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
-# En yüksek matris puanına (en güçlü coine) göre otomatik sıralama
+# En yüksek matris puanına göre otomatik sıralama
 islenen_veriler = sorted(islenen_veriler, key=lambda x: x["Skor"], reverse=True)
 aktif_coinler = [v for v in islenen_veriler if not v["Notr"]]
 
@@ -666,7 +681,7 @@ if st.session_state['kasa_islem_acik']:
 
 st.markdown("---")
 
-# --- ANA TABLO (Otomatik İvmesel Puanlama ve Sıralama) ---
+# --- ANA TABLO ---
 table_html = """
 <table class="custom-table">
  <thead class="custom-table-header">
@@ -712,7 +727,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe İvmesel Motor")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe 14/20 Filtreli Motor")
     if basari: 
         st.success(mesaj)
         st.balloons()

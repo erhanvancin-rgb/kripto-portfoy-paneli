@@ -88,7 +88,7 @@ def fiyat_cek_guvenli(coin_symbol):
     
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=15.0)
+        resp = requests.get(url, headers=headers, timeout=60.0)
         if resp.status_code == 200:
             val = float(resp.json().get('price', 0))
             if val > 0: return val
@@ -106,7 +106,7 @@ def load_1200_bar_market_data(coin_symbol: str):
     }
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval=1m&limit=1200"
-        r = requests.get(url, headers=headers, timeout=30.0)
+        r = requests.get(url, headers=headers, timeout=60.0)
         if r.status_code == 200:
             data = r.json()
             if len(data) > 0:
@@ -147,7 +147,7 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet=240):
     
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}"
-        r = requests.get(url, headers=headers, timeout=30.0)
+        r = requests.get(url, headers=headers, timeout=60.0)
         if r.status_code == 200:
             data = r.json()
             if len(data) > 0:
@@ -709,7 +709,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Multi-Timeframe Katı Algoritma")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="60 Saniye Timeout Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()

@@ -189,14 +189,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (toplam_y / net_aktif_bar * 100.0) if net_aktif_bar > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # 168/240 Kuralı ve Genişletilmiş Nötr Bant (%42 - %58 arası Nötr)
-    # Trendin kesinleşmesi için 240 barlık yapıda 168 bar (%70) baskınlık veya dengeli geniş bant aranır.
-    if 43.0 <= y_yuzde <= 57.0:
+    # Tam İstediğin Kural: 45 - 55 Aralığı Nötr Bölge, Puan ve Yön Tam Senkronize
+    if 45.0 <= y_yuzde <= 55.0:
         aktif_yon = "Nötr"
-        # Doğal Matris Puanı (Yapay olarak 35'e sabitlenmedi, gerçek orana göre hesaplanıyor)
-        nihai_puan = round(50.0 + abs(y_yuzde - 50.0) * 1.5, 1)
+        # 50 puana yakın doğal ve orantılı görünüm (yapay 35 sabitlemesi kaldırıldı)
+        nihai_puan = round(50.0 + (y_yuzde - 50.0), 1)
     else:
-        if y_yuzde > 57.0:
+        if y_yuzde > 55.0:
             aktif_yon = "Long"
             etken_yuzde = y_yuzde
         else:
@@ -444,7 +443,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     except Exception as e: return False, f"Hata: {str(e)}"
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (168/240 Filtreli Stabil Motor)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (%45-%55 Nötr Bantlı Motor)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -699,7 +698,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="168/240 Filtreli Matris")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="%45-%55 Nötr Bant Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()

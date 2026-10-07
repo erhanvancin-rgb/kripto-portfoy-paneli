@@ -81,23 +81,16 @@ baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL
 def fiyat_cek_guvenli(coin_symbol):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
-    kucoin_sym = coin_symbol.replace('/', '-')
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+    }
     
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_sym}"
-        resp = requests.get(url, headers=headers, timeout=30.0)
+        resp = requests.get(url, headers=headers, timeout=15.0)
         if resp.status_code == 200:
             val = float(resp.json().get('price', 0))
-            if val > 0: return val
-    except: pass
-
-    try:
-        url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}"
-        resp = requests.get(url, headers=headers, timeout=30.0)
-        if resp.status_code == 200:
-            data = resp.json().get('data', {})
-            val = float(data.get('data', {}).get('price', 0) or data.get('price', 0))
             if val > 0: return val
     except: pass
 
@@ -107,7 +100,10 @@ def fiyat_cek_guvenli(coin_symbol):
 def load_1200_bar_market_data(coin_symbol: str):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+    }
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval=1m&limit=1200"
         r = requests.get(url, headers=headers, timeout=30.0)
@@ -119,8 +115,6 @@ def load_1200_bar_market_data(coin_symbol: str):
                     df[col] = df[col].astype(float)
                 return df
     except: pass
-    
-    # API hatası olursa boş DF döndürülür, sistem uydurma veri üretmez!
     return pd.DataFrame()
 
 def calculate_coin_atr_metrics(df, skor):
@@ -146,7 +140,10 @@ def calculate_coin_atr_metrics(df, skor):
 def kline_cek_detayli(coin_symbol, interval_str, limit_adet=240):
     symbol_map = {'BTC/USDT': 'BTCUSDT', 'ETH/USDT': 'ETHUSDT', 'BNB/USDT': 'BNBUSDT', 'SOL/USDT': 'SOLUSDT', 'XRP/USDT': 'XRPUSDT'}
     binance_sym = symbol_map.get(coin_symbol, 'BTCUSDT')
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+    }
     
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={binance_sym}&interval={interval_str}&limit={limit_adet}"
@@ -162,7 +159,6 @@ def kline_cek_detayli(coin_symbol, interval_str, limit_adet=240):
                 return yesil, kirmizi
     except: pass
     
-    # Veri alınamazsa sistem kasayı korumak için KESİNLİKLE Nötr (0,0) döner.
     return 0, 0
 
 def kurgusal_matris_hesapla(coin_symbol):
@@ -174,7 +170,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y4s, k4s = kline_cek_detayli(coin_symbol, "1h", 240)
     y2s, k2s = kline_cek_detayli(coin_symbol, "30m", 240)
     
-    # 14/20 Kuralı -> 240 bar üzerinden en az %70 Oran Eşiği (Minimum 168 bar onay aranır)
     esik_oran = 0.70 
     
     y32_oran = y32s / 240.0

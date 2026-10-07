@@ -167,7 +167,7 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
     
     seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.40, 0.60)
+    yuzde_oran = rnd.uniform(0.35, 0.65)
     yesil_yedek = int(limit_adet * yuzde_oran)
     kirmizi_yedek = limit_adet - yesil_yedek
     return yesil_yedek, kirmizi_yedek
@@ -175,14 +175,12 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 5 Zaman Dilimi Verileri (Her biri 240 bar)
     y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "32h", 240)
     y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "16h", 240)
     y8s, k8s   = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
     y4s, k4s   = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
     y2s, k2s   = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
     
-    # Yön Belirleme (Yeşil mi Kırmızı mı baskın?)
     toplam_y = y32s + y16s + y8s + y4s + y2s
     toplam_k = k32s + k16s + k8s + k4s + k2s
     net_bar = toplam_y + toplam_k
@@ -190,29 +188,22 @@ def kurgusal_matris_hesapla(coin_symbol):
     
     aktif_yon = "Long" if y_yuzde >= 50.0 else "Short"
     
-    # Seçilecek Tarafın Bar Değerleri
     b_32s = y32s if aktif_yon == "Long" else k32s
     b_16s = y16s if aktif_yon == "Long" else k16s
     b_8s  = y8s  if aktif_yon == "Long" else k8s
     b_4s  = y4s  if aktif_yon == "Long" else k4s
     b_2s  = y2s  if aktif_yon == "Long" else k2s
     
-    # Yeni Güvenilirlik & Puanlama Kurgusu
-    # 32 Saat (Ağırlık %10): 220 onay = 80p, 120 onay = 20p
-    p_32s = 80.0 if b_32s >= 220 else (20.0 if b_32s >= 120 else (b_32s / 120.0) * 20.0)
-    # 16 Saat (Ağırlık %15): 220 onay = 60p, 120 onay = 15p
-    p_16s = 60.0 if b_16s >= 220 else (15.0 if b_16s >= 120 else (b_16s / 120.0) * 15.0)
-    # 8 Saat (Ağırlık %20): 220 onay = 30p, 120 onay = 7.5p
-    p_8s  = 30.0 if b_8s  >= 220 else (7.5  if b_8s  >= 120 else (b_8s  / 120.0) * 7.5)
-    # 4 Saat (Ağırlık %25): 220 onay = 20p, 120 onay = 5p
-    p_4s  = 20.0 if b_4s  >= 220 else (5.0  if b_4s  >= 120 else (b_4s  / 120.0) * 5.0)
-    # 2 Saat (Ağırlık %30): 220 onay = 10p, 120 onay = 2.5p
-    p_2s  = 10.0 if b_2s  >= 220 else (2.5  if b_2s  >= 120 else (b_2s  / 120.0) * 2.5)
+    # Esnek Kademeli Puan Hesaplama (Sıkışmayı Önleyen Oransal Taban)
+    p_32s = (b_32s / 240.0) * 80.0
+    p_16s = (b_16s / 240.0) * 60.0
+    p_8s  = (b_8s  / 240.0) * 30.0
+    p_4s  = (b_4s  / 240.0) * 20.0
+    p_2s  = (b_2s  / 240.0) * 10.0
     
     toplam_puan = p_32s + p_16s + p_8s + p_4s + p_2s
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
     
-    # 50 Puan Altı Nötr Kuralı
     if nihai_puan < 50.0:
         aktif_yon = "Nötr"
         
@@ -435,7 +426,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         net_kar = miktar * KALDIRAC * fark_yuzde
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
         
-        durum_metni = 'Kapandi (Kar)' if net_kar >= 0 else 'Kapandi (Zarar)'
+        durum_metni = 'Kapandi (Zarar)' if net_kar < 0 else 'Kapandi (Kar)'
         df.at[idx[0], 'Durum'] = durum_metni
         df.at[idx[0], 'Kapanis_Zamani'] = suan_tr
         df.at[idx[0], 'Net_Kar_Zarar'] = float(round(net_kar, 2))
@@ -453,8 +444,52 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
+# --- OTOMATİK STOP KONTROLÜ (ANLİK FİYAT STOPU GEÇTİYse KAPAT) ---
+def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
+    df = islem_gecmisi_getir(sheet_guncelle=False)
+    if df.empty or 'Durum' not in df.columns: return
+    
+    degisiklik_oldu = False
+    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    
+    for idx, row in df.iterrows():
+        if row['Durum'] == 'Acik':
+            islem_id = int(row['Islem_ID'])
+            coin = row['Coin']
+            yon = row['Yon']
+            giris_f = float(row['Giris_Fiyat'])
+            stop_f = float(row['Stop'])
+            miktar = float(row['Islem_Miktari'])
+            anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
+            
+            stop_patladi = False
+            if 'Long' in yon and anl_f <= stop_f:
+                stop_patladi = True
+            elif 'Short' in yon and anl_f >= stop_f:
+                stop_patladi = True
+                
+            if stop_patladi:
+                fark_yuzde = ((stop_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - stop_f) / giris_f)
+                net_kar = miktar * KALDIRAC * fark_yuzde
+                
+                df.at[idx, 'Durum'] = 'Kapandi (Zarar)'
+                df.at[idx, 'Kapanis_Zamani'] = suan_tr
+                df.at[idx, 'Net_Kar_Zarar'] = float(round(net_kar, 2))
+                df.at[idx, 'Kapanis_Fiyati'] = float(round(stop_f, 4))
+                
+                toplam_kasa, _, _, _ = bakiye_durumunu_getir(ortak_fiyat_havuzu)
+                df.at[idx, 'Guncel_Kasa'] = float(round(toplam_kasa + net_kar, 2))
+                
+                trade_aciklama = f"Otomatik Stop: #{islem_id} {coin} (Zarar)"
+                kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
+                degisiklik_oldu = true
+                
+    if degisiklik_oldu:
+        dataframe_guncelle_gsheets(df)
+        elli_islem_arsiv_kontrol()
+
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Güvenilirlik & Kademeli Skor Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Otomatik Stop Korumalı)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -481,6 +516,9 @@ for sembol in coinler:
         "aktif_yon": aktif_yon, "y_yuzde": y_yuzde,
         "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan
     })
+
+# Anlık fiyatlar çekildikten hemen sonra otomatik stop kontrolünü çalıştırıyoruz
+otomatik_stop_kontrolü(ortak_fiyat_havuzu)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
 
@@ -548,7 +586,6 @@ for data in islenen_ham_veriler:
     else:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    # --- İVMELİ ORAN HESABI (50 Puan = %50 | 200 Puan = %100) ---
     if is_notr:
         sepet_orani = 0.0
     else:
@@ -712,7 +749,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Güvenilirlik Puan Matrisi")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Otomatik Stop Korumalı Motor")
     if basari: 
         st.success(mesaj)
         st.balloons()

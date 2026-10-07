@@ -677,17 +677,35 @@ if st.session_state['kasa_islem_acik']:
         """, unsafe_allow_html=True)
         
         col_sec1, col_sec2 = st.columns(2)
-        with col_sec1:
-            if st.button("🟢 Para Yatır (Kasaya Ekle)", use_container_width=True):
-                st.session_state['kasa_islem_turu'] = "Para Yatır"
-                st.rerun()
-        with col_sec2:
-            if st.button("🔴 Para Çek ( Kasadan Azalt )", use_container_width=True):
-                st.session_state['kasa_islem_turu'] = "Para Çek"
-                st.rerun()
-                
-        secili_tlik = st.session_state['kasa_islem_turu']
-        if secili_tlik == "Para Yatır":
+# --- ANA TABLO (ATR ve Skor Bazlı Risk / Hedef Otomatik Entegre) ---
+table_html = """
+<table class="custom-table">
+ <thead class="custom-table-header">
+ <tr>
+ <th>Logo</th><th>Coin<br>Adı</th><th>Güncel<br>Fiyat</th><th>Trend<br>Durumu</th>
+ <th>Matris Teyit</th><th>Piyasa &<br>Dominans</th><th>Önerilen<br>Oran</th>
+ <th>Yatırım<br>Tutarı</th><th>Kar Al<br>Hedefi</th><th>Stop<br>Seviyesi</th>
+ <th>Risk / Hedef</th>
+ </tr>
+ </thead><tbody>
+"""
+for v in islenen_veriler:
+    fiyat_str = f"{v['Fiyat']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Fiyat']:,.2f}&nbsp;$"
+    kar_al_str = f"{v['Kar_Al']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Kar_Al']:,.2f}&nbsp;$"
+    stopla_str = f"{v['Stopla']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Stopla']:,.2f}&nbsp;$"
+    sepet_val = v['Sepet_Orani']
+    val_str = f"%{sepet_val:.1f}" if sepet_val != int(sepet_val) else f"%{int(sepet_val)}"
+    
+    if v['Notr']: 
+        oran_html = '<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
+    else:
+        t_bg = "#00FF00" if "Long" in v["Ham_Yon"] else "#FF0000"
+        t_tip = "Güçlü Trend" if "Güçlü Trend" in v['Ham_Yon'] else "Onaylı"
+        oran_html = f'<div style="background-color: {t_bg}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>({t_tip})</div>'
+
+    table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #d63384;'>{v['Risk_Hedef_Metin']}</td></tr>"
+table_html += "</tbody></table>"
+st.markdown(table_html, unsafe_allow_html=True)
             st.markdown("<p style='color: #00FF00; font-weight: bold; margin-top: 5px;'>👉 Seçilen İşlem: 🟢 Para Yatır (Kasaya Ekle)</p>", unsafe_allow_html=True)
         else:
             st.markdown("<p style='color: #FF0000; font-weight: bold; margin-top: 5px;'>👉 Seçilen İşlem: 🔴 Para Çek ( Kasadan Azalt )</p>", unsafe_allow_html=True)

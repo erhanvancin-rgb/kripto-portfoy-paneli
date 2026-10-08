@@ -116,7 +116,9 @@ def load_1200_bar_market_data(coin_symbol: str):
     close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 10
     high_prices = close_prices + np.abs(np.random.normal(0, vol_f/2, limit))
     low_prices = close_prices - np.abs(np.random.normal(0, vol_f/2, limit))
-    return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})def calculate_coin_atr_metrics(df, skor):
+    return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})
+
+def calculate_coin_atr_metrics(df, skor):
     s_sinirli = max(50.0, min(200.0, abs(skor)))
     t = (s_sinirli - 50.0) / 150.0
     hedef_carpan = round(2.0 + 2.0 * (t ** 1.6), 1)
@@ -230,7 +232,9 @@ def google_sheets_baglan(sayfa_adi):
         else:
             client = gspread.service_account(filename="credentials.json")
         return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
-    except: return Nonedef islem_gecmisi_getir(sheet_guncelle=True):
+    except: return None
+
+def islem_gecmisi_getir(sheet_guncelle=True):
     cols = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None: return pd.DataFrame(columns=cols)
@@ -339,7 +343,9 @@ def manuel_islem_kapat(islem_id, anlik_fiyat):
         dataframe_guncelle_gsheets(df)
         kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), f"Trade: #{islem_id} {row['Coin']} ({durum_m})")
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
-    except Exception as e: return False, str(e)# --- ARAYÜZ ---
+    except Exception as e: return False, str(e)
+
+# --- ARAYÜZ ---
 st.title("⚡ Pro Kripto Canlı Akış ve Mikro Matris Paneli")
 
 with st.sidebar:

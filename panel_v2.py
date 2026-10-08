@@ -186,20 +186,47 @@ def kurgusal_matris_hesapla(coin_symbol):
     net_bar = toplam_y + toplam_k
     anlik_y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
 
+    # Güçlü Fren Mekanizması (%85 eski eğilim, %15 yeni veri)
     if 'trend_hafiza' not in st.session_state:
         st.session_state['trend_hafiza'] = {}
     
     onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, anlik_y_yuzde)
-    y_yuzde = (onceki_y_yuzde * 0.7) + (anlik_y_yuzde * 0.3)
+    y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    if y_yuzde >= 55.0:
-        aktif_yon = "Long"
-    elif y_yuzde <= 45.0:
-        aktif_yon = "Short"
+    # 168/240 Oranı (%70 Mutabakat Eşiği) ve Genişletilmiş Hysteresis Bandı
+    if y_yuzde >= 58.0:
+        ham_yon = "Long"
+    elif y_yuzde <= 42.0:
+        ham_yon = "Short"
     else:
-        aktif_yon = "Nötr"
+        ham_yon = "Nötr"
     
+    # --- ARDIŞIK DÖNGÜ ONAY SAYAÇ MEKANİZMASI (3 DAKİKA KURALI) ---
+    if 'yon_takip_dict' not in st.session_state:
+        st.session_state['yon_takip_dict'] = {}
+    if 'sayac_dict' not in st.session_state:
+        st.session_state['sayac_dict'] = {}
+
+    mevcut_kararli_yon = st.session_state['yon_takip_dict'].get(coin_symbol, "Nötr")
+    bekleyen_yon = st.session_state['sayac_dict'].get(coin_symbol, {}).get('yon', "Nötr")
+    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 0)
+
+    if ham_yon == bekleyen_yon:
+        tekrar_sayisi += 1
+    else:
+        bekleyen_yon = ham_yon
+        tekrar_sayisi = 1
+
+    # Yönün kesinleşmesi için en az 3 ardışık döngü (3 dakika) boyunca aynı sinyali vermesi şartı
+    if tekrar_sayisi >= 3:
+        mevcut_kararli_yon = bekleyen_yon
+
+    st.session_state['sayac_dict'][coin_symbol] = {'yon': bekleyen_yon, 'sayac': tekrar_sayisi}
+    st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
+    aktif_yon = mevcut_kararli_yon
+    
+    # Doğal Ağırlıklı Puan Hesaplaması
     b_32s = y32s if (y_yuzde >= 50.0) else k32s
     b_16s = y16s if (y_yuzde >= 50.0) else k16s
     b_8s  = y8s  if (y_yuzde >= 50.0) else k8s
@@ -497,7 +524,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Hysteresis & Frenli Trend Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Kararlı Trend & Sayaç Motoru)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -759,7 +786,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Hysteresis Frenli Motor")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Kararlı Sayaç Motoru")
     if basari: 
         st.success(mesaj)
         st.balloons()

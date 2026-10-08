@@ -123,8 +123,8 @@ def load_1200_bar_market_data(coin_symbol: str):
     return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})
 
 def calculate_coin_atr_metrics(df, skor):
-    s_sinirli = max(50.0, min(200.0, abs(skor)))
-    t = (s_sinirli - 50.0) / 150.0
+    s_sinirli = max(0.0, min(200.0, abs(skor)))
+    t = s_sinirli / 200.0
     hedef_carpan = round(2.0 + 2.0 * (t ** 1.6), 1)
 
     if df is None or df.empty or 'Close' not in df.columns:
@@ -142,22 +142,18 @@ def calculate_coin_atr_metrics(df, skor):
     stop_pct = max(0.5, round(vol_percentage * 1.5, 1))
     return stop_pct, hedef_carpan
 
-def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
+def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-    
-    granularity_map = {"32h": 115200, "16h": 57600, "8h": 28800, "4h": 14400, "2h": 7200}
-    gran = granularity_map.get(interval_label, 14400)
-    
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={gran}"
+        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={bar_saniye}"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
                 yesil, kirmizi = 0, 0
-                for bar in data[:limit_adet]:
+                for bar in data[:toplam_bar]:
                     o, c = float(bar[3]), float(bar[4])
                     if c > o: yesil += 1
                     elif c < o: kirmizi += 1
@@ -165,28 +161,59 @@ def kline_cek_detayli_coinbase(coin_symbol, interval_label, limit_adet=240):
                     return yesil, kirmizi
     except: pass
     
-    seed_val = sum([ord(c) for c in coin_symbol]) + len(interval_label) + int(time.time() / 300)
+    seed_val = sum([ord(c) for c in coin_symbol]) + bar_saniye + int(time.time() / 300)
     rnd = np.random.RandomState(seed_val)
     yuzde_oran = rnd.uniform(0.35, 0.65)
-    yesil_yedek = int(limit_adet * yuzde_oran)
-    kirmizi_yedek = limit_adet - yesil_yedek
-    return yesil_yedek, kirmizi_yedek
+    y_yedek = int(toplam_bar * yuzde_oran)
+    k_yedek = toplam_bar - y_yedek
+    return y_yedek, k_yedek
+
+def periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_100, hedef_onay_50, hedef_onay_100):
+    if toplam_bar <= 0: return 0.0
+    oran = (yesil_sayisi / toplam_bar) * 100.0
+    if oran >= 50.0:
+        if yesil_sayisi >= hedef_onay_100:
+            return float(max_puan_100)
+        elif yesil_sayisi <= hedef_onay_50:
+            return float(max_puan_50)
+        else:
+            fark_onay = hedef_onay_100 - hedef_onay_50
+            if fark_onay == 0: return float(max_puan_100)
+            oran_katki = (yesil_sayisi - hedef_onay_50) / fark_onay
+            return float(max_puan_50 + (max_puan_100 - max_puan_50) * oran_katki)
+    else:
+        kirmizi_sayisi = toplam_bar - yesil_sayisi
+        hedef_k_100 = toplam_bar - hedef_onay_100
+        hedef_k_50 = toplam_bar - hedef_onay_50
+        if kirmizi_sayisi >= hedef_k_100:
+            return float(max_puan_100)
+        elif kirmizi_sayisi <= hedef_k_50:
+            return float(max_puan_50)
+        else:
+            fark_onay = hedef_k_100 - hedef_k_50
+            if fark_onay == 0: return float(max_puan_100)
+            oran_katki = (kirmizi_sayisi - hedef_k_50) / fark_onay
+            return float(max_puan_50 + (max_puan_100 - max_puan_50) * oran_katki)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    y32s, k32s = kline_cek_detayli_coinbase(coin_symbol, "32h", 240)
-    y16s, k16s = kline_cek_detayli_coinbase(coin_symbol, "16h", 240)
-    y8s, k8s   = kline_cek_detayli_coinbase(coin_symbol, "8h", 240)
-    y4s, k4s   = kline_cek_detayli_coinbase(coin_symbol, "4h", 240)
-    y2s, k2s   = kline_cek_detayli_coinbase(coin_symbol, "2h", 240)
+    # 1 Saat (60s bar, 60 adet): %50 onay=30, %100 onay=48, Max Puan=60
+    y1h, k1h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    # 2 Saat (60s bar, 120 adet): %50 onay=60, %100 onay=96, Max Puan=50
+    y2h, k2h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
+    # 4 Saat (60s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=40
+    y4h, k4h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
+    # 8 Saat (120s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=30
+    y8h, k8h = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
+    # 16 Saat (240s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=20
+    y16h, k16h = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
     
-    toplam_y = y32s + y16s + y8s + y4s + y2s
-    toplam_k = k32s + k16s + k8s + k4s + k2s
+    toplam_y = y1h + y2h + y4h + y8h + y16h
+    toplam_k = k1h + k2h + k4h + k8h + k16h
     net_bar = toplam_y + toplam_k
     anlik_y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
 
-    # Güçlü Fren Mekanizması (%85 eski eğilim, %15 yeni veri)
     if 'trend_hafiza' not in st.session_state:
         st.session_state['trend_hafiza'] = {}
     
@@ -194,15 +221,14 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    # 168/240 Oranı (%70 Mutabakat Eşiği) ve Genişletilmiş Hysteresis Bandı
-    if y_yuzde >= 58.0:
+    # 45 - 55 Esneklik Bandı
+    if y_yuzde >= 55.0:
         ham_yon = "Long"
-    elif y_yuzde <= 42.0:
+    elif y_yuzde <= 45.0:
         ham_yon = "Short"
     else:
         ham_yon = "Nötr"
     
-    # --- ARDIŞIK DÖNGÜ ONAY SAYAÇ MEKANİZMASI (3 DAKİKA KURALI) ---
     if 'yon_takip_dict' not in st.session_state:
         st.session_state['yon_takip_dict'] = {}
     if 'sayac_dict' not in st.session_state:
@@ -218,7 +244,6 @@ def kurgusal_matris_hesapla(coin_symbol):
         bekleyen_yon = ham_yon
         tekrar_sayisi = 1
 
-    # Yönün kesinleşmesi için en az 3 ardışık döngü (3 dakika) boyunca aynı sinyali vermesi şartı
     if tekrar_sayisi >= 3:
         mevcut_kararli_yon = bekleyen_yon
 
@@ -226,20 +251,14 @@ def kurgusal_matris_hesapla(coin_symbol):
     st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
     aktif_yon = mevcut_kararli_yon
     
-    # Doğal Ağırlıklı Puan Hesaplaması
-    b_32s = y32s if (y_yuzde >= 50.0) else k32s
-    b_16s = y16s if (y_yuzde >= 50.0) else k16s
-    b_8s  = y8s  if (y_yuzde >= 50.0) else k8s
-    b_4s  = y4s  if (y_yuzde >= 50.0) else k4s
-    b_2s  = y2s  if (y_yuzde >= 50.0) else k2s
+    # Yeni Puan Hesaplama Matrisi
+    p_1h = periyot_puan_hesapla(y1h, 60, 15.0, 60.0, 30, 48)
+    p_2h = periyot_puan_hesapla(y2h, 120, 13.0, 50.0, 60, 96)
+    p_4h = periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
+    p_8h = periyot_puan_hesapla(y8h, 240, 7.0, 30.0, 120, 192)
+    p_16h = periyot_puan_hesapla(y16h, 240, 5.0, 20.0, 120, 192)
     
-    p_32s = (b_32s / 240.0) * 80.0
-    p_16s = (b_16s / 240.0) * 60.0
-    p_8s  = (b_8s  / 240.0) * 30.0
-    p_4s  = (b_4s  / 240.0) * 20.0
-    p_2s  = (b_2s  / 240.0) * 10.0
-    
-    toplam_puan = p_32s + p_16s + p_8s + p_4s + p_2s
+    toplam_puan = p_1h + p_2h + p_4h + p_8h + p_16h
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
@@ -479,7 +498,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
-# --- OTOMATİK STOP KONTROLÜ ---
 def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty or 'Durum' not in df.columns: return
@@ -524,7 +542,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Kararlı Trend & Sayaç Motoru)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Yeni Puan Matrisi & 45-55 Bant)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -577,13 +595,13 @@ for data in islenen_ham_veriler:
     kirmizi_top = "🔴" * k_gorsel
     detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
     
-    is_notr = (aktif_yon == "Nötr")
+    is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
     if is_notr:
         trend = "Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        if nihai_puan >= 145.0:
+        if nihai_puan > 120.0:
             trend = f"Güçlü Trend {aktif_yon_turu}"
         else:
             trend = f"{aktif_yon_turu} (Onaylı)"
@@ -786,7 +804,7 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Kararlı Sayaç Motoru")
+    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Yeni Matris Kurgusu")
     if basari: 
         st.success(mesaj)
         st.balloons()

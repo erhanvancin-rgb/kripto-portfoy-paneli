@@ -198,15 +198,10 @@ def periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_100, he
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 1 Saat (60s bar, 60 adet): %50 onay=30, %100 onay=48, Max Puan=60
     y1h, k1h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
-    # 2 Saat (60s bar, 120 adet): %50 onay=60, %100 onay=96, Max Puan=50
     y2h, k2h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-    # 4 Saat (60s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=40
     y4h, k4h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
-    # 8 Saat (120s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=30
     y8h, k8h = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
-    # 16 Saat (240s bar, 240 adet): %50 onay=120, %100 onay=192, Max Puan=20
     y16h, k16h = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
     
     toplam_y = y1h + y2h + y4h + y8h + y16h
@@ -244,14 +239,14 @@ def kurgusal_matris_hesapla(coin_symbol):
         bekleyen_yon = ham_yon
         tekrar_sayisi = 1
 
-    if tekrar_sayisi >= 3:
+    # 10 Dakikalık Ardışık Sayaç Kuralı
+    if tekrar_sayisi >= 10:
         mevcut_kararli_yon = bekleyen_yon
 
     st.session_state['sayac_dict'][coin_symbol] = {'yon': bekleyen_yon, 'sayac': tekrar_sayisi}
     st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
     aktif_yon = mevcut_kararli_yon
     
-    # Yeni Puan Hesaplama Matrisi
     p_1h = periyot_puan_hesapla(y1h, 60, 15.0, 60.0, 30, 48)
     p_2h = periyot_puan_hesapla(y2h, 120, 13.0, 50.0, 60, 96)
     p_4h = periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
@@ -542,7 +537,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Yeni Puan Matrisi & 45-55 Bant)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (10 Dakikalık Sayaç & 45-55 Bant)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:

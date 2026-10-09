@@ -886,18 +886,10 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
     acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()
     
-    # Kompakt Yan Yana İşlem Kapatma ve Aktif Göster/Gizle Paneli (st.form ile tıklandığında tazeleme engellendi)
-    col_pbas1, col_pbas2 = st.columns([2, 2])
-    with col_pbas1:
-        st.markdown("### 🛑 Pozisyon Kapat")
-    with col_pbas2:
-        buton_etiketi = "👁️ Tümü" if st.session_state['sadece_aktifleri_goster'] else "👁️ Sadece Aktif"
-        if st.button(buton_etiketi, use_container_width=True, key="aktif_goster_gizle_btn"):
-            st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
-            st.rerun()
+    st.markdown("### 🛑 Pozisyon Kapat")
 
     with st.form(key="pozisyon_kapat_form"):
-        col_f1, col_f2, col_f3 = st.columns([1.5, 2.5, 1.5])
+        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns([1.2, 2.2, 1.5, 1.5, 1.5])
         with col_f1:
             kapatilacak_id = st.selectbox("İşlem ID:", acik_islem_listesi if acik_islem_listesi else [0], key="kapat_id_select")
         with col_f2:
@@ -905,6 +897,19 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         with col_f3:
             st.write("")
             submit_kapat = st.form_submit_button("🔒 İşlemi Sonlandır", use_container_width=True)
+        with col_f4:
+            st.write("")
+            submit_aktif = st.form_submit_button("Aktif Portföyü Göster", use_container_width=True)
+        with col_f5:
+            st.write("")
+            submit_tum = st.form_submit_button("Tüm Portföyü Göster", use_container_width=True)
+            
+        if submit_aktif:
+            st.session_state['sadece_aktifleri_goster'] = True
+            st.rerun()
+        if submit_tum:
+            st.session_state['sadece_aktifleri_goster'] = False
+            st.rerun()
             
         if submit_kapat:
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:

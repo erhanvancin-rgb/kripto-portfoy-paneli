@@ -809,7 +809,15 @@ st.markdown(table_html, unsafe_allow_html=True)
 st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
 df_gosterge = pd.DataFrame(islenen_veriler)
 
-secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="hizli_coin_secim")
+# Sadece Nötr olmayan (işlem açılabilir) coinler filtreleniyor
+df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
+coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
+
+if coin_listesi:
+    secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", coin_listesi, key="hizli_coin_secim")
+else:
+    st.warning("Şu an işlem açmaya uygun (Nötr olmayan) coin bulunmuyor.")
+    secilen_coin = None
 
 onerilen_oran_val = 0.0
 anlik_matris_puani = 0.0
@@ -821,8 +829,6 @@ if secilen_coin:
     onerilen_oran_val = float(coin_verisii['Sepet_Orani'])
     anlik_matris_puani = float(coin_verisii['Skor'])
     anlik_risk_hedef_metin = coin_verisii['Risk_Hedef_Metin']
-    if coin_verisii['Notr']: 
-        st.warning("⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz.")
 
 if 'last_selected_coin' not in st.session_state or st.session_state['last_selected_coin'] != secilen_coin:
     st.session_state['last_selected_coin'] = secilen_coin
@@ -880,32 +886,43 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
     acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()
     
-    # Kompakt Yan Yana İşlem Kapatma ve Aktif Göster/Gizle Paneli
-    col_pbas1, col_pbas2, col_pbas3, col_pbas4 = st.columns([1.5, 1.2, 2.2, 1.8])
+    # Kompakt Yan Yana İşlem Kapatma ve Aktif Göster/Gizle Paneli (st.form ile tıklandığında tazeleme engellendi)
+    col_pbas1, col_pbas2 = st.columns([2, 2])
     with col_pbas1:
         st.markdown("### 🛑 Pozisyon Kapat")
     with col_pbas2:
-        kapatilacak_id = st.selectbox("İşlem ID:", acik_islem_listesi if acik_islem_listesi else [0], key="kapat_id_select", label_visibility="collapsed")
-    with col_pbas3:
-        onay_verildi = st.checkbox(f"ID #{kapatilacak_id} kapatmayı onaylıyorum", key="onay_chk")
-    with col_pbas4:
-        col_ic_btn1, col_ic_btn2 = st.columns(2)
-        with col_ic_btn1:
-            if st.button("🔒 Sonlandır", use_container_width=True, key="kapat_btn"):
-                if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                    if onay_verildi:
-                        kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
-                        kapatma_fiyati = ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0))
-                        b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, kapatma_fiyati)
-                        if b_durum: st.success(b_mesaj); time.sleep(1); st.rerun()
-                        else: st.error(b_mesaj)
-                    else: st.warning("Onay kutusunu işaretleyin!")
-                else: st.info("Kapatılacak açık işlem yok.")
-        with col_ic_btn2:
-            buton_etiketi = "👁️ Tümü" if st.session_state['sadece_aktifleri_goster'] else "👁️ Sadece Aktif"
-            if st.button(buton_etiketi, use_container_width=True, key="aktif_goster_gizle_btn"):
-                st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
-                st.rerun()
+        buton_etiketi = "👁️ Tümü" if st.session_state['sadece_aktifleri_goster'] else "👁️ Sadece Aktif"
+        if st.button(buton_etiketi, use_container_width=True, key="aktif_goster_gizle_btn"):
+            st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
+            st.rerun()
+
+    with st.form(key="pozisyon_kapat_form"):
+        col_f1, col_f2, col_f3 = st.columns([1.5, 2.5, 1.5])
+        with col_f1:
+            kapatilacak_id = st.selectbox("İşlem ID:", acik_islem_listesi if acik_islem_listesi else [0], key="kapat_id_select")
+        with col_f2:
+            onay_verildi = st.checkbox(f"ID #{kapatilacak_id} kapatmayı onaylıyorum", key="onay_chk")
+        with col_f3:
+            st.write("")
+            submit_kapat = st.form_submit_button("🔒 İşlemi Sonlandır", use_container_width=True)
+            
+        if submit_kapat:
+            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+                if onay_verildi:
+                    kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
+                    kapatma_fiyati = ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0))
+                    b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, kapatma_fiyati)
+                    if b_durum: 
+                        st.success(b_mesaj)
+                        time.sleep(1)
+                        st.rerun()
+                    else: 
+                        st.error(b_mesaj)
+                else: 
+                    st.warning("Onay kutusunu işaretleyin!")
+            else: 
+                st.info("Kapatılacak açık işlem yok.")
+
     st.markdown("---")
 
     df_gosterilecek = df_gecmis.copy()

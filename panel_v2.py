@@ -217,7 +217,7 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     mevcut_kararli_yon = st.session_state['yon_takip_dict'].get(coin_symbol, "Nötr")
     bekleyen_yon = st.session_state['sayac_dict'].get(coin_symbol, {}).get('yon', "Nötr")
-    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 10) # İlk açılışta taze hazır başlasın
+    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 10)
 
     if ham_yon == bekleyen_yon:
         tekrar_sayisi += 1
@@ -231,7 +231,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     st.session_state['sayac_dict'][coin_symbol] = {'yon': bekleyen_yon, 'sayac': tekrar_sayisi}
     st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
     
-    # Yön Belirleme: Yeşil üstünse Long, Kırmızı üstünse Short
     if y_yuzde >= 52.0:
         aktif_yon = "Long"
     elif y_yuzde <= 48.0:
@@ -239,7 +238,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     else:
         aktif_yon = "Nötr"
     
-    # Yeni Ağırlık ve Puan Hesaplamaları
     p_1h_100 = yeni_periyot_puan_hesapla(y1h, 60, 17.0, 70.0, 30, 48)
     p_2h_100 = yeni_periyot_puan_hesapla(y2h, 120, 15.0, 60.0, 60, 96)
     p_4h_100 = yeni_periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
@@ -436,10 +434,9 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
-def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
+def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
     if matris_puan < 50.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
-    islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
     
@@ -809,48 +806,58 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(table_html, unsafe_allow_html=True)
 
-st.markdown("### 🚀 Hızlı İşlem Emri Ver (Form Yapısı)")
+st.markdown("### 🚀 Hızlı İşlem Emri Ver (Anlık Hesaplama ve Manuel Giriş)")
 df_gosterge = pd.DataFrame(islenen_veriler)
 
-with st.form("hizli_islem_formu"):
-    secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist())
-    
-    onerilen_oran_val = 0.0
-    anlik_matris_puani = 0.0
-    anlik_risk_hedef_metin = "1 / 2,0"
-    if secilen_coin:
-        coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
-        onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-        anlik_matris_puani = float(coin_verisi['Skor'])
-        anlik_risk_hedef_metin = coin_verisi['Risk_Hedef_Metin']
-        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz.")
-        
-    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5)
-    hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
-    st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="hizli_coin_secim")
 
-    form_submitted = st.form_submit_button("🚀 İşlemi Başlat ve Emri Al")
-    
-    if form_submitted:
-        if coin_verisi['Notr']:
-            st.error("⚠️ Nötr konumdaki bir coine işlem açılamaz!")
-        else:
-            basari, mesaj = yeni_islem_ekle(
-                coin=secilen_coin, 
-                yon=coin_verisi['Aktif_Yon'], 
-                giris_fiyat=coin_verisi['Fiyat'], 
-                sepet_orani_yuzde=secilen_oran, 
-                stop=coin_verisi['Stopla'], 
-                kar_al=coin_verisi['Kar_Al'], 
-                zaman_dilimi="Yeni Matris Kurgusu",
-                matris_puan=anlik_matris_puani,
-                risk_hedef_metin=anlik_risk_hedef_metin
-            )
-            if basari: 
-                st.success(mesaj)
-                st.balloons()
-            else: 
-                st.error(mesaj)
+onerilen_oran_val = 0.0
+anlik_matris_puani = 0.0
+anlik_risk_hedef_metin = "1 / 2,0"
+coin_verisii = None
+
+if secilen_coin:
+    coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
+    onerilen_oran_val = float(coin_verisii['Sepet_Orani'])
+    anlik_matris_puani = float(coin_verisii['Skor'])
+    anlik_risk_hedef_metin = coin_verisii['Risk_Hedef_Metin']
+    if coin_verisii['Notr']: 
+        st.warning("⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz.")
+
+col_islem_input1, col_islem_input2 = st.columns(2)
+
+with col_islem_input1:
+    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="hizli_oran_slider")
+
+slider_a_karsilik_tutar = mevcut_bakiye * (secilen_oran / 100.0)
+
+with col_islem_input2:
+    manuel_girilen_tutar = st.number_input("Yatırım Tutarını Manuel Yazın ($):", min_value=0.0, max_value=float(max(100.0, mevcut_bakiye)), value=float(round(slider_a_karsilik_tutar, 2)), step=10.0, key="hizli_manuel_tutar_input")
+
+st.markdown(f"💼 **Hesaplanan Yatırım Tutarı:** `{manuel_girilen_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+
+if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="hizli_islem_baslat_btn"):
+    if coin_verisii is not None and coin_verisii['Notr']:
+        st.error("⚠️ Nötr konumdaki bir coine işlem açılamaz!")
+    else:
+        basari, mesaj = yeni_islem_ekle(
+            coin=secilen_coin, 
+            yon=coin_verisii['Aktif_Yon'], 
+            giris_fiyat=coin_verisii['Fiyat'], 
+            islem_miktari=manuel_girilen_tutar, 
+            stop=coin_verisii['Stopla'], 
+            kar_al=coin_verisii['Kar_Al'], 
+            zaman_dilimi="Yeni Matris Kurgusu",
+            matris_puan=anlik_matris_puani,
+            risk_hedef_metin=anlik_risk_hedef_metin
+        )
+        if basari: 
+            st.success(mesaj)
+            st.balloons()
+            time.sleep(1)
+            st.rerun()
+        else: 
+            st.error(mesaj)
 
 st.markdown("---")
 

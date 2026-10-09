@@ -806,7 +806,7 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(table_html, unsafe_allow_html=True)
 
-st.markdown("### 🚀 Hızlı İşlem Emri Ver (Anlık Hesaplama ve Manuel Giriş)")
+st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
 df_gosterge = pd.DataFrame(islenen_veriler)
 
 secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="hizli_coin_secim")
@@ -824,17 +824,30 @@ if secilen_coin:
     if coin_verisii['Notr']: 
         st.warning("⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz.")
 
+if 'last_selected_coin' not in st.session_state or st.session_state['last_selected_coin'] != secilen_coin:
+    st.session_state['last_selected_coin'] = secilen_coin
+    st.session_state['hizli_oran_slider'] = onerilen_oran_val
+    st.session_state['hizli_manuel_tutar_input'] = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
+
 col_islem_input1, col_islem_input2 = st.columns(2)
 
 with col_islem_input1:
-    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="hizli_oran_slider")
+    def update_from_slider():
+        pct = st.session_state['hizli_oran_slider']
+        st.session_state['hizli_manuel_tutar_input'] = round(mevcut_bakiye * (pct / 100.0), 2)
 
-slider_a_karsilik_tutar = mevcut_bakiye * (secilen_oran / 100.0)
+    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, step=0.5, key="hizli_oran_slider", on_change=update_from_slider)
 
 with col_islem_input2:
-    manuel_girilen_tutar = st.number_input("Yatırım Tutarını Manuel Yazın ($):", min_value=0.0, max_value=float(max(100.0, mevcut_bakiye)), value=float(round(slider_a_karsilik_tutar, 2)), step=10.0, key="hizli_manuel_tutar_input")
+    def update_from_input():
+        tutar = st.session_state['hizli_manuel_tutar_input']
+        if mevcut_bakiye > 0:
+            pct = min(100.0, max(0.0, (tutar / mevcut_bakiye) * 100.0))
+            st.session_state['hizli_oran_slider'] = round(pct, 1)
 
-st.markdown(f"💼 **Hesaplanan Yatırım Tutarı:** `{manuel_girilen_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+    manuel_girilen_tutar = st.number_input("Yatırım Tutarını Manuel Yazın ($):", min_value=0.0, max_value=float(max(100.0, mevcut_bakiye)), step=10.0, key="hizli_manuel_tutar_input", on_change=update_from_input)
+
+st.markdown(f"💼 **Gerçekleşecek Yatırım Tutarı:** `{manuel_girilen_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
 if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="hizli_islem_baslat_btn"):
     if coin_verisii is not None and coin_verisii['Notr']:
@@ -862,41 +875,45 @@ if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="
 st.markdown("---")
 
 # --- SANAL PORTFÖY VE AÇIK POZİSYONLAR ---
-col_pbas1, col_pbas2 = st.columns([3, 1])
-with col_pbas1:
-    st.markdown("### 💼 Sanal Portföy ve Pozisyonlar")
-with col_pbas2:
-    if st.button("👁️ Aktifleri Göster / Gizle", use_container_width=True):
-        st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
-        st.rerun()
-
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
+kapali_mask_ global_check = None
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
     acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()
     
-    if acik_islem_listesi:
-        st.markdown("#### 🛑 İşlem Kapatma Paneli")
-        col_kapat1, col_kapat2, col_kapat3 = st.columns([2, 2, 1])
-        with col_kapat1: kapatilacak_id = st.selectbox("Kapatılacak İşlem ID:", acik_islem_listesi, key="kapat_id_select")
-        with col_kapat2: onay_verildi = st.checkbox(f"ID #{kapatilacak_id} işlemini kapatmayı onaylıyorum", key="onay_chk")
-        with col_kapat3:
-            st.write("") 
-        if st.button("🔒 İşlemi Sonlandır", key="kapat_btn"):
-            if onay_verildi:
-                kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
-                kapatma_fiyati = ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0))
-                b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, kapatma_fiyati)
-                if b_durum: st.success(b_mesaj)
-                else: st.error(b_mesaj)
-            else: st.warning("Onay kutusunu işaretleyin!")
+    # Kompakt Yan Yana İşlem Kapatma ve Aktif Göster/Gizle Paneli
+    col_pbas1, col_pbas2, col_pbas3, col_pbas4 = st.columns([1.5, 1.2, 2.2, 1.8])
+    with col_pbas1:
+        st.markdown("### 🛑 Pozisyon Kapat")
+    with col_pbas2:
+        kapatilacak_id = st.selectbox("İşlem ID:", acik_islem_listesi if acik_islem_listesi else [0], key="kapat_id_select", label_visibility="collapsed")
+    with col_pbas3:
+        onay_verildi = st.checkbox(f"ID #{kapatilacak_id} kapatmayı onaylıyorum", key="onay_chk")
+    with col_pbas4:
+        col_ic_btn1, col_ic_btn2 = st.columns(2)
+        with col_ic_btn1:
+            if st.button("🔒 Sonlandır", use_container_width=True, key="kapat_btn"):
+                if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+                    if onay_verildi:
+                        kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
+                        kapatma_fiyati = ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0))
+                        b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, kapatma_fiyati)
+                        if b_durum: st.success(b_mesaj); time.sleep(1); st.rerun()
+                        else: st.error(b_mesaj)
+                    else: st.warning("Onay kutusunu işaretleyin!")
+                else: st.info("Kapatılacak açık işlem yok.")
+        with col_ic_btn2:
+            buton_etiketi = "👁️ Tümü" if st.session_state['sadece_aktifleri_goster'] else "👁️ Sadece Aktif"
+            if st.button(buton_etiketi, use_container_width=True, key="aktif_goster_gizle_btn"):
+                st.session_state['sadece_aktifleri_goster'] = not st.session_state['sadece_aktifleri_goster']
+                st.rerun()
     st.markdown("---")
 
     df_gosterilecek = df_gecmis.copy()
     if st.session_state['sadece_aktifleri_goster']:
         kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
         df_gosterilecek = df_gecmis[~kapali_mask]
-        st.info("ℹ️ Şu an sadece **Aktif (Açık)** pozisyonlar gösteriliyor. (Geçmiş işlemler gizlendi)")
+        st.info("ℹ️ Şu an sadece **Aktif (Açık)** pozisyonlar gösteriliyor.")
 
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
     for idx, row in df_gecmis.iterrows():

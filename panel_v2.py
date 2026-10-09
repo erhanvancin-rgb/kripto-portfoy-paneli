@@ -876,7 +876,6 @@ st.markdown("---")
 
 # --- SANAL PORTFÖY VE AÇIK POZİSYONLAR ---
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
-kapali_mask_ global_check = None
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
     acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()

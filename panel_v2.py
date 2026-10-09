@@ -203,9 +203,10 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    if y_yuzde >= 55.0:
+    # GÜNCELLENEN EŞİK: %52 üzeri Long, %48 altı Short
+    if y_yuzde >= 52.0:
         ham_yon = "Long"
-    elif y_yuzde <= 45.0:
+    elif y_yuzde <= 48.0:
         ham_yon = "Short"
     else:
         ham_yon = "Nötr"
@@ -393,7 +394,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                 
     toplam_kasa = net_kasa_hareketleri
     
-    # KESİN ÇÖZÜM: Durum sütununda "kapandi", "kar" veya "zarar" GEÇMEYEN tüm satırlar açık/aktif kabul edilir!
     acik_df = pd.DataFrame()
     if not df_trade.empty and 'Durum' in df_trade.columns:
         kapali_mask = df_trade['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
@@ -501,7 +501,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
     
     for idx, row in df.iterrows():
         durum_str = str(row['Durum']).lower()
-        # Kapalı olmayan (açık olan) işlemleri kontrol et
         if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
             islem_id = int(row['Islem_ID'])
             coin = row['Coin']

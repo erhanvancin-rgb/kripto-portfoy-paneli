@@ -158,14 +158,12 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
 def periyot_puan_hesapla(yesil_sayisi, toplam_bar):
     if toplam_bar <= 0: return 0.0
     oran = (yesil_sayisi / toplam_bar) * 100.0
-    # Örnek skor dönüştürücü (0 - 200 arası ölçeklendirme)
     puan = (oran / 100.0) * 200.0
     return float(puan)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 60m, 40m, 20m periyotlar üzerinden 1m mum kontrolleri ve ağırlıklı matris puanı hesaplaması
     y60, k60 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     y40, k40 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 40)
     y20, k20 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 20)
@@ -174,11 +172,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     p_40 = periyot_puan_hesapla(y40, 40)
     p_20 = periyot_puan_hesapla(y20, 20)
     
-    # Ağırlıklı Ortalama (60dk: %50, 40dk: %30, 20dk: %20)
     toplam_puan = (p_60 * 0.50) + (p_40 * 0.30) + (p_20 * 0.20)
-    
-    # Eğer skor 100 üzerinden geliyorsa veya 200'e ölçeklendiyse duruma göre ayarlanır
-    # Doğrudan matris puanı eşiklerine uyarlayalım:
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
     
     toplam_y = y60 + y40 + y20
@@ -186,7 +180,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     net_bar = toplam_y + toplam_k
     y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
 
-    # Oturum Hafızası (Session State) Entegrasyonu
     if 'trend_hafiza' not in st.session_state:
         st.session_state['trend_hafiza'] = {}
     
@@ -194,7 +187,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (onceki_y_yuzde * 0.85) + (y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    # Karar ve Eşik Mekanizması (< 50 Nötr, 50-120 Onaylı, > 120 Güçlü Trend)
     if nihai_puan >= 120.0 and y_yuzde >= 52.0:
         aktif_yon = "Long"
     elif nihai_puan >= 120.0 and y_yuzde <= 48.0:
@@ -633,6 +625,7 @@ for data in islenen_ham_veriler:
         "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
+# Sıralama: Önce işlem yapılabilir (Nötr olmayanlar), ardından skora göre azalan şekilde
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
 
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)

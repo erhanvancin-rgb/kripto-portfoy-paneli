@@ -101,7 +101,6 @@ def load_1200_bar_market_data(coin_symbol: str):
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     
     try:
-        # Granularity 3600 saniye (60 dakika) olarak güncellendi
         url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=3600"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
@@ -186,68 +185,32 @@ def yeni_periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_10
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 60 dakikalık (3600 saniye) periyotlar baz alınarak hesaplama matrisi güncellendi
-    y1h, k1h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 60)
-    y2h, k2h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 120)
-    y4h, k4h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 240)
-    y8h, k8h = kline_cek_detayli_cb_ozel(coin_symbol, 7200, 240)
-    y16h, k16h = kline_cek_detayli_cb_ozel(coin_symbol, 14400, 240)
+    # Yeni 60 dakikalık (3600s) yapıya göre 60m, 40m ve 20m veri toplama mantığı entegre edildi
+    y60, k60 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 60)
+    y40, k40 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 40)
+    y20, k20 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 20)
     
-    toplam_y = y1h + y2h + y4h + y8h + y16h
-    toplam_k = k1h + k2h + k4h + k8h + k16h
-    net_bar = toplam_y + toplam_k
-    anlik_y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
-
-    if 'trend_hafiza' not in st.session_state:
-        st.session_state['trend_hafiza'] = {}
+    toplam_y = y60 + y40 + y20  # Toplam 120 mum
+    toplam_k = k60 + k40 + k20
     
-    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, anlik_y_yuzde)
-    y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
-    st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
-    
-    if y_yuzde >= 52.0:
-        ham_yon = "Long"
-    elif y_yuzde <= 48.0:
-        ham_yon = "Short"
-    else:
-        ham_yon = "Nötr"
-    
-    if 'yon_takip_dict' not in st.session_state:
-        st.session_state['yon_takip_dict'] = {}
-    if 'sayac_dict' not in st.session_state:
-        st.session_state['sayac_dict'] = {}
-
-    mevcut_kararli_yon = st.session_state['yon_takip_dict'].get(coin_symbol, "Nötr")
-    bekleyen_yon = st.session_state['sayac_dict'].get(coin_symbol, {}).get('yon', "Nötr")
-    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 10)
-
-    if ham_yon == bekleyen_yon:
-        tekrar_sayisi += 1
-    else:
-        bekleyen_yon = ham_yon
-        tekrar_sayisi = 1
-
-    if tekrar_sayisi >= 10:
-        mevcut_kararli_yon = bekleyen_yon
-
-    st.session_state['sayac_dict'][coin_symbol] = {'yon': bekleyen_yon, 'sayac': tekrar_sayisi}
-    st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
-    
-    if y_yuzde >= 52.0:
+    # Kararlı trend filtre mantığı (Nötr <%55, Onaylı %55-%75, Güçlü >%75)
+    if toplam_y >= 90:  # > %75 (90/120 mum)
         aktif_yon = "Long"
-    elif y_yuzde <= 48.0:
+        nihai_puan = 180.0
+    elif toplam_y >= 66: # %55 - %75 arası (66-90 mum)
+        aktif_yon = "Long"
+        nihai_puan = 120.0
+    elif toplam_k >= 90:  # > %75 kırmızı
         aktif_yon = "Short"
+        nihai_puan = 180.0
+    elif toplam_k >= 66: # %55 - %75 arası kırmızı
+        aktif_yon = "Short"
+        nihai_puan = 120.0
     else:
         aktif_yon = "Nötr"
-    
-    p_1h_100 = yeni_periyot_puan_hesapla(y1h, 60, 17.0, 70.0, 30, 48)
-    p_2h_100 = yeni_periyot_puan_hesapla(y2h, 120, 15.0, 60.0, 60, 96)
-    p_4h_100 = yeni_periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
-    p_8h_100 = yeni_periyot_puan_hesapla(y8h, 240, 5.0, 20.0, 120, 192)
-    p_16h_100 = yeni_periyot_puan_hesapla(y16h, 240, 3.0, 10.0, 120, 192)
-    
-    toplam_puan = p_1h_100 + p_2h_100 + p_4h_100 + p_8h_100 + p_16h_100
-    nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
+        nihai_puan = 30.0
+
+    y_yuzde = (toplam_y / 120.0) * 100.0 if (toplam_y + toplam_k) > 0 else 50.0
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
@@ -867,7 +830,7 @@ if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="
             islem_miktari=manuel_girilen_tutar, 
             stop=coin_verisii['Stopla'], 
             kar_al=coin_verisii['Kar_Al'], 
-            zaman_dilimi="60 Dakikalık Trend Matrisi",
+            zaman_dilimi="60m Filtreli Trend Matrisi",
             matris_puan=anlik_matris_puani,
             risk_hedef_metin=anlik_risk_hedef_metin
         )

@@ -435,7 +435,6 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
-    # Beklenen Kar ve Olası Stop hesaplamaları
     if 'Long' in yon:
         beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
         olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
@@ -489,7 +488,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
-def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
+def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty or 'Durum' not in df.columns: return
     
@@ -503,28 +502,48 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
             yon = row['Yon']
             giris_f = float(row['Giris_Fiyat'])
             stop_f = float(row['Stop'])
+            kar_al_f = float(row['Kar_Al'])
             miktar = float(row['Islem_Miktari'])
             anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
             
-            stop_patladi = False
-            if 'Long' in yon and anl_f <= stop_f:
-                stop_patladi = True
-            elif 'Short' in yon and anl_f >= stop_f:
-                stop_patladi = True
+            islem_kapatilacak = False
+            hedefe_ulasti = False
+            kapanis_fiyat_degeri = 0.0
+            
+            if 'Long' in yon:
+                if anl_f <= stop_f:
+                    islem_kapatilacak = True
+                    hedefe_ulasti = False
+                    kapanis_fiyat_degeri = stop_f
+                elif anl_f >= kar_al_f:
+                    islem_kapatilacak = True
+                    hedefe_ulasti = True
+                    kapanis_fiyat_degeri = kar_al_f
+            elif 'Short' in yon:
+                if anl_f >= stop_f:
+                    islem_kapatilacak = True
+                    hedefe_ulasti = False
+                    kapanis_fiyat_degeri = stop_f
+                elif anl_f <= kar_al_f:
+                    islem_kapatilacak = True
+                    hedefe_ulasti = True
+                    kapanis_fiyat_degeri = kar_al_f
                 
-            if stop_patladi:
-                fark_yuzde = ((stop_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - stop_f) / giris_f)
+            if islem_kapatilacak:
+                fark_yuzde = ((kapanis_fiyat_degeri - giris_f) / giris_f) if 'Long' in yon else ((giris_f - kapanis_fiyat_degeri) / giris_f)
                 net_kar = miktar * KALDIRAC * fark_yuzde
                 
-                df.at[idx, 'Durum'] = 'Kapandi (Zarar)'
+                durum_metni = 'Kapandi (Kar)' if hedefe_ulasti else 'Kapandi (Zarar)'
+                df.at[idx, 'Durum'] = durum_metni
                 df.at[idx, 'Kapanis_Zamani'] = suan_tr
                 df.at[idx, 'Net_Kar_Zarar'] = float(round(net_kar, 2))
-                df.at[idx, 'Kapanis_Fiyati'] = float(round(stop_f, 4))
+                df.at[idx, 'Kapanis_Fiyati'] = float(round(kapanis_fiyat_degeri, 4))
                 
                 toplam_kasa, _, _, _ = bakiye_durumunu_getir(ortak_fiyat_havuzu)
                 df.at[idx, 'Guncel_Kasa'] = float(round(toplam_kasa + net_kar, 2))
                 
-                trade_aciklama = f"Otomatik Stop: #{islem_id} {coin} (Zarar)"
+                islem_turu_etiket = "Hedef Kâr" if hedefe_ulasti else "Otomatik Stop"
+                trade_aciklama = f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})"
                 kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
                 degisiklik_oldu = True
                 
@@ -561,7 +580,7 @@ for sembol in coinler:
         "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan
     })
 
-otomatik_stop_kontrolu(ortak_fiyat_havuzu)
+otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in islenen_ham_veriler]) / len(islenen_ham_veriler)
 
@@ -958,9 +977,9 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
-        matris_rh_ hucre = str(row.get('Matris_Puan_RH', '-'))
+        matris_rh_hucre = str(row.get('Matris_Puan_RH', '-'))
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_ hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(portfoy_html, unsafe_allow_html=True)
 

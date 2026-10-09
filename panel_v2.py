@@ -101,7 +101,8 @@ def load_1200_bar_market_data(coin_symbol: str):
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     
     try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=60"
+        # Granularity 3600 saniye (60 dakika) olarak güncellendi
+        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=3600"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
@@ -113,7 +114,7 @@ def load_1200_bar_market_data(coin_symbol: str):
     except: pass
     
     limit = 1200
-    dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
+    dates = pd.date_range(end=datetime.now(), periods=limit, freq='60min')
     base_price = baz_fiyatlar.get(coin_symbol, 100.0)
     vol_f = base_price * 0.001
     np.random.seed(hash(coin_symbol) % 2**32)
@@ -185,11 +186,12 @@ def yeni_periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_10
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    y1h, k1h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
-    y2h, k2h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-    y4h, k4h = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
-    y8h, k8h = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
-    y16h, k16h = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
+    # 60 dakikalık (3600 saniye) periyotlar baz alınarak hesaplama matrisi güncellendi
+    y1h, k1h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 60)
+    y2h, k2h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 120)
+    y4h, k4h = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 240)
+    y8h, k8h = kline_cek_detayli_cb_ozel(coin_symbol, 7200, 240)
+    y16h, k16h = kline_cek_detayli_cb_ozel(coin_symbol, 14400, 240)
     
     toplam_y = y1h + y2h + y4h + y8h + y16h
     toplam_k = k1h + k2h + k4h + k8h + k16h
@@ -561,7 +563,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (%0.70 Stop & Dinamik R/H Tablosu)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (60 dk Trend & Dinamik R/H Tablosu)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -809,7 +811,6 @@ st.markdown(table_html, unsafe_allow_html=True)
 st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
 df_gosterge = pd.DataFrame(islenen_veriler)
 
-# Sadece Nötr olmayan (işlem açılabilir) coinler filtreleniyor
 df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
 coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
 
@@ -866,7 +867,7 @@ if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="
             islem_miktari=manuel_girilen_tutar, 
             stop=coin_verisii['Stopla'], 
             kar_al=coin_verisii['Kar_Al'], 
-            zaman_dilimi="Yeni Matris Kurgusu",
+            zaman_dilimi="60 Dakikalık Trend Matrisi",
             matris_puan=anlik_matris_puani,
             risk_hedef_metin=anlik_risk_hedef_metin
         )

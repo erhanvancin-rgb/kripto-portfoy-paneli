@@ -101,7 +101,7 @@ def load_1200_bar_market_data(coin_symbol: str):
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     
     try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=3600"
+        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=60"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
@@ -113,7 +113,7 @@ def load_1200_bar_market_data(coin_symbol: str):
     except: pass
     
     limit = 1200
-    dates = pd.date_range(end=datetime.now(), periods=limit, freq='60min')
+    dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
     base_price = baz_fiyatlar.get(coin_symbol, 100.0)
     vol_f = base_price * 0.001
     np.random.seed(hash(coin_symbol) % 2**32)
@@ -155,62 +155,54 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     k_yedek = toplam_bar - y_yedek
     return y_yedek, k_yedek
 
-def yeni_periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_100, hedef_onay_50, hedef_onay_100):
+def periyot_puan_hesapla(yesil_sayisi, toplam_bar):
     if toplam_bar <= 0: return 0.0
     oran = (yesil_sayisi / toplam_bar) * 100.0
-    if oran >= 50.0:
-        if yesil_sayisi >= hedef_onay_100:
-            return float(max_puan_100)
-        elif yesil_sayisi <= hedef_onay_50:
-            return float(max_puan_50)
-        else:
-            fark_onay = hedef_onay_100 - hedef_onay_50
-            if fark_onay == 0: return float(max_puan_100)
-            oran_katki = (yesil_sayisi - hedef_onay_50) / fark_onay
-            return float(max_puan_50 + (max_puan_100 - max_puan_50) * oran_katki)
-    else:
-        kirmizi_sayisi = toplam_bar - yesil_sayisi
-        hedef_k_100 = toplam_bar - hedef_onay_100
-        hedef_k_50 = toplam_bar - hedef_onay_50
-        if kirmizi_sayisi >= hedef_k_100:
-            return float(max_puan_100)
-        elif kirmizi_sayisi <= hedef_k_50:
-            return float(max_puan_50)
-        else:
-            fark_onay = hedef_k_100 - hedef_k_50
-            if fark_onay == 0: return float(max_puan_100)
-            oran_katki = (kirmizi_sayisi - hedef_k_50) / fark_onay
-            return float(max_puan_50 + (max_puan_100 - max_puan_50) * oran_katki)
+    # Örnek skor dönüştürücü (0 - 200 arası ölçeklendirme)
+    puan = (oran / 100.0) * 200.0
+    return float(puan)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Yeni 60 dakikalık (3600s) yapıya göre 60m, 40m ve 20m veri toplama mantığı entegre edildi
-    y60, k60 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 60)
-    y40, k40 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 40)
-    y20, k20 = kline_cek_detayli_cb_ozel(coin_symbol, 3600, 20)
+    # 60m, 40m, 20m periyotlar üzerinden 1m mum kontrolleri ve ağırlıklı matris puanı hesaplaması
+    y60, k60 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    y40, k40 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 40)
+    y20, k20 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 20)
     
-    toplam_y = y60 + y40 + y20  # Toplam 120 mum
+    p_60 = periyot_puan_hesapla(y60, 60)
+    p_40 = periyot_puan_hesapla(y40, 40)
+    p_20 = periyot_puan_hesapla(y20, 20)
+    
+    # Ağırlıklı Ortalama (60dk: %50, 40dk: %30, 20dk: %20)
+    toplam_puan = (p_60 * 0.50) + (p_40 * 0.30) + (p_20 * 0.20)
+    
+    # Eğer skor 100 üzerinden geliyorsa veya 200'e ölçeklendiyse duruma göre ayarlanır
+    # Doğrudan matris puanı eşiklerine uyarlayalım:
+    nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
+    
+    toplam_y = y60 + y40 + y20
     toplam_k = k60 + k40 + k20
+    net_bar = toplam_y + toplam_k
+    y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
+
+    # Oturum Hafızası (Session State) Entegrasyonu
+    if 'trend_hafiza' not in st.session_state:
+        st.session_state['trend_hafiza'] = {}
     
-    # Kararlı trend filtre mantığı (Nötr <%55, Onaylı %55-%75, Güçlü >%75)
-    if toplam_y >= 90:  # > %75 (90/120 mum)
+    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, y_yuzde)
+    y_yuzde = (onceki_y_yuzde * 0.85) + (y_yuzde * 0.15)
+    st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
+    
+    # Karar ve Eşik Mekanizması (< 50 Nötr, 50-120 Onaylı, > 120 Güçlü Trend)
+    if nihai_puan >= 120.0 and y_yuzde >= 52.0:
         aktif_yon = "Long"
-        nihai_puan = 180.0
-    elif toplam_y >= 66: # %55 - %75 arası (66-90 mum)
-        aktif_yon = "Long"
-        nihai_puan = 120.0
-    elif toplam_k >= 90:  # > %75 kırmızı
+    elif nihai_puan >= 120.0 and y_yuzde <= 48.0:
         aktif_yon = "Short"
-        nihai_puan = 180.0
-    elif toplam_k >= 66: # %55 - %75 arası kırmızı
-        aktif_yon = "Short"
-        nihai_puan = 120.0
+    elif nihai_puan >= 50.0:
+        aktif_yon = "Long" if y_yuzde >= 50.0 else "Short"
     else:
         aktif_yon = "Nötr"
-        nihai_puan = 30.0
-
-    y_yuzde = (toplam_y / 120.0) * 100.0 if (toplam_y + toplam_k) > 0 else 50.0
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
 
@@ -526,7 +518,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (60 dk Trend & Dinamik R/H Tablosu)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Ağırlıklı Ortalama Matris Puanı)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -830,7 +822,7 @@ if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="
             islem_miktari=manuel_girilen_tutar, 
             stop=coin_verisii['Stopla'], 
             kar_al=coin_verisii['Kar_Al'], 
-            zaman_dilimi="60m Filtreli Trend Matrisi",
+            zaman_dilimi="Ağırlıklı Ortalama Matris Kurgusu",
             matris_puan=anlik_matris_puani,
             risk_hedef_metin=anlik_risk_hedef_metin
         )
@@ -850,7 +842,11 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
     acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()
     
-    st.markdown("### 🛑 Pozisyon Kapat")
+    col_pbas1, col_pbas2 = st.columns([2, 2])
+    with col_pbas1:
+        st.markdown("### 🛑 Pozisyon Kapat")
+    with col_pbas2:
+        buton_etiketi = "Tüm Portföyü Göster" if st.session_state['sadece_aktifleri_goster'] else "Aktif Portföyü Göster"
 
     with st.form(key="pozisyon_kapat_form"):
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns([1.2, 2.2, 1.5, 1.5, 1.5])

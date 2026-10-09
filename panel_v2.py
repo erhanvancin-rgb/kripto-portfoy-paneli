@@ -393,7 +393,11 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                 
     toplam_kasa = net_kasa_hareketleri
     
-    acik_df = df_trade[df_trade['Durum'] == 'Acik'] if not df_trade.empty else pd.DataFrame()
+    # DÜZELTME: Açık/Aktif işlemlerin esnek ve hatasız filtrelenmesi
+    acik_df = pd.DataFrame()
+    if not df_trade.empty and 'Durum' in df_trade.columns:
+        acik_df = df_trade[df_trade['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
+        
     aktif_marjin_toplami = 0.0
     acik_kz_toplam = 0.0
     
@@ -462,7 +466,9 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     idx = df[df['Islem_ID'] == islem_id].index
     if idx.empty: return False, "İşlem bulunamadı!"
     row = df.loc[idx[0]]
-    if row['Durum'] != 'Acik': return False, "Bu işlem kapalı!"
+    if not str(row['Durum']).lower().contains('acik|aktif|açık'): 
+        # Esnek kontrol
+        pass
     try:
         giris_f = float(row['Giris_Fiyat'])
         miktar = float(row['Islem_Miktari'])
@@ -496,7 +502,8 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
     for idx, row in df.iterrows():
-        if row['Durum'] == 'Acik':
+        durum_str = str(row['Durum']).lower()
+        if 'acik' in durum_str or 'aktif' in durum_str or 'açık' in durum_str:
             islem_id = int(row['Islem_ID'])
             coin = row['Coin']
             yon = row['Yon']
@@ -848,7 +855,10 @@ with col_pbas2:
 
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
-    acik_islem_listesi = df_gecmis[df_gecmis['Durum'] == 'Acik']['Islem_ID'].tolist()
+    # Esnek açık işlem listesi filtrelemesi
+    acik_islem_df = df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
+    acik_islem_listesi = acik_islem_df['Islem_ID'].tolist()
+    
     if acik_islem_listesi:
         st.markdown("#### 🛑 İşlem Kapatma Paneli")
         col_kapat1, col_kapat2, col_kapat3 = st.columns([2, 2, 1])
@@ -868,7 +878,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     df_gosterilecek = df_gecmis.copy()
     if st.session_state['sadece_aktifleri_goster']:
-        df_gosterilecek = df_gosterilecek[df_gosterilecek['Durum'] == 'Acik']
+        df_gosterilecek = df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
         st.info("ℹ️ Şu an sadece **Aktif (Açık)** pozisyonlar gösteriliyor. (Geçmiş işlemler gizlendi)")
 
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
@@ -890,7 +900,8 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         else:
             hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 
-        if row['Durum'] == 'Acik':
+        durum_str = str(row['Durum']).lower()
+        if 'acik' in durum_str or 'aktif' in durum_str or 'açık' in durum_str:
             fark_y = ((anl_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - anl_f) / giris_f)
             anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * fark_y, 2)
         else:
@@ -946,8 +957,8 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         fiyat_stil = "#00FF00" if row['Anlik_Fiyat_Deger'] > float(row['Giris_Fiyat']) else "#FF0000"
         anlik_fiyat_h = f'<div style="background-color: {fiyat_stil}; color: white; padding: 5px; font-weight: bold;">{format_fiyat(row["Anlik_Fiyat_Deger"], row["Coin"])}</div>'
         
-        d_val = str(row['Durum'])
-        if d_val == 'Acik':
+        d_val = str(row['Durum']).lower()
+        if 'acik' in d_val or 'aktif' in d_val or 'açık' in d_val:
             kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
             durum_h = '<div style="background-color: #0000FF; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
         else:
@@ -978,7 +989,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
         matris_rh_hucre = str(row.get('Matris_Puan_RH', '-'))
-        if not matris_rh_hucre or matris_rh_hucre == "nan" or matris_rh_hucre == "0" or "-" in matris_rh_hucre and len(matris_rh_hucre) < 6:
+        if not matris_rh_hucre or matris_rh_hucre == "nan" or matris_rh_hucre == "0" or ("-" in matris_rh_hucre and len(matris_rh_hucre) < 6):
             matris_rh_hucre = "145.2 (1 / 2.5)"
 
         portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"

@@ -393,10 +393,11 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
                 
     toplam_kasa = net_kasa_hareketleri
     
-    # DÜZELTME: Açık/Aktif işlemlerin esnek ve hatasız filtrelenmesi
+    # KESİN ÇÖZÜM: Durum sütununda "kapandi", "kar" veya "zarar" GEÇMEYEN tüm satırlar açık/aktif kabul edilir!
     acik_df = pd.DataFrame()
     if not df_trade.empty and 'Durum' in df_trade.columns:
-        acik_df = df_trade[df_trade['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
+        kapali_mask = df_trade['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
+        acik_df = df_trade[~kapali_mask]
         
     aktif_marjin_toplami = 0.0
     acik_kz_toplam = 0.0
@@ -466,9 +467,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     idx = df[df['Islem_ID'] == islem_id].index
     if idx.empty: return False, "İşlem bulunamadı!"
     row = df.loc[idx[0]]
-    if not str(row['Durum']).lower().contains('acik|aktif|açık'): 
-        # Esnek kontrol
-        pass
     try:
         giris_f = float(row['Giris_Fiyat'])
         miktar = float(row['Islem_Miktari'])
@@ -503,7 +501,8 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
     
     for idx, row in df.iterrows():
         durum_str = str(row['Durum']).lower()
-        if 'acik' in durum_str or 'aktif' in durum_str or 'açık' in durum_str:
+        # Kapalı olmayan (açık olan) işlemleri kontrol et
+        if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
             islem_id = int(row['Islem_ID'])
             coin = row['Coin']
             yon = row['Yon']
@@ -855,9 +854,8 @@ with col_pbas2:
 
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
-    # Esnek açık işlem listesi filtrelemesi
-    acik_islem_df = df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
-    acik_islem_listesi = acik_islem_df['Islem_ID'].tolist()
+    kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
+    acik_islem_listesi = df_gecmis[~kapali_mask]['Islem_ID'].tolist()
     
     if acik_islem_listesi:
         st.markdown("#### 🛑 İşlem Kapatma Paneli")
@@ -878,7 +876,8 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     df_gosterilecek = df_gecmis.copy()
     if st.session_state['sadece_aktifleri_goster']:
-        df_gosterilecek = df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Acik|Aktif|Açık', case=False, na=False)]
+        kapali_mask = df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)
+        df_gosterilecek = df_gecmis[~kapali_mask]
         st.info("ℹ️ Şu an sadece **Aktif (Açık)** pozisyonlar gösteriliyor. (Geçmiş işlemler gizlendi)")
 
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
@@ -901,7 +900,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 
         durum_str = str(row['Durum']).lower()
-        if 'acik' in durum_str or 'aktif' in durum_str or 'açık' in durum_str:
+        if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
             fark_y = ((anl_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - anl_f) / giris_f)
             anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * fark_y, 2)
         else:
@@ -958,7 +957,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         anlik_fiyat_h = f'<div style="background-color: {fiyat_stil}; color: white; padding: 5px; font-weight: bold;">{format_fiyat(row["Anlik_Fiyat_Deger"], row["Coin"])}</div>'
         
         d_val = str(row['Durum']).lower()
-        if 'acik' in d_val or 'aktif' in d_val or 'açık' in d_val:
+        if not ('kapandi' in d_val or 'kar' in d_val or 'zarar' in d_val):
             kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
             durum_h = '<div style="background-color: #0000FF; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
         else:

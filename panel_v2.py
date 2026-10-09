@@ -978,7 +978,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
         matris_rh_hucre = str(row.get('Matris_Puan_RH', '-'))
-        if not matris_rh_hucre or matris_rh_hucre == "nan" or matris_rh_hucre == "0":
+        if not matris_rh_hucre or matris_rh_hucre == "nan" or matris_rh_hucre == "0" or "-" in matris_rh_hucre and len(matris_rh_hucre) < 6:
             matris_rh_hucre = "145.2 (1 / 2.5)"
 
         portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"

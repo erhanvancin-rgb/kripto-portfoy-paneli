@@ -839,7 +839,7 @@ st.markdown(f"💼 **Hesaplanan Yatırım Tutarı:** `{manuel_girilen_tutar:,.2f
 if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="hizli_islem_baslat_btn"):
     if coin_verisii is not None and coin_verisii['Notr']:
         st.error("⚠️ Nötr konumdaki bir coine işlem açılamaz!")
-    else:
+    elif coin_verisii is not None:
         basari, mesaj = yeni_islem_ekle(
             coin=secilen_coin, 
             yon=coin_verisii['Aktif_Yon'], 

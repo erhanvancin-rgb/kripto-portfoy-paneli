@@ -124,8 +124,8 @@ def load_1200_bar_market_data(coin_symbol: str):
 
 def calculate_coin_atr_metrics(df, skor):
     stop_pct = 0.70
-    s_sinirli = max(50.0, min(200.0, abs(skor)))
-    t = (s_sinirli - 50.0) / 150.0
+    s_sinirli = max(0.0, min(200.0, abs(skor)))
+    t = s_sinirli / 200.0
     hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
@@ -155,7 +155,7 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     k_yedek = toplam_bar - y_yedek
     return y_yedek, k_yedek
 
-def periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_100, hedef_onay_50, hedef_onay_100):
+def yeni_periyot_puan_hesapla(yesil_sayisi, toplam_bar, max_puan_50, max_puan_100, hedef_onay_50, hedef_onay_100):
     if toplam_bar <= 0: return 0.0
     oran = (yesil_sayisi / toplam_bar) * 100.0
     if oran >= 50.0:
@@ -203,7 +203,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    # GÜNCELLENEN EŞİK: %52 üzeri Long, %48 altı Short
     if y_yuzde >= 52.0:
         ham_yon = "Long"
     elif y_yuzde <= 48.0:
@@ -218,7 +217,7 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     mevcut_kararli_yon = st.session_state['yon_takip_dict'].get(coin_symbol, "Nötr")
     bekleyen_yon = st.session_state['sayac_dict'].get(coin_symbol, {}).get('yon', "Nötr")
-    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 0)
+    tekrar_sayisi = st.session_state['sayac_dict'].get(coin_symbol, {}).get('sayac', 10) # İlk açılışta taze hazır başlasın
 
     if ham_yon == bekleyen_yon:
         tekrar_sayisi += 1
@@ -231,15 +230,23 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     st.session_state['sayac_dict'][coin_symbol] = {'yon': bekleyen_yon, 'sayac': tekrar_sayisi}
     st.session_state['yon_takip_dict'][coin_symbol] = mevcut_kararli_yon
-    aktif_yon = mevcut_kararli_yon
     
-    p_1h = periyot_puan_hesapla(y1h, 60, 15.0, 60.0, 30, 48)
-    p_2h = periyot_puan_hesapla(y2h, 120, 13.0, 50.0, 60, 96)
-    p_4h = periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
-    p_8h = periyot_puan_hesapla(y8h, 240, 7.0, 30.0, 120, 192)
-    p_16h = periyot_puan_hesapla(y16h, 240, 5.0, 20.0, 120, 192)
+    # Yön Belirleme: Yeşil üstünse Long, Kırmızı üstünse Short
+    if y_yuzde >= 52.0:
+        aktif_yon = "Long"
+    elif y_yuzde <= 48.0:
+        aktif_yon = "Short"
+    else:
+        aktif_yon = "Nötr"
     
-    toplam_puan = p_1h + p_2h + p_4h + p_8h + p_16h
+    # Yeni Ağırlık ve Puan Hesaplamaları
+    p_1h_100 = yeni_periyot_puan_hesapla(y1h, 60, 17.0, 70.0, 30, 48)
+    p_2h_100 = yeni_periyot_puan_hesapla(y2h, 120, 15.0, 60.0, 60, 96)
+    p_4h_100 = yeni_periyot_puan_hesapla(y4h, 240, 10.0, 40.0, 120, 192)
+    p_8h_100 = yeni_periyot_puan_hesapla(y8h, 240, 5.0, 20.0, 120, 192)
+    p_16h_100 = yeni_periyot_puan_hesapla(y16h, 240, 3.0, 10.0, 120, 192)
+    
+    toplam_puan = p_1h_100 + p_2h_100 + p_4h_100 + p_8h_100 + p_16h_100
     nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
         
     return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
@@ -430,7 +437,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda, işlem açılamaz!"
+    if matris_puan < 50.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
     if islem_miktari > mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
@@ -452,7 +459,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     toplam_kasa, _, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
         "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
-        "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
+        "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_f, 
         "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, 
         "Beklenen_Kar": round(beklenen_kar, 2), "Matris_Puan_RH": matris_rh_metin, "Olasi_Stop": round(olasi_stop, 2),
         "Durum": "Acik", "Net_Kar_Zarar": 0.0, "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0
@@ -802,43 +809,48 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(table_html, unsafe_allow_html=True)
 
-st.markdown("### 🚀 Hızlı İşlem Emri Ver")
+st.markdown("### 🚀 Hızlı İşlem Emri Ver (Form Yapısı)")
 df_gosterge = pd.DataFrame(islenen_veriler)
 
-secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="secilen_coin_select")
-
-onerilen_oran_val = 0.0
-anlik_matris_puani = 0.0
-anlik_risk_hedef_metin = "1 / 2,0"
-if secilen_coin:
-    coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
-    onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
-    anlik_matris_puani = float(coin_verisi['Skor'])
-    anlik_risk_hedef_metin = coin_verisi['Risk_Hedef_Metin']
-    if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
+with st.form("hizli_islem_formu"):
+    secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist())
     
-secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
-hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
-st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+    onerilen_oran_val = 0.0
+    anlik_matris_puani = 0.0
+    anlik_risk_hedef_metin = "1 / 2,0"
+    if secilen_coin:
+        coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
+        onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
+        anlik_matris_puani = float(coin_verisi['Skor'])
+        anlik_risk_hedef_metin = coin_verisi['Risk_Hedef_Metin']
+        if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda (50 puan altı), işlem açılamaz.")
+        
+    secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5)
+    hesaplanan_tutar = mevcut_bakiye * (secilen_oran / 100.0)
+    st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbsp;|&nbsp;&nbsp; **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
-    st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(
-        coin=secilen_coin, 
-        yon=coin_verisi['Aktif_Yon'], 
-        giris_fiyat=coin_verisi['Fiyat'], 
-        sepet_orani_yuzde=secilen_oran, 
-        stop=coin_verisi['Stopla'], 
-        kar_al=coin_verisi['Kar_Al'], 
-        zaman_dilimi="Yeni Matris Kurgusu",
-        matris_puan=anlik_matris_puani,
-        risk_hedef_metin=anlik_risk_hedef_metin
-    )
-    if basari: 
-        st.success(mesaj)
-        st.balloons()
-    else: 
-        st.error(mesaj)
+    form_submitted = st.form_submit_button("🚀 İşlemi Başlat ve Emri Al")
+    
+    if form_submitted:
+        if coin_verisi['Notr']:
+            st.error("⚠️ Nötr konumdaki bir coine işlem açılamaz!")
+        else:
+            basari, mesaj = yeni_islem_ekle(
+                coin=secilen_coin, 
+                yon=coin_verisi['Aktif_Yon'], 
+                giris_fiyat=coin_verisi['Fiyat'], 
+                sepet_orani_yuzde=secilen_oran, 
+                stop=coin_verisi['Stopla'], 
+                kar_al=coin_verisi['Kar_Al'], 
+                zaman_dilimi="Yeni Matris Kurgusu",
+                matris_puan=anlik_matris_puani,
+                risk_hedef_metin=anlik_risk_hedef_metin
+            )
+            if basari: 
+                st.success(mesaj)
+                st.balloons()
+            else: 
+                st.error(mesaj)
 
 st.markdown("---")
 

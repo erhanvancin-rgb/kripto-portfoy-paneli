@@ -123,23 +123,10 @@ def load_1200_bar_market_data(coin_symbol: str):
     return pd.DataFrame({'timestamp': dates, 'Close': close_prices, 'High': high_prices, 'Low': low_prices})
 
 def calculate_coin_atr_metrics(df, skor):
-    s_sinirli = max(0.0, min(200.0, abs(skor)))
-    t = s_sinirli / 200.0
-    hedef_carpan = round(2.0 + 2.0 * (t ** 1.6), 1)
-
-    if df is None or df.empty or 'Close' not in df.columns:
-        return 1.0, hedef_carpan
-
-    df['H-L'] = df['High'] - df['Low']
-    df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
-    df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
-    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-    
-    atr_val = df['TR'].rolling(window=14).mean().iloc[-1]
-    current_price = df['Close'].iloc[-1]
-    vol_percentage = (atr_val / current_price) * 100 if current_price > 0 else 1.0
-    
-    stop_pct = max(0.5, round(vol_percentage * 1.5, 1))
+    stop_pct = 0.70
+    s_sinirli = max(50.0, min(200.0, abs(skor)))
+    t = (s_sinirli - 50.0) / 150.0
+    hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
 def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
@@ -216,7 +203,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y_yuzde = (onceki_y_yuzde * 0.85) + (anlik_y_yuzde * 0.15)
     st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    # 45 - 55 Esneklik Bandı
     if y_yuzde >= 55.0:
         ham_yon = "Long"
     elif y_yuzde <= 45.0:
@@ -239,7 +225,6 @@ def kurgusal_matris_hesapla(coin_symbol):
         bekleyen_yon = ham_yon
         tekrar_sayisi = 1
 
-    # 10 Dakikalık Ardışık Sayaç Kuralı
     if tekrar_sayisi >= 10:
         mevcut_kararli_yon = bekleyen_yon
 
@@ -272,7 +257,7 @@ def google_sheets_baglan(sayfa_adi):
         return None
 
 def islem_gecmisi_getir(sheet_guncelle=True):
-    beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
+    beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar", "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None: 
         return pd.DataFrame(columns=beklenen_kolonlar)
@@ -301,7 +286,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         df = df[df['Islem_ID'].notna() & (df['Islem_ID'] != "") & (df['Islem_ID'].astype(str) != "Islem_ID")]
         df['Islem_ID'] = pd.to_numeric(df['Islem_ID'], errors='coerce').fillna(0).astype(int)
         df = df.drop_duplicates(subset=['Islem_ID'], keep='last').sort_values(by='Islem_ID').reset_index(drop=True)
-        sayisal_kolonlar = ['Giris_Fiyat', 'Islem_Miktari', 'Stop', 'Kar_Al', 'Net_Kar_Zarar', 'Guncel_Kasa', 'Kapanis_Fiyati']
+        sayisal_kolonlar = ['Giris_Fiyat', 'Islem_Miktari', 'Stop', 'Kar_Al', 'Beklenen_Kar', 'Olasi_Stop', 'Net_Kar_Zarar', 'Guncel_Kasa', 'Kapanis_Fiyati']
         for col in sayisal_kolonlar:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.').str.strip(), errors='coerce').fillna(0.0).astype(float)
@@ -439,7 +424,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     kasa_islem_ekle_deftere(islem_tipi, tutar_val, aciklama)
     return True, f"✅ Kasa başarıyla güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
-def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi):
+def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
     if "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Bu coin şu an Nötr konumda, işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     islem_miktari = mevcut_bakiye * (sepet_orani_yuzde / 100.0)
@@ -450,12 +435,23 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, sepet_orani_yuzde, stop, kar_al, zam
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
+    # Beklenen Kar ve Olası Stop hesaplamaları
+    if 'Long' in yon:
+        beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
+        olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
+    else:
+        beklenen_kar = islem_miktari * KALDIRAC * ((giris_fiyat - kar_al) / giris_fiyat)
+        olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
+        
+    matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
+    
     toplam_kasa, _, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
         "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr,
         "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
-        "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, "Durum": "Acik", 
-        "Net_Kar_Zarar": 0.0, "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0
+        "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, 
+        "Beklenen_Kar": round(beklenen_kar, 2), "Matris_Puan_RH": matris_rh_metin, "Olasi_Stop": round(olasi_stop, 2),
+        "Durum": "Acik", "Net_Kar_Zarar": 0.0, "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0
     }])
     df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
     dataframe_guncelle_gsheets(df)
@@ -537,7 +533,7 @@ def otomatik_stop_kontrolu(ortak_fiyat_havuzu):
         elli_islem_arsiv_kontrol()
 
 # --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (10 Dakikalık Sayaç & 45-55 Bant)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (%0.70 Stop & Dinamik R/H Tablosu)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state:
@@ -788,9 +784,13 @@ df_gosterge = pd.DataFrame(islenen_veriler)
 secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", df_gosterge['Coin'].tolist(), key="secilen_coin_select")
 
 onerilen_oran_val = 0.0
+anlik_matris_puani = 0.0
+anlik_risk_hedef_metin = "1 / 2,0"
 if secilen_coin:
     coin_verisi = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
     onerilen_oran_val = float(coin_verisi['Sepet_Orani'])
+    anlik_matris_puani = float(coin_verisi['Skor'])
+    anlik_risk_hedef_metin = coin_verisi['Risk_Hedef_Metin']
     if coin_verisi['Notr']: st.warning("⚠️ Bu coin şu an Nötr konumda.")
     
 secilen_oran = st.slider("Yatırım Oranını Seçin (%):", min_value=0.0, max_value=100.0, value=onerilen_oran_val, step=0.5, key="oran_slider")
@@ -799,7 +799,17 @@ st.markdown(f"💼 **Yatırım Tutarı:** `{hesaplanan_tutar:,.2f} $` &nbsp;&nbs
 
 if st.button(f"🚀 {secilen_coin} İşlemini Başlat ve Emri Al", key="islem_baslat_btn"):
     st.info("🔄 İşlem sıraya alındı, veriler işleniyor...")
-    basari, mesaj = yeni_islem_ekle(coin=secilen_coin, yon=coin_verisi['Aktif_Yon'], giris_fiyat=coin_verisi['Fiyat'], sepet_orani_yuzde=secilen_oran, stop=coin_verisi['Stopla'], kar_al=coin_verisi['Kar_Al'], zaman_dilimi="Yeni Matris Kurgusu")
+    basari, mesaj = yeni_islem_ekle(
+        coin=secilen_coin, 
+        yon=coin_verisi['Aktif_Yon'], 
+        giris_fiyat=coin_verisi['Fiyat'], 
+        sepet_orani_yuzde=secilen_oran, 
+        stop=coin_verisi['Stopla'], 
+        kar_al=coin_verisi['Kar_Al'], 
+        zaman_dilimi="Yeni Matris Kurgusu",
+        matris_puan=anlik_matris_puani,
+        risk_hedef_metin=anlik_risk_hedef_metin
+    )
     if basari: 
         st.success(mesaj)
         st.balloons()
@@ -869,13 +879,13 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     df_gecmis_copy = df_gosterilecek.copy()
     df_gecmis_copy['Anlik_Fiyat_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_fiyat_sozluk)
-    df_gecmis_copy['Hedef_Kar'] = df_gecmis_copy['Islem_ID'].map(hedef_kar_sozluk)
-    df_gecmis_copy['Olasi_Stop'] = df_gecmis_copy['Islem_ID'].map(olasi_stop_sozluk)
+    df_gecmis_copy['Canli_Beklenen_Kar'] = df_gecmis_copy['Islem_ID'].map(hedef_kar_sozluk)
+    df_gecmis_copy['Canli_Olasi_Stop'] = df_gecmis_copy['Islem_ID'].map(olasi_stop_sozluk)
     df_gecmis_copy['Anlik_KZ_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_kz_sozluk)
     
     df_gecmis_copy['Yatırım_Bedeli'] = df_gecmis_copy['Islem_Miktari'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
-    df_gecmis_copy['Hedef_Kar_Str'] = df_gecmis_copy['Hedef_Kar'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
-    df_gecmis_copy['Olasi_Stop_Str'] = df_gecmis_copy['Olasi_Stop'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+    df_gecmis_copy['Beklenen_Kar_Str'] = df_gecmis_copy['Canli_Beklenen_Kar'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
+    df_gecmis_copy['Olasi_Stop_Str'] = df_gecmis_copy['Canli_Olasi_Stop'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
     df_gecmis_copy['Kasa_Str'] = df_gecmis_copy['Guncel_Kasa'].apply(lambda x: f"{float(x):,.2f}&nbsp;$")
 
     def format_fiyat(fiyat_degeri, coin_adi):
@@ -903,7 +913,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
      <tr>
      <th>ID</th><th>Açılış<br>Zamanı</th><th>Logo</th><th>Coin</th><th>İşlem<br>Yönü</th>
      <th>Giriş<br>Fiyatı</th><th>Anlık<br>Fiyat</th><th>Kapanış<br>Fiyatı</th><th>Yatırım<br>Tutarı</th>
-     <th>Stop<br>Seviyesi</th><th>Kar Al<br>Hedefi</th><th>Beklenen<br>Kar</th><th>Olası<br>Stop</th>
+     <th>Stop<br>Seviyesi</th><th>Kar Al<br>Hedefi</th><th>Beklenen<br>Kar</th><th>Matris Puanı<br>& R/H</th><th>Olası<br>Stop</th>
      <th>İşlem<br>Durumu</th><th>Anlık<br>K/Z</th><th>Kapanış<br>Zamanı</th><th>Güncel<br>Kasa</th>
      </tr>
      </thead><tbody>
@@ -948,7 +958,9 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_stil = "#00FF00" if kz_val >= 0 else "#FF0000"
         kz_h = f'<div style="background-color: {kz_stil}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Hedef_Kar_Str']}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
+        matris_rh_ hucre = str(row.get('Matris_Puan_RH', '-'))
+
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_ hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(portfoy_html, unsafe_allow_html=True)
 

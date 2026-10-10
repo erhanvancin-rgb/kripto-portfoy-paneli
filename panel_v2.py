@@ -22,7 +22,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="�
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ (Renklerin baskılanmaması için span kuralları optimize edildi) ---
+# --- CSS STİLLERİ ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -145,7 +145,6 @@ def load_5min_market_data(coin_symbol: str):
                     df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms')
                     anlik_total = fiyat_cek_coinbase('TOTAL')
                     ilk_fiyat = df_t['price'].iloc[0]
-                    # Doğru Trilyon ölçekleme katsayısı
                     carpan = anlik_total / ilk_fiyat
                     df_t['Close'] = df_t['price'] * carpan
                     df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
@@ -161,7 +160,7 @@ def load_5min_market_data(coin_symbol: str):
         try:
             url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
             r = requests.get(url, headers=headers, timeout=15.0)
-            if resp.status_code == 200 if 'resp' in locals() else r.status_code == 200:
+            if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list) and len(data) > 0:
                     df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
@@ -903,7 +902,7 @@ with col_sag_panel:
         <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
         <span style="color: #212529 !important;">Piyasa Değeri:</span> <span style="color: #0d6efd !important;">${t_fiyat:,.0f}</span> | 
         <span style="color: #212529 !important;">Matris Puanı:</span> <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span><br>
-        {str_24} &nbsp;|&nbsp; {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_4} &nbsp;|&nbsp; {str_1}
+        <span style="color: #212529 !important;">{str_24} &nbsp;|&nbsp; {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_4} &nbsp;|&nbsp; {str_1}</span>
         </div>
     """, unsafe_allow_html=True)
 

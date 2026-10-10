@@ -133,8 +133,7 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
-    # 5 dakikalık barlar (granularity=300), 200 bar = ~17 saatlik akış
-    limit = 200
+    limit = 288  # 24 saatlik 5 dakikalık bar (288 * 5 dk = 1440 dk)
     if coin_symbol != 'TOTAL':
         cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
         cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
@@ -594,7 +593,7 @@ if 'kasa_islem_turu' not in st.session_state:
 if 'sadece_aktifleri_goster' not in st.session_state:
     st.session_state['sadece_aktifleri_goster'] = False
 
-# --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (5 DAKİKALIK / 200 BAR) ---
+# --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (5 DAKİKALIK / 288 BAR) ---
 tum_takip_edilenler = coinler + ['TOTAL']
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -846,7 +845,6 @@ with col_sag_panel:
 
     t_puan = t_data["nihai_puan"]
     t_yon = t_data["aktif_yon"]
-    t_oran = t_data["gunluk_oran"]
     t_fiyat = t_data["anlik_fiyat"]
     t_y_yuzde = t_data["y_yuzde"]
     t_k_yuzde = 100.0 - t_y_yuzde
@@ -857,12 +855,37 @@ with col_sag_panel:
     
     t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
     
+    # 24, 16, 12, 4, 1 saatlik değişimlerin hesaplanması
+    def periyot_degisim_hesapla(df, bar_sayisi):
+        if df is None or len(df) < bar_sayisi:
+            return 0.0
+        ilk_f = float(df.iloc[-bar_sayisi]['Open'])
+        son_f = float(df.iloc[-1]['Close'])
+        return ((son_f - ilk_f) / ilk_f) * 100.0
+
+    # 5 dakikalık barlarda: 1 saat = 12 bar, 4 saat = 48 bar, 12 saat = 144 bar, 16 saat = 192 bar, 24 saat = 288 bar
+    d_24 = periyot_degisim_hesapla(t_df, 288)
+    d_16 = periyot_degisim_hesapla(t_df, 192)
+    d_12 = periyot_degisim_hesapla(t_df, 144)
+    d_4  = periyot_degisim_hesapla(t_df, 48)
+    d_1  = periyot_degisim_hesapla(t_df, 12)
+
+    def renkli_format(deger, etiket):
+        renk = "#00FF00" if deger >= 0 else "#FF0000"
+        return f'{etiket}: <span style="color: {renk}; font-weight: bold;">{deger:+,.2f}%</span>'
+
+    str_24 = renkli_format(d_24, "24 S")
+    str_16 = renkli_format(d_16, "16 S")
+    str_12 = renkli_format(d_12, "12 S")
+    str_4  = renkli_format(d_4, "4 S")
+    str_1  = renkli_format(d_1, "1 S")
+
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
     st.markdown(f"""
-        <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold;">
+        <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
         Piyasa Değeri: <span style="color: #0d6efd;">${t_fiyat:,.0f}</span> | 
-        Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span> | 
-        Günlük Değişim: <span style="color: {'#00FF00' if t_oran >= 0 else '#FF0000'};">{t_oran:+,.2f}%</span>
+        Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span><br>
+        {str_24} | {str_16} | {str_12} | {str_4} | {str_1}
         </div>
     """, unsafe_allow_html=True)
 

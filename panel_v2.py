@@ -22,7 +22,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="�
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ ---
+# --- CSS STİLLERİ (Renklerin baskılanmaması için span kuralları optimize edildi) ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -41,7 +41,7 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    h1, h2, h3, h4, h5, h6, p, span, label, div, table, th, td {
+    h1, h2, h3, h4, h5, h6, p, label, div, table, th, td {
         color: #212529 !important;
     }
     
@@ -133,7 +133,7 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
-    limit = 288  # 24 saatlik 5 dakikalık bar
+    limit = 192  # 16 saatlik 5 dakikalık bar (192 * 5 dk = 960 dk / 16 saat)
     if coin_symbol == 'TOTAL':
         try:
             url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
@@ -145,7 +145,8 @@ def load_5min_market_data(coin_symbol: str):
                     df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms')
                     anlik_total = fiyat_cek_coinbase('TOTAL')
                     ilk_fiyat = df_t['price'].iloc[0]
-                    carpan = anlik_total / (ilk_fiyat * 55)
+                    # Doğru Trilyon ölçekleme katsayısı
+                    carpan = anlik_total / ilk_fiyat
                     df_t['Close'] = df_t['price'] * carpan
                     df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
                     df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0001
@@ -160,7 +161,7 @@ def load_5min_market_data(coin_symbol: str):
         try:
             url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
             r = requests.get(url, headers=headers, timeout=15.0)
-            if r.status_code == 200:
+            if resp.status_code == 200 if 'resp' in locals() else r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list) and len(data) > 0:
                     df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
@@ -612,7 +613,7 @@ if 'kasa_islem_turu' not in st.session_state:
 if 'sadece_aktifleri_goster' not in st.session_state:
     st.session_state['sadece_aktifleri_goster'] = False
 
-# --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (5 DAKİKALIK / 288 BAR) ---
+# --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (16 SAATLİK / 192 BAR) ---
 tum_takip_edilenler = coinler + ['TOTAL']
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -664,7 +665,7 @@ for data in coin_ham_veriler:
     k_gorsel = 10 - y_gorsel
     yesil_top = "🟢" * y_gorsel
     kirmizi_top = "🔴" * k_gorsel
-    detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
+    detay_matris_html = '<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + yesil_top + kirmizi_top + '</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{k_yuzde:.1f}" + '</div></div>'
     
     is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
     if is_notr:
@@ -685,13 +686,13 @@ for data in coin_ham_veriler:
         stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
         hedef_fiyat = anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    dom_html = '<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">' + c_durum_led + u_durum_led + c_durum_led + '</div><div style="font-size: 10px; color: #495057; font-weight: 500;">C:' + c_durum_led + ' | U:' + u_durum_led + '</div></div>'
+    dom_html = '<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">' + c_durum_led + u_durum_led + c_durum_led + '</div><div style="font-size: 10px; font-weight: 500;">C:' + c_durum_led + ' | U:' + u_durum_led + '</div></div>'
     
     if is_notr:
         puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else:
         p_renk = "#00FF00" if aktif_yon_turu == "Long" else "#FF0000"
-        puan_html = f'<div style="font-weight: bold; color: {p_renk};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px; color: #212529;">({aktif_yon_turu})</span></div>'
+        puan_html = f'<div style="font-weight: bold; color: {p_renk};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
     
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
@@ -707,7 +708,7 @@ for data in coin_ham_veriler:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     sepet_orani = 0.0 if is_notr else round(50.0 + 50.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 150.0) ** 1.4), 1)
-    g_oran_str = f"<span style='color: {'#00FF00' if gunluk_oran >= 0 else '#FF0000'}; font-weight: bold;'>{gunluk_oran:+,.2f}%</span>"
+    g_oran_str = f"<span style='color: {'#00FF00' if gunluk_oran >= 0 else '#FF0000'} !important; font-weight: bold;'>{gunluk_oran:+,.2f}%</span>"
 
     islenen_veriler.append({
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), 
@@ -728,15 +729,15 @@ for v in islenen_veriler:
 # --- ÜST BİLGİ PANELİ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6 = st.columns([2, 2, 2, 2, 1.5, 1.2])
 with col_ust1:
-    st.markdown(f'<div class="metric-container"><p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">📊 Aktif Yatırım</p><h1 style="color: #0d6efd; margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">📊 Aktif Yatırım</p><h1 style="color: #0d6efd; margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust2:
-    st.markdown(f'<div class="metric-container"><p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">🟢 Boştaki Nakit</p><h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">🟢 Boştaki Nakit</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust3:
-    st.markdown(f'<div class="metric-container"><p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa</p><h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust4:
-    st.markdown(f'<div class="metric-container"><p style="color: #495057; margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa</p><h1 style="color: #212529; margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust5:
-    st.markdown('<div class="metric-container" style="padding: 11px !important;"><p style="color: #495057; margin: 0px; font-size: 13px; font-weight: bold;">👍 Kasa Sermaye</p>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-container" style="padding: 11px !important;"><p style="margin: 0px; font-size: 13px; font-weight: bold;">👍 Kasa Sermaye</p>', unsafe_allow_html=True)
     if st.button("🗂️ Yatır / Çek", use_container_width=True):
         st.session_state['kasa_islem_acik'] = not st.session_state['kasa_islem_acik']
         st.rerun()
@@ -774,7 +775,7 @@ if st.session_state['kasa_islem_acik']:
 
 st.markdown("---")
 
-# --- ANA TABLO (GÜNLÜK ORAN İLE) ---
+# --- ANA TABLO ---
 table_html = """
 <table class="custom-table">
  <thead class="custom-table-header">
@@ -848,7 +849,7 @@ with col_sol_panel:
             else: st.error(mesaj)
 
 with col_sag_panel:
-    st.markdown("### 🌐 Total Market (5 Dakikalık Akış)")
+    st.markdown("### 🌐 Total Market (16 Saatlik 5 Dakikalık Akış)")
     t_data = total_ham_veri
     t_df = t_data["df_market"]
     
@@ -870,7 +871,7 @@ with col_sag_panel:
     
     t_y_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0))))
     t_k_gorsel = 10 - t_y_gorsel
-    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 11px; color: #495057; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
+    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
     
     t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
     
@@ -881,20 +882,20 @@ with col_sag_panel:
         son_f = float(df.iloc[-1]['Close'])
         return ((son_f - ilk_f) / ilk_f) * 100.0
 
-    d_24 = periyot_degisim_hesapla(t_df, 288)
-    d_16 = periyot_degisim_hesapla(t_df, 192)
-    d_12 = periyot_degisim_hesapla(t_df, 144)
-    d_4  = periyot_degisim_hesapla(t_df, 48)
-    d_1  = periyot_degisim_hesapla(t_df, 12)
+    d_24 = periyot_degisim_hesapla(t_df, 192)
+    d_16 = periyot_degisim_hesapla(t_df, 128)
+    d_12 = periyot_degisim_hesapla(t_df, 96)
+    d_4  = periyot_degisim_hesapla(t_df, 32)
+    d_1  = periyot_degisim_hesapla(t_df, 8)
 
     def renkli_format(deger, etiket):
         renk = "#00FF00" if deger >= 0 else "#FF0000"
         return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
 
-    str_24 = renkli_format(d_24, "24 S")
-    str_16 = renkli_format(d_16, "16 S")
-    str_12 = renkli_format(d_12, "12 S")
-    str_4  = renkli_format(d_4, "4 S")
+    str_24 = renkli_format(d_24, "16 S")
+    str_16 = renkli_format(d_16, "12 S")
+    str_12 = renkli_format(d_12, "8 S")
+    str_4  = renkli_format(d_4, "2 S")
     str_1  = renkli_format(d_1, "1 S")
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
@@ -1076,7 +1077,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 '<p style="color: #FF0000; margin: 0px; font-size: 15px; font-weight: bold;">Toplam Zarar:</p>'
                 f'<h3 style="color: #FF0000; margin: 0px 0px 10px 0px;">-{toplam_kayip_dolar:,.2f} $</h3>'
                 '<hr style="border-color: #ced4da; margin: 8px 0px;">'
-                '<p style="color: #212529; margin: 0px; font-size: 14px;">Net Fark:</p>'
+                '<p style="margin: 0px; font-size: 14px;">Net Fark:</p>'
                 f'<h3 style="color: {net_fark_renk}; margin: 0px;">{net_fark_dolar:+,.2f} $</h3>'
                 '</div>',
                 unsafe_allow_html=True

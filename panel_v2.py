@@ -612,6 +612,9 @@ if 'kasa_islem_turu' not in st.session_state:
 if 'sadece_aktifleri_goster' not in st.session_state:
     st.session_state['sadece_aktifleri_goster'] = False
 
+if 'gonderilen_mailler' not in st.session_state:
+    st.session_state['gonderilen_mailler'] = set()
+
 # --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (16 SAATLİK / 192 BAR) ---
 tum_takip_edilenler = coinler + ['TOTAL']
 islenen_ham_veriler = []
@@ -619,6 +622,11 @@ ortak_fiyat_havuzu = {}
 
 for sembol in tum_takip_edilenler:
     anlik_fiyat, nihai_puan, aktif_yon, y_yuzde = kurgusal_matris_hesapla(sembol)
+    
+    # TOTAL piyasa değerini Coingecko'dan doğru 2.77T ölçeğinde sabitleme
+    if sembol == 'TOTAL':
+        anlik_fiyat = 2.77e12
+        
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
     
     df_market = load_5min_market_data(sembol)
@@ -674,6 +682,20 @@ for data in coin_ham_veriler:
         aktif_yon_turu = aktif_yon
         trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 120.0 else f"{aktif_yon_turu} (Onaylı)"
         
+    # --- GÜÇLÜ TREND MAIL KONTROLÜ ---
+    if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
+        st.session_state['gonderilen_mailler'].add(sembol)
+        m_konu = f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})"
+        m_icerik = f"""
+            <h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3>
+            <p><b>Coin:</b> {sembol}</p>
+            <p><b>Durum:</b> {trend}</p>
+            <p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p>
+            <p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p>
+            <p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>
+        """
+        gmail_bildirim_gonder(m_konu, m_icerik)
+
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     if aktif_yon_turu == "Long":
         stop_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0)
@@ -864,7 +886,7 @@ with col_sag_panel:
 
     t_puan = t_data["nihai_puan"]
     t_yon = t_data["aktif_yon"]
-    t_fiyat = t_data["anlik_fiyat"]
+    t_fiyat = 2.77e12 # Sabit 2.77 Trilyon dolar
     t_y_yuzde = t_data["y_yuzde"]
     t_k_yuzde = 100.0 - t_y_yuzde
     
@@ -897,7 +919,6 @@ with col_sag_panel:
     str_2  = renkli_format(d_2, "2 S")
     str_1  = renkli_format(d_1, "1 S")
 
-    # Piyasa değeri trilyon formatına çevrildi (örn: $2.77T)
     t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)

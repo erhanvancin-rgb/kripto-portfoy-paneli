@@ -10,6 +10,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 import time
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from streamlit_autorefresh import st_autorefresh
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -52,7 +55,8 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    .custom-table { width: 100%; border-collapse: collapse; background-color: #ffffff; margin-bottom: 20px; }
+    .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; }
+    .custom-table { width: 100%; border-collapse: collapse; background-color: #ffffff; }
     .custom-table th { background-color: #e9ecef; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: bold; color: #212529; font-size: 13px; line-height: 1.2; }
     .custom-table td { background-color: #ffffff; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: 600; vertical-align: middle; color: #212529; white-space: nowrap; font-size: 13px; }
     .custom-table td img { width: 22px; height: 22px; object-fit: contain; }
@@ -78,6 +82,28 @@ logo_urls = {
     'XRP/USDT': 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/xrp.png'
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489}
+
+# --- GMAIL BİLDİRİM FONKSİYONU ---
+def gmail_bildirim_gonder(konu, icerik_html):
+    gonderici_mail = "erhanvancin@gmail.com"
+    uygulama_sifresi = "jkef zgaf zwtg qyom"
+    alici_mail = "erhanvancin@gmail.com"
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = gonderici_mail
+        msg['To'] = alici_mail
+        msg['Subject'] = konu
+        
+        msg.attach(MIMEText(icerik_html, 'html'))
+        
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(gonderici_mail, uygulama_sifresi)
+        server.sendmail(gonderici_mail, alici_mail, msg.as_string())
+        server.quit()
+        return True, "E-posta başarıyla gönderildi."
+    except Exception as e:
+        return False, str(e)
 
 def fiyat_cek_coinbase(coin_symbol):
     cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
@@ -442,6 +468,20 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
         
         elli_islem_arsiv_kontrol()
+        
+        # MAIL BILDIRIMI GONDER
+        mail_konu = f"🔔 Manuel Kapatma Raporu: #{islem_id} {row['Coin']} ({durum_metni})"
+        mail_icerik = f"""
+            <h3>İşlem Manuel Olarak Kapatıldı</h3>
+            <p><b>İşlem ID:</b> #{islem_id}</p>
+            <p><b>Coin:</b> {row['Coin']}</p>
+            <p><b>Yön:</b> {row['Yon']}</p>
+            <p><b>Durum:</b> {durum_metni}</p>
+            <p><b>Net Kâr/Zarar:</b> {net_kar:+,.2f} $</p>
+            <p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>
+        """
+        gmail_bildirim_gonder(mail_konu, mail_icerik)
+        
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
@@ -504,6 +544,19 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
                 trade_aciklama = f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})"
                 kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), trade_aciklama)
                 degisiklik_oldu = True
+                
+                # OTOMATİK MAIL BILDIRIMI GONDER
+                mail_konu = f"🔔 Otomatik İşlem Raporu: #{islem_id} {coin} ({'Kâr' if hedefe_ulasti else 'Zarar'})"
+                mail_icerik = f"""
+                    <h3>İşlem Hedefe Ulaştı ve Otomatik Kapatıldı</h3>
+                    <p><b>Kapanış Türü:</b> {islem_turu_etiket}</p>
+                    <p><b>İşlem ID:</b> #{islem_id}</p>
+                    <p><b>Coin:</b> {coin}</p>
+                    <p><b>Yön:</b> {yon}</p>
+                    <p><b>Net Kâr/Zarar:</b> {net_kar:+,.2f} $</p>
+                    <p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>
+                """
+                gmail_bildirim_gonder(mail_konu, mail_icerik)
                 
     if degisiklik_oldu:
         dataframe_guncelle_gsheets(df)
@@ -625,7 +678,6 @@ for data in islenen_ham_veriler:
         "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
-# Sıralama: Önce işlem yapılabilir (Nötr olmayanlar), ardından skora göre azalan şekilde
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
 
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
@@ -754,7 +806,7 @@ for v in islenen_veriler:
 
     table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #0d6efd; background-color: rgba(13, 110, 253, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td style='background-color: rgba(0,0,0,0.02);'>{v['Matris_Puan_Sunumu']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #d63384;'>{v['Risk_Hedef_Metin']}</td></tr>"
 table_html += "</tbody></table>"
-st.markdown(table_html, unsafe_allow_html=True)
+st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
 st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
 df_gosterge = pd.DataFrame(islenen_veriler)
@@ -1003,7 +1055,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
         portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{row['Giris_Fiyat_Str']}</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row['Yatırım_Bedeli']}</td><td>{row['Stop_Str']}</td><td>{row['Kar_Al_Str']}</td><td>{row['Beklenen_Kar_Str']}</td><td style='font-weight: bold; color: #495057;'>{matris_rh_hucre}</td><td>{row['Olasi_Stop_Str']}</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{row['Kasa_Str']}</td></tr>"
     portfoy_html += "</tbody></table>"
-    st.markdown(portfoy_html, unsafe_allow_html=True)
+    st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi")

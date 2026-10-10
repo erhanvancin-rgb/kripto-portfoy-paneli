@@ -133,7 +133,7 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
-    limit = 192  # 16 saatlik 5 dakikalık bar (192 * 5 dk = 960 dk / 16 saat)
+    limit = 192  # 16 saatlik 5 dakikalık bar
     if coin_symbol == 'TOTAL':
         try:
             url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
@@ -881,28 +881,31 @@ with col_sag_panel:
         son_f = float(df.iloc[-1]['Close'])
         return ((son_f - ilk_f) / ilk_f) * 100.0
 
-    d_24 = periyot_degisim_hesapla(t_df, 192)
-    d_16 = periyot_degisim_hesapla(t_df, 128)
-    d_12 = periyot_degisim_hesapla(t_df, 96)
-    d_4  = periyot_degisim_hesapla(t_df, 32)
-    d_1  = periyot_degisim_hesapla(t_df, 8)
+    d_16 = periyot_degisim_hesapla(t_df, 192)
+    d_12 = periyot_degisim_hesapla(t_df, 144)
+    d_8  = periyot_degisim_hesapla(t_df, 96)
+    d_2  = periyot_degisim_hesapla(t_df, 24)
+    d_1  = periyot_degisim_hesapla(t_df, 12)
 
     def renkli_format(deger, etiket):
         renk = "#00FF00" if deger >= 0 else "#FF0000"
         return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
 
-    str_24 = renkli_format(d_24, "16 S")
-    str_16 = renkli_format(d_16, "12 S")
-    str_12 = renkli_format(d_12, "8 S")
-    str_4  = renkli_format(d_4, "2 S")
+    str_16 = renkli_format(d_16, "16 S")
+    str_12 = renkli_format(d_12, "12 S")
+    str_8  = renkli_format(d_8, "8 S")
+    str_2  = renkli_format(d_2, "2 S")
     str_1  = renkli_format(d_1, "1 S")
+
+    # Piyasa değeri trilyon formatına çevrildi (örn: $2.77T)
+    t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
     st.markdown(f"""
         <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
-        <span style="color: #212529 !important;">Piyasa Değeri:</span> <span style="color: #0d6efd !important;">${t_fiyat:,.0f}</span> | 
+        <span style="color: #212529 !important;">Piyasa Değeri:</span> <span style="color: #0d6efd !important;">{t_fiyat_trilyon}</span> | 
         <span style="color: #212529 !important;">Matris Puanı:</span> <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span><br>
-        <span style="color: #212529 !important;">{str_24} &nbsp;|&nbsp; {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_4} &nbsp;|&nbsp; {str_1}</span>
+        <span style="color: #212529 !important;">{str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}</span>
         </div>
     """, unsafe_allow_html=True)
 

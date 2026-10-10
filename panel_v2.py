@@ -133,28 +133,24 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
-    limit = 288  # 24 saatlik 5 dakikalık bar (288 * 5 dk = 1440 dk)
+    limit = 288  # 24 saatlik 5 dakikalık bar
     if coin_symbol == 'TOTAL':
         try:
-            url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=1&page=1"
-            # Gerçekçi 24 saatlik Total akışı için coingecko market chart verisi çekmeyi deneyelim
-            ch_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
-            r = requests.get(ch_url, timeout=10)
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
+            r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 prices = r.json().get('prices', [])
                 if len(prices) > 0:
                     df_t = pd.DataFrame(prices, columns=['timestamp_ms', 'price'])
                     df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms')
-                    # Bitcoin hareketini Total market değerine oranlayarak ölçekleyelim
                     anlik_total = fiyat_cek_coinbase('TOTAL')
                     ilk_fiyat = df_t['price'].iloc[0]
-                    carpan = anlik_total / (ilk_fiyat * 55) # Ölçekleme katsayısı
+                    carpan = anlik_total / (ilk_fiyat * 55)
                     df_t['Close'] = df_t['price'] * carpan
                     df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
-                    df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0002
-                    df_t['Low'] = df_t[['Open', 'Close']].min(axis=1) * 0.9998
-                    df_t = df_t.tail(limit).reset_index(drop=True)
-                    return df[['timestamp', 'Open', 'High', 'Low', 'Close']].copy() if 'Open' in df_t.columns else df_t[['timestamp', 'Open', 'High', 'Low', 'Close']]
+                    df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0001
+                    df_t['Low'] = df_t[['Open', 'Close']].min(axis=1) * 0.9999
+                    return df_t[['timestamp', 'Open', 'High', 'Low', 'Close']].tail(limit).reset_index(drop=True)
         except: pass
 
     if coin_symbol != 'TOTAL':
@@ -893,7 +889,7 @@ with col_sag_panel:
 
     def renkli_format(deger, etiket):
         renk = "#00FF00" if deger >= 0 else "#FF0000"
-        return f'<span style="color: #212529;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
+        return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
 
     str_24 = renkli_format(d_24, "24 S")
     str_16 = renkli_format(d_16, "16 S")
@@ -904,8 +900,8 @@ with col_sag_panel:
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
     st.markdown(f"""
         <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
-        <span style="color: #212529;">Piyasa Değeri:</span> <span style="color: #0d6efd;">${t_fiyat:,.0f}</span> | 
-        <span style="color: #212529;">Matris Puanı:</span> <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span><br>
+        <span style="color: #212529 !important;">Piyasa Değeri:</span> <span style="color: #0d6efd !important;">${t_fiyat:,.0f}</span> | 
+        <span style="color: #212529 !important;">Matris Puanı:</span> <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span><br>
         {str_24} &nbsp;|&nbsp; {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_4} &nbsp;|&nbsp; {str_1}
         </div>
     """, unsafe_allow_html=True)

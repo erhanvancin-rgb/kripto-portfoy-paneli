@@ -623,7 +623,6 @@ ortak_fiyat_havuzu = {}
 for sembol in tum_takip_edilenler:
     anlik_fiyat, nihai_puan, aktif_yon, y_yuzde = kurgusal_matris_hesapla(sembol)
     
-    # TOTAL piyasa değerini Coingecko'dan doğru 2.77T ölçeğinde sabitleme
     if sembol == 'TOTAL':
         anlik_fiyat = 2.77e12
         
@@ -682,7 +681,6 @@ for data in coin_ham_veriler:
         aktif_yon_turu = aktif_yon
         trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 120.0 else f"{aktif_yon_turu} (Onaylı)"
         
-    # --- GÜÇLÜ TREND MAIL KONTROLÜ ---
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
         m_konu = f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})"
@@ -886,7 +884,7 @@ with col_sag_panel:
 
     t_puan = t_data["nihai_puan"]
     t_yon = t_data["aktif_yon"]
-    t_fiyat = 2.77e12 # Sabit 2.77 Trilyon dolar
+    t_fiyat = 2.77e12 
     t_y_yuzde = t_data["y_yuzde"]
     t_k_yuzde = 100.0 - t_y_yuzde
     
@@ -909,9 +907,10 @@ with col_sag_panel:
     d_2  = periyot_degisim_hesapla(t_df, 24)
     d_1  = periyot_degisim_hesapla(t_df, 12)
 
+    # --- KESİN ÇÖZÜM: Renkler doğrudan inline CSS ile style blokları içine gömüldü ---
     def renkli_format(deger, etiket):
         renk = "#00FF00" if deger >= 0 else "#FF0000"
-        return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
+        return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold; background-color: rgba(0,0,0,0.03); padding: 2px 4px; border-radius: 3px;">{deger:+,.2f}%</span>'
 
     str_16 = renkli_format(d_16, "16 S")
     str_12 = renkli_format(d_12, "12 S")
@@ -922,11 +921,17 @@ with col_sag_panel:
     t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
+    
+    # Tamamen bağımsız kapsayıcı blok ile Streamlit global stillerinin ezmesi engellendi
     st.markdown(f"""
-        <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
-        <span style="color: #212529 !important;">Piyasa Değeri:</span> <span style="color: #0d6efd !important;">{t_fiyat_trilyon}</span> | 
-        <span style="color: #212529 !important;">Matris Puanı:</span> <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span><br>
-        <span style="color: #212529 !important;">{str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}</span>
+        <div style="background-color: #e9ecef !important; border: 1px solid #ced4da !important; padding: 12px !important; border-radius: 6px !important; text-align: center !important;">
+            <div style="font-size: 14px !important; font-weight: bold !important; margin-bottom: 6px !important; color: #212529 !important;">
+                Piyasa Değeri: <span style="color: #0d6efd !important;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
+                Matris Puanı: <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span>
+            </div>
+            <div style="font-size: 13px !important; font-weight: 600 !important; color: #212529 !important;">
+                {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 

@@ -785,7 +785,7 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- İKİ SÜTUNLU YAPI: SOL (HIZLI İŞLEM) & SAĞ (TOTAL MARKET 5 DAKİKALIK MUM GRAFİK VE MATRİS LEDLERİ) ---
+# --- İKİ SÜTUNLU YAPI: SOL (HIZLI İŞLEM) & SAĞ (TOTAL MARKET ÇİZGİ GRAFİK VE MATRİS LEDLERİ) ---
 col_sol_panel, col_sag_panel = st.columns([1, 1])
 
 with col_sol_panel:
@@ -833,9 +833,9 @@ with col_sag_panel:
     t_data = total_ham_veri
     t_df = t_data["df_market"]
     
-    fig_total = go.Figure(data=[go.Candlestick(
-        x=t_df['timestamp'], open=t_df['Open'], high=t_df['High'], low=t_df['Low'], close=t_df['Close'],
-        increasing_line_color='#00FF00', decreasing_line_color='#FF0000'
+    fig_total = go.Figure(data=[go.Scatter(
+        x=t_df['timestamp'], y=t_df['Close'], mode='lines',
+        line=dict(color='#0d6efd', width=2)
     )])
     fig_total.update_layout(
         template="plotly_white", margin=dict(t=10, b=10, l=10, r=10), height=240,
@@ -855,7 +855,6 @@ with col_sag_panel:
     
     t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
     
-    # 24, 16, 12, 4, 1 saatlik değişimlerin hesaplanması
     def periyot_degisim_hesapla(df, bar_sayisi):
         if df is None or len(df) < bar_sayisi:
             return 0.0
@@ -863,7 +862,6 @@ with col_sag_panel:
         son_f = float(df.iloc[-1]['Close'])
         return ((son_f - ilk_f) / ilk_f) * 100.0
 
-    # 5 dakikalık barlarda: 1 saat = 12 bar, 4 saat = 48 bar, 12 saat = 144 bar, 16 saat = 192 bar, 24 saat = 288 bar
     d_24 = periyot_degisim_hesapla(t_df, 288)
     d_16 = periyot_degisim_hesapla(t_df, 192)
     d_12 = periyot_degisim_hesapla(t_df, 144)

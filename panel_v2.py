@@ -83,7 +83,7 @@ logo_urls = {
     'XRP/USDT': 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/xrp.png',
     'TOTAL': 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdt.png'
 }
-baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489, 'TOTAL': 2.75e12}
+baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489, 'TOTAL': 2.77e12}
 
 # --- GMAIL BİLDİRİM FONKSİYONU ---
 def gmail_bildirim_gonder(konu, icerik_html):
@@ -134,6 +134,29 @@ def fiyat_cek_coinbase(coin_symbol):
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
     limit = 288  # 24 saatlik 5 dakikalık bar (288 * 5 dk = 1440 dk)
+    if coin_symbol == 'TOTAL':
+        try:
+            url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=1&page=1"
+            # Gerçekçi 24 saatlik Total akışı için coingecko market chart verisi çekmeyi deneyelim
+            ch_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
+            r = requests.get(ch_url, timeout=10)
+            if r.status_code == 200:
+                prices = r.json().get('prices', [])
+                if len(prices) > 0:
+                    df_t = pd.DataFrame(prices, columns=['timestamp_ms', 'price'])
+                    df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms')
+                    # Bitcoin hareketini Total market değerine oranlayarak ölçekleyelim
+                    anlik_total = fiyat_cek_coinbase('TOTAL')
+                    ilk_fiyat = df_t['price'].iloc[0]
+                    carpan = anlik_total / (ilk_fiyat * 55) # Ölçekleme katsayısı
+                    df_t['Close'] = df_t['price'] * carpan
+                    df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
+                    df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0002
+                    df_t['Low'] = df_t[['Open', 'Close']].min(axis=1) * 0.9998
+                    df_t = df_t.tail(limit).reset_index(drop=True)
+                    return df[['timestamp', 'Open', 'High', 'Low', 'Close']].copy() if 'Open' in df_t.columns else df_t[['timestamp', 'Open', 'High', 'Low', 'Close']]
+        except: pass
+
     if coin_symbol != 'TOTAL':
         cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
         cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
@@ -152,7 +175,7 @@ def load_5min_market_data(coin_symbol: str):
         except: pass
     
     dates = pd.date_range(end=datetime.now(), periods=limit, freq='5min')
-    base_price = baz_fiyatlar.get(coin_symbol, 2.75e12 if coin_symbol == 'TOTAL' else 100.0)
+    base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
     np.random.seed(hash(coin_symbol) % 2**32)
     close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
@@ -835,7 +858,7 @@ with col_sag_panel:
     
     fig_total = go.Figure(data=[go.Scatter(
         x=t_df['timestamp'], y=t_df['Close'], mode='lines',
-        line=dict(color='#0d6efd', width=2)
+        line=dict(color='#2962FF', width=2)
     )])
     fig_total.update_layout(
         template="plotly_white", margin=dict(t=10, b=10, l=10, r=10), height=240,
@@ -870,7 +893,7 @@ with col_sag_panel:
 
     def renkli_format(deger, etiket):
         renk = "#00FF00" if deger >= 0 else "#FF0000"
-        return f'{etiket}: <span style="color: {renk}; font-weight: bold;">{deger:+,.2f}%</span>'
+        return f'<span style="color: #212529;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold;">{deger:+,.2f}%</span>'
 
     str_24 = renkli_format(d_24, "24 S")
     str_16 = renkli_format(d_16, "16 S")
@@ -881,9 +904,9 @@ with col_sag_panel:
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
     st.markdown(f"""
         <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; line-height: 1.6;">
-        Piyasa Değeri: <span style="color: #0d6efd;">${t_fiyat:,.0f}</span> | 
-        Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span><br>
-        {str_24} | {str_16} | {str_12} | {str_4} | {str_1}
+        <span style="color: #212529;">Piyasa Değeri:</span> <span style="color: #0d6efd;">${t_fiyat:,.0f}</span> | 
+        <span style="color: #212529;">Matris Puanı:</span> <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span><br>
+        {str_24} &nbsp;|&nbsp; {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_4} &nbsp;|&nbsp; {str_1}
         </div>
     """, unsafe_allow_html=True)
 

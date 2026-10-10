@@ -727,7 +727,7 @@ for data in coin_ham_veriler:
         yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     sepet_orani = 0.0 if is_notr else round(50.0 + 50.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 150.0) ** 1.4), 1)
-    g_oran_str = f"<span style='color: {'#00FF00' if gunluk_oran >= 0 else '#FF0000'} !important; font-weight: bold;'>{gunluk_oran:+,.2f}%</span>"
+    g_oran_str = f"<span>{gunluk_oran:+,.2f}%</span>"
 
     islenen_veriler.append({
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), 
@@ -907,29 +907,23 @@ with col_sag_panel:
     d_2  = periyot_degisim_hesapla(t_df, 24)
     d_1  = periyot_degisim_hesapla(t_df, 12)
 
-    # --- KESİN ÇÖZÜM: Renkler doğrudan inline CSS ile style blokları içine gömüldü ---
-    def renkli_format(deger, etiket):
-        renk = "#00FF00" if deger >= 0 else "#FF0000"
-        return f'<span style="color: #212529 !important; font-weight: 600;">{etiket}:</span> <span style="color: {renk} !important; font-weight: bold; background-color: rgba(0,0,0,0.03); padding: 2px 4px; border-radius: 3px;">{deger:+,.2f}%</span>'
-
-    str_16 = renkli_format(d_16, "16 S")
-    str_12 = renkli_format(d_12, "12 S")
-    str_8  = renkli_format(d_8, "8 S")
-    str_2  = renkli_format(d_2, "2 S")
-    str_1  = renkli_format(d_1, "1 S")
+    str_16 = f"16 S: {d_16:+,.2f}%"
+    str_12 = f"12 S: {d_12:+,.2f}%"
+    str_8  = f"8 S: {d_8:+,.2f}%"
+    str_2  = f"2 S: {d_2:+,.2f}%"
+    str_1  = f"1 S: {d_1:+,.2f}%"
 
     t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
     
-    # Tamamen bağımsız kapsayıcı blok ile Streamlit global stillerinin ezmesi engellendi
     st.markdown(f"""
-        <div style="background-color: #e9ecef !important; border: 1px solid #ced4da !important; padding: 12px !important; border-radius: 6px !important; text-align: center !important;">
-            <div style="font-size: 14px !important; font-weight: bold !important; margin-bottom: 6px !important; color: #212529 !important;">
-                Piyasa Değeri: <span style="color: #0d6efd !important;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
-                Matris Puanı: <span style="color: {t_renk} !important;">{t_puan:.1f} / 200 ({t_yon})</span>
+        <div class="metric-container" style="text-align: center;">
+            <div style="font-size: 14px; font-weight: bold; margin-bottom: 6px;">
+                Piyasa Değeri: <span style="color: #0d6efd;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
+                Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span>
             </div>
-            <div style="font-size: 13px !important; font-weight: 600 !important; color: #212529 !important;">
+            <div style="font-size: 13px; font-weight: 600;">
                 {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}
             </div>
         </div>

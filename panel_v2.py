@@ -143,7 +143,6 @@ def load_5min_market_data(coin_symbol: str):
                 prices = r.json().get('prices', [])
                 if len(prices) > 0:
                     df_t = pd.DataFrame(prices, columns=['timestamp_ms', 'price'])
-                    # UTC'den Türkiye saatine (TR_TZ) çevrim
                     df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms').dt.tz_localize('UTC').dt.tz_convert(TR_TZ)
                     anlik_total = fiyat_cek_coinbase('TOTAL')
                     ilk_fiyat = df_t['price'].iloc[0]
@@ -827,19 +826,19 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- İKİ SÜTUNLU YAPI: SOL (HIZLI İŞLEM) & SAĞ (GENİŞLETİLMİŞ GRAFİK VE ALTINDA TOTAL MARKET ENDEKSİ) ---
-col_sol_panel, col_sag_panel = st.columns([1, 2.5])
+# --- ÜÇLÜ SÜTUNLU YAPI: SOL (DARALTILMIŞ HIZLI İŞLEM) & ORTA (GRAFİK) & SAĞ (TOTAL MARKET ENDEKSİ & KUTU MİMARİSİ) ---
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1, 2.2, 0.9])
 
 with col_sol_panel:
-    st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
+    st.markdown("### 🚀 Hızlı İşlem Emri Ver")
     df_gosterge = pd.DataFrame(islenen_veriler)
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
 
     if coin_listesi:
-        secilen_coin = st.selectbox("İşleme Girmek İstediğiniz Coini Seçin:", coin_listesi, key="hizli_coin_secim")
+        secilen_coin = st.selectbox("Coin Seç:", coin_listesi, key="hizli_coin_secim")
     else:
-        st.warning("Şu an işlem açmaya uygun coin bulunmuyor.")
+        st.warning("Uygun coin yok.")
         secilen_coin = None
 
     onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 2,0", None
@@ -854,23 +853,20 @@ with col_sol_panel:
         st.session_state['hizli_oran_slider'] = onerilen_oran_val
         st.session_state['hizli_manuel_tutar_input'] = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
-    c_s1, c_s2 = st.columns(2)
-    with c_s1:
-        secilen_oran = st.slider("Yatırım Oranı (%):", 0.0, 100.0, 0.5, key="hizli_oran_slider", on_change=lambda: st.session_state.update({'hizli_manuel_tutar_input': round(mevcut_bakiye * (st.session_state['hizli_oran_slider'] / 100.0), 2)}))
-    with c_s2:
-        manuel_girilen_tutar = st.number_input("Yatırım Tutarı ($):", 0.0, float(max(100.0, mevcut_bakiye)), 10.0, key="hizli_manuel_tutar_input")
+    secilen_oran = st.slider("Oran (%):", 0.0, 100.0, 0.5, key="hizli_oran_slider", on_change=lambda: st.session_state.update({'hizli_manuel_tutar_input': round(mevcut_bakiye * (st.session_state['hizli_oran_slider'] / 100.0), 2)}))
+    manuel_girilen_tutar = st.number_input("Tutar ($):", 0.0, float(max(100.0, mevcut_bakiye)), 10.0, key="hizli_manuel_tutar_input")
 
-    st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $` | **Boş Nakit:** `{mevcut_bakiye:,.2f} $`")
+    st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-    if st.button("🚀 İşlemi Başlat ve Emri Al", use_container_width=True, key="hizli_islem_btn"):
+    if st.button("🚀 İşlemi Başlat", use_container_width=True, key="hizli_islem_btn"):
         if coin_verisii is not None and coin_verisii['Notr']:
-            st.error("⚠️ Nötr konumdaki coine işlem açılamaz!")
+            st.error("⚠️ Nötr coin!")
         elif coin_verisii is not None:
             basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii['Aktif_Yon'], coin_verisii['Fiyat'], manuel_girilen_tutar, coin_verisii['Stopla'], coin_verisii['Kar_Al'], "Matris Kurgusu", anlik_matris_puani, anlik_risk_hedef_metin)
             if basari: st.success(mesaj); st.balloons(); time.sleep(1); st.rerun()
             else: st.error(mesaj)
 
-with col_sag_panel:
+with col_orta_grafik:
     st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")
     t_data = total_ham_veri
     t_df = t_data["df_market"]
@@ -903,15 +899,15 @@ with col_sag_panel:
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Fiyat Çizgisi
+    # Fiyat Çizgisi (Parlament Mavi: #002FA7)
     fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#2962FF', width=2)),
+        go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#002FA7', width=2)),
         secondary_y=False
     )
     
-    # RSI Çizgisi (Düz / Solid Stil)
+    # RSI Çizgisi (Bayrak Kırmızı: #E30A17, Düz Stil)
     fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#ff9800', width=1.5, dash='solid')),
+        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#E30A17', width=1.5, dash='solid')),
         secondary_y=False
     )
     
@@ -956,17 +952,17 @@ with col_sag_panel:
             annotation_font_color=renk_cizgi
         )
 
-    # X Eksenini Türkiye saati (TR_TZ) bazında 1'er saat aralıklarla 16 saati gösterecek şekilde ayarlama
-    max_zaman = t_df['timestamp'].max()
-    min_zaman = max_zaman - timedelta(hours=16)
+    # X Eksenini 16 saate ek olarak sağ tarafa 1 saatlik boşluk/marj ekleyerek ayarlama
+    max_zaman = t_df['timestamp'].max() + timedelta(hours=1)
+    min_zaman = max_zaman - timedelta(hours=17) # 16 saat + 1 saat sağ marj
     
     fig_total.update_layout(
         template="plotly_white", 
         margin=dict(t=10, b=10, l=10, r=60), 
-        height=340,
+        height=380,
         xaxis=dict(
             range=[min_zaman, max_zaman],
-            dtick=3600000 * 1,  # Tam 1 saatlik milisaniye aralığı
+            dtick=3600000 * 1,  # Tam 1 saatlik aralık
             tickformat="%H:%M"
         ),
         xaxis_rangeslider_visible=False, 
@@ -976,7 +972,7 @@ with col_sag_panel:
     )
     st.plotly_chart(fig_total, use_container_width=True)
 
-    # --- TOTAL MARKET ENDEKSİ BİLGİ PANELİ (GRAFİK ALANININ ALTINA GERİ TAŞINDI) ---
+with col_sag_endeks:
     st.markdown("### Total Market Endeksi")
     t_puan = t_data["nihai_puan"]
     t_yon = t_data["aktif_yon"]
@@ -986,7 +982,7 @@ with col_sag_panel:
     
     t_y_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0))))
     t_k_gorsel = 10 - t_y_gorsel
-    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
+    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 8px; height: 8px; background-color: #FF0000; border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
     
     t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
     
@@ -1003,25 +999,22 @@ with col_sag_panel:
     d_2  = periyot_degisim_hesapla(t_df, 24)
     d_1  = periyot_degisim_hesapla(t_df, 12)
 
-    str_16 = f"16 S: {d_16:+,.2f}%"
-    str_12 = f"12 S: {d_12:+,.2f}%"
-    str_8  = f"8 S: {d_8:+,.2f}%"
-    str_2  = f"2 S: {d_2:+,.2f}%"
-    str_1  = f"1 S: {d_1:+,.2f}%"
-
-    t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
+    def kutu_olustur(etiket, deger):
+        bg_renk = "#00FF00" if deger >= 0 else "#FF0000"
+        return f'<div style="background-color: {bg_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {deger:+,.2f}%</div>'
 
     st.markdown(t_detay_matris_html, unsafe_allow_html=True)
-    
     st.markdown(f"""
-        <div class="metric-container" style="text-align: center;">
-            <div style="font-size: 14px; font-weight: bold; margin-bottom: 6px;">
-                Piyasa Değeri: <span style="color: #0d6efd;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
-                Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span>
+        <div class="metric-container" style="text-align: center; padding: 10px !important;">
+            <div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">
+                Değer: <span style="color: #0d6efd;">${t_fiyat / 1e12:.2f}T</span><br>
+                Puan: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span>
             </div>
-            <div style="font-size: 13px; font-weight: 600;">
-                {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}
-            </div>
+            {kutu_olustur("16 S", d_16)}
+            {kutu_olustur("12 S", d_12)}
+            {kutu_olustur("8 S", d_8)}
+            {kutu_olustur("2 S", d_2)}
+            {kutu_olustur("1 S", d_1)}
         </div>
     """, unsafe_allow_html=True)
 
@@ -1174,7 +1167,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         
         col_p1, col_p2, col_p3 = st.columns([1.5, 1, 1])
         with col_p1:
-            df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zارarlı İşlemler' if False else 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
+            df_pie = pd.DataFrame({'Durum': ['Kârlı İşlemler', 'Zararlı İşlemler'], 'Adet': [karli_sayisi, zararli_sayisi]})
             fig = px.pie(df_pie, names='Durum', values='Adet', hole=0.35, color='Durum', color_discrete_map={'Kârlı İşlemler': '#00FF00', 'Zararlı İşlemler': '#FF0000'})
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
             st.plotly_chart(fig, use_container_width=True)

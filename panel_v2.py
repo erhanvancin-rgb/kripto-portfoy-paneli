@@ -6,6 +6,7 @@ from datetime import datetime
 import pytz
 import os
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
@@ -868,17 +869,99 @@ with col_sol_panel:
             else: st.error(mesaj)
 
 with col_sag_panel:
-    st.markdown("### 🌐 Total Market (16 Saatlik 5 Dakikalık Akış)")
+    st.markdown("### 🌐 Total Market (16 Saatlik 5 Dakikalık Akış - Fibonacci & RSI)")
     t_data = total_ham_veri
     t_df = t_data["df_market"]
     
-    fig_total = go.Figure(data=[go.Scatter(
-        x=t_df['timestamp'], y=t_df['Close'], mode='lines',
-        line=dict(color='#2962FF', width=2)
-    )])
+    # RSI Hesaplama (14 Periyot)
+    delta = t_df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    t_df['RSI'] = 100 - (100 / (1 + rs))
+    t_df['RSI'] = t_df['RSI'].fillna(50)
+    
+    # RSI'yi 0 ile 1 aralığına (Fiyat grafiği ölçeğine) normalize etme
+    min_f = t_df['Close'].min()
+    max_f = t_df['Close'].max()
+    fiyat_fark = max_f - min_f if max_f != min_f else 1.0
+    t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
+    
+    # Fibonacci Seviyeleri (0 - 1 Aralığı)
+    fib_levels = {
+        0.0: min_f,
+        0.236: min_f + 0.236 * fiyat_fark,
+        0.382: min_f + 0.382 * fiyat_fark,
+        0.5: min_f + 0.5 * fiyat_fark,
+        0.618: min_f + 0.618 * fiyat_fark,
+        0.786: min_f + 0.786 * fiyat_fark,
+        1.0: max_f
+    }
+    
+    # Plotly Çift Y Eksenli / Entegre Grafik Oluşturma
+    fig_total = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Fiyat Çizgisi
+    fig_total.add_trace(
+        go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#2962FF', width=2)),
+        secondary_y=False
+    )
+    
+    # RSI Çizgisi (Fiyat üstüne entegre, turuncu kontrast renk)
+    fig_total.add_trace(
+        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#ff9800', width=1.5, dash='dot')),
+        secondary_y=False
+    )
+    
+    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Kırmızıdan Yeşile)
+    fib_keys = sorted(list(fib_levels.keys()))
+    renkler = ['rgba(255, 0, 0, 0.12)', 'rgba(255, 128, 0, 0.10)', 'rgba(255, 235, 59, 0.10)', 'rgba(128, 255, 0, 0.10)', 'rgba(0, 255, 0, 0.12)', 'rgba(0, 200, 100, 0.15)']
+    
+    for i in range(len(fib_keys) - 1):
+        alt_oran = fib_keys[i]
+        ust_oran = fib_keys[i+1]
+        alt_val = fib_levels[alt_oran]
+        ust_val = fib_levels[ust_oran]
+        renk = renkler[i % len(renkler)]
+        
+        fig_total.add_trace(
+            go.Scatter(
+                x=list(t_df['timestamp']) + list(t_df['timestamp'][::-1]),
+                y=[ust_val] * len(t_df) + [alt_val] * len(t_df),
+                fill='toself',
+                fillcolor=renk,
+                line=dict(color='rgba(255,255,255,0)'),
+                showlegend=False,
+                hoverinfo='skip'
+            ),
+            secondary_y=False
+        )
+
+    # Fibonacci Yatay Çizgileri ve Etiketleri
+    for oran, val in fib_levels.items():
+        renk_cizgi = "#00FF00" if oran >= 0.5 else "#FF0000"
+        if oran == 0.0: renk_cizgi = "#000000"
+        if oran == 1.0: renk_cizgi = "#00FF00"
+        
+        fig_total.add_hline(
+            y=val, 
+            line_dash="dash", 
+            line_color=renk_cizgi, 
+            line_width=1,
+            annotation_text=f"Fib {oran}: ${val/1e12:.3f}T" if val > 1e9 else f"Fib {oran}: {val:.2f}",
+            annotation_position="right",
+            annotation_font_size=10,
+            annotation_font_color=renk_cizgi
+        )
+
     fig_total.update_layout(
-        template="plotly_white", margin=dict(t=10, b=10, l=10, r=10), height=240,
-        xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+        template="plotly_white", 
+        margin=dict(t=10, b=10, l=10, r=60), 
+        height=280,
+        xaxis_rangeslider_visible=False, 
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_total, use_container_width=True)
 

@@ -826,8 +826,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- OPTİMİZE EDİLMİŞ ÜÇLÜ SÜTUNLU YAPI (GRAFİK ALANI GENİŞLETİLDİ) ---
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.9, 2.6, 0.85])
+# --- SÜTUN ORANLARI OPTİMİZE EDİLEREK BOŞLUK TAMAMEN GİDERİLDİ ---
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.8, 2.9, 0.75])
 
 with col_sol_panel:
     st.markdown("### 🚀 Hızlı İşlem Emri Ver")
@@ -896,33 +896,23 @@ with col_orta_grafik:
         1.0: max_f
     }
     
-    # X Eksenini 16 saate ek olarak sağ tarafa 1 saatlik boşluk/marj ekleyerek ayarlama
+    # X Eksenini sol ve sağ marjları tam kapatacak şekilde ayarlama
+    min_zaman = t_df['timestamp'].min()
     max_zaman = t_df['timestamp'].max() + timedelta(hours=1)
-    min_zaman = max_zaman - timedelta(hours=17) # 16 saat + 1 saat sağ marj
     
-    # Degrade dolgular için zaman eksenini sağ marjı da kapsayacak şekilde uzatma
+    # Degrade dolgular için zaman eksenini tüm başlangıç ve bitiş marjlarını kapsayacak şekilde uzatma
     t_df_extended = t_df.copy()
-    if len(t_df_extended) > 0:
-        son_zaman = t_df_extended['timestamp'].iloc[-1]
-        yeni_zamanlar = pd.date_range(start=son_zaman + timedelta(minutes=5), end=max_zaman, freq='5min')
-        if len(yeni_zamanlar) > 0:
-            ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
-            for col in ['Open', 'High', 'Low', 'Close', 'RSI_Norm']:
-                if col in t_df_extended.columns:
-                    ek_df[col] = t_df_extended[col].iloc[-1]
-            t_df_extended = pd.concat([t_df_extended, ek_df], ignore_index=True)
 
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Fibonacci Bantları Arası Bordo -> Sarı -> Koyu Yeşil Renk Skalası Degrade Dolgular
+    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Bordo -> Saf Sarı red=255, green=255 -> Koyu Yeşil)
     fib_keys = sorted(list(fib_levels.keys()))
-    # 0.0 -> Bordo, 0.5 -> Sarı, 1.0 -> Koyu Yeşil geçişli renkler
     renkler = [
         'rgba(128, 0, 32, 0.15)',   # 0.0 - 0.236 (Bordo)
-        'rgba(180, 50, 0, 0.12)',   # 0.236 - 0.382 (Koyu Turuncu/Bordo tonu)
-        'rgba(210, 140, 0, 0.12)',  # 0.382 - 0.5 (Turuncudan Sarıya)
-        'rgba(255, 215, 0, 0.12)',  # 0.5 - 0.618 (Sarı)
+        'rgba(180, 50, 0, 0.12)',   # 0.236 - 0.382
+        'rgba(210, 150, 0, 0.12)',  # 0.382 - 0.5
+        'rgba(255, 255, 0, 0.15)',  # 0.5 - 0.618 (Saf Sarı: red=255, green=255, blue=0)
         'rgba(100, 180, 50, 0.14)', # 0.618 - 0.786 (Açık Yeşil)
         'rgba(0, 100, 0, 0.16)'     # 0.786 - 1.0 (Koyu Yeşil)
     ]
@@ -961,7 +951,7 @@ with col_orta_grafik:
 
     # Fibonacci Yatay Çizgileri ve 2 Satırlık Kalın (Bold) Siyah Etiketleri
     for oran, val in fib_levels.items():
-        renk_cizgi = "#006400" if oran >= 0.5 else ("#FFD700" if oran == 0.5 else "#800020")
+        renk_cizgi = "#006400" if oran >= 0.5 else ("#FFFF00" if oran == 0.5 else "#800020")
         if oran == 0.0: renk_cizgi = "#800020"
         if oran == 1.0: renk_cizgi = "#006400"
         

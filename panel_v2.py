@@ -826,8 +826,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- ÜÇLÜ SÜTUNLU YAPI: SOL (DARALTILMIŞ HIZLI İŞLEM) & ORTA (GRAFİK) & SAĞ (TOTAL MARKET ENDEKSİ & KUTU MİMARİSİ) ---
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1, 2.2, 0.9])
+# --- OPTİMİZE EDİLMİŞ ÜÇLÜ SÜTUNLU YAPI (GRAFİK ALANI GENİŞLETİLDİ) ---
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.9, 2.6, 0.85])
 
 with col_sol_panel:
     st.markdown("### 🚀 Hızlı İşlem Emri Ver")
@@ -915,9 +915,17 @@ with col_orta_grafik:
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Sağ marjı da kapsayacak şekilde)
+    # Fibonacci Bantları Arası Bordo -> Sarı -> Koyu Yeşil Renk Skalası Degrade Dolgular
     fib_keys = sorted(list(fib_levels.keys()))
-    renkler = ['rgba(255, 0, 0, 0.12)', 'rgba(255, 128, 0, 0.10)', 'rgba(255, 235, 59, 0.10)', 'rgba(128, 255, 0, 0.10)', 'rgba(0, 255, 0, 0.12)', 'rgba(0, 200, 100, 0.15)']
+    # 0.0 -> Bordo, 0.5 -> Sarı, 1.0 -> Koyu Yeşil geçişli renkler
+    renkler = [
+        'rgba(128, 0, 32, 0.15)',   # 0.0 - 0.236 (Bordo)
+        'rgba(180, 50, 0, 0.12)',   # 0.236 - 0.382 (Koyu Turuncu/Bordo tonu)
+        'rgba(210, 140, 0, 0.12)',  # 0.382 - 0.5 (Turuncudan Sarıya)
+        'rgba(255, 215, 0, 0.12)',  # 0.5 - 0.618 (Sarı)
+        'rgba(100, 180, 50, 0.14)', # 0.618 - 0.786 (Açık Yeşil)
+        'rgba(0, 100, 0, 0.16)'     # 0.786 - 1.0 (Koyu Yeşil)
+    ]
     
     for i in range(len(fib_keys) - 1):
         alt_oran = fib_keys[i]
@@ -945,17 +953,17 @@ with col_orta_grafik:
         secondary_y=False
     )
     
-    # RSI Çizgisi (Bayrak Kırmızı: #E30A17, Düz Stil)
+    # RSI Çizgisi (Canlı Turuncu: 255 Red + 128 Green -> #FF8000, Düz Stil)
     fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#E30A17', width=1.5, dash='solid')),
+        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')),
         secondary_y=False
     )
 
-    # Fibonacci Yatay Çizgileri ve 2 Satırlık Siyah Etiketleri
+    # Fibonacci Yatay Çizgileri ve 2 Satırlık Kalın (Bold) Siyah Etiketleri
     for oran, val in fib_levels.items():
-        renk_cizgi = "#00FF00" if oran >= 0.5 else "#FF0000"
-        if oran == 0.0: renk_cizgi = "#000000"
-        if oran == 1.0: renk_cizgi = "#00FF00"
+        renk_cizgi = "#006400" if oran >= 0.5 else ("#FFD700" if oran == 0.5 else "#800020")
+        if oran == 0.0: renk_cizgi = "#800020"
+        if oran == 1.0: renk_cizgi = "#006400"
         
         deger_metni = f"${val/1e12:.3f}T" if val > 1e9 else f"{val:.2f}"
         
@@ -964,7 +972,7 @@ with col_orta_grafik:
             line_dash="dash", 
             line_color=renk_cizgi, 
             line_width=1,
-            annotation_text=f"Fib {oran}<br>{deger_metni}",
+            annotation_text=f"<b>Fib {oran}</b><br><b>{deger_metni}</b>",
             annotation_position="right",
             annotation_font_size=10,
             annotation_font_color="#000000"  # Siyah renk

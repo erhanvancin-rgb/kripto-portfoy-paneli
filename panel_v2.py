@@ -826,8 +826,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- SÜTUN ORANLARI EN AZA İNDİRİLEREK BOŞLUK TAMAMEN KAPATILDI ---
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.7, 3.15, 0.65])
+# --- MOBİL UYUMLU SÜTUN ORANLARI VE GRAFİK YERLEŞİMİ ---
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.6, 3.4, 0.6])
 
 with col_sol_panel:
     st.markdown("### 🚀 Hızlı İşlem Emri Ver")
@@ -914,36 +914,57 @@ with col_orta_grafik:
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Bordo -> Saf Sarı red=255, green=255 -> Koyu Yeşil)
-    fib_keys = sorted(list(fib_levels.keys()))
-    renkler = [
-        'rgba(128, 0, 32, 0.15)',   # 0.0 - 0.236 (Bordo)
-        'rgba(180, 50, 0, 0.12)',   # 0.236 - 0.382
-        'rgba(210, 150, 0, 0.12)',  # 0.382 - 0.5
-        'rgba(255, 255, 0, 0.18)',  # 0.5 - 0.618 (Saf Sarı: red=255, green=255, blue=0)
-        'rgba(100, 180, 50, 0.14)', # 0.618 - 0.786 (Açık Yeşil)
-        'rgba(0, 100, 0, 0.16)'     # 0.786 - 1.0 (Koyu Yeşil)
-    ]
+    # --- İKİ AŞAMALI DEGRADE GEÇİŞ SİSTEMİ ---
+    # 1. Aşama (Alt Bölge): Bordo (0.0) -> Canlı Saf Sarı (0.5)
+    # 2. Aşama (Üst Bölge): Canlı Saf Sarı (0.5) -> Koyu Yeşil (1.0)
     
-    for i in range(len(fib_keys) - 1):
-        alt_oran = fib_keys[i]
-        ust_oran = fib_keys[i+1]
-        alt_val = fib_levels[alt_oran]
-        ust_val = fib_levels[ust_oran]
-        renk = renkler[i % len(renkler)]
-        
-        fig_total.add_trace(
-            go.Scatter(
-                x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
-                y=[ust_val] * len(t_df_extended) + [alt_val] * len(t_df_extended),
-                fill='toself',
-                fillcolor=renk,
-                line=dict(color='rgba(255,255,255,0)'),
-                showlegend=False,
-                hoverinfo='skip'
-            ),
-            secondary_y=False
-        )
+    alt_bolge_df = t_df_extended[t_df_extended['Close'] >= fib_levels[0.0]].copy() # Temel eksen dilimleri
+    
+    # Alt Aşama Bantları (0.0 - 0.236 ve 0.236 - 0.382 ve 0.382 - 0.5)
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[0.236]] * len(t_df_extended) + [fib_levels[0.0]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(128, 0, 32, 0.16)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[0.382]] * len(t_df_extended) + [fib_levels[0.236]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(180, 80, 0, 0.14)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[0.5]] * len(t_df_extended) + [fib_levels[0.382]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(255, 255, 0, 0.18)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
+    
+    # Üst Aşama Bantları (0.5 - 0.618 ve 0.618 - 0.786 ve 0.786 - 1.0)
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[0.618]] * len(t_df_extended) + [fib_levels[0.5]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(255, 255, 0, 0.18)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[0.786]] * len(t_df_extended) + [fib_levels[0.618]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(100, 180, 50, 0.15)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
+    fig_total.add_trace(
+        go.Scatter(
+            x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+            y=[fib_levels[1.0]] * len(t_df_extended) + [fib_levels[0.786]] * len(t_df_extended),
+            fill='toself', fillcolor='rgba(0, 100, 0, 0.18)', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+        ), secondary_y=False
+    )
 
     # Fiyat Çizgisi (Parlament Mavi: #002FA7)
     fig_total.add_trace(
@@ -951,17 +972,20 @@ with col_orta_grafik:
         secondary_y=False
     )
     
-    # RSI Çizgisi (Canlı Turuncu: 255 Red + 128 Green -> #FF8000, Düz Stil)
+    # RSI Çizgisi (Canlı Turuncu: #FF8000)
     fig_total.add_trace(
         go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')),
         secondary_y=False
     )
 
-    # Fibonacci Yatay Çizgileri ve 2 Satırlık Kalın (Bold) Siyah Etiketleri
+    # Fibonacci Yatay Çizgileri ve 2 Satırlık Kalın (Bold) Siyah Etiketleri (Fib 0.5 Saf Sarı)
     for oran, val in fib_levels.items():
-        renk_cizgi = "#006400" if oran >= 0.5 else ("#FFFF00" if oran == 0.5 else "#800020")
-        if oran == 0.0: renk_cizgi = "#800020"
-        if oran == 1.0: renk_cizgi = "#006400"
+        if oran == 0.5:
+            renk_cizgi = "#CCCC00"  # Saf koyu sarı tonu (çizgi için görünür)
+        elif oran > 0.5:
+            renk_cizgi = "#006400"  # Yeşil
+        else:
+            renk_cizgi = "#800020"  # Bordo
         
         deger_metni = f"${val/1e12:.3f}T" if val > 1e9 else f"{val:.2f}"
         
@@ -978,7 +1002,7 @@ with col_orta_grafik:
 
     fig_total.update_layout(
         template="plotly_white", 
-        margin=dict(t=10, b=10, l=10, r=70), 
+        margin=dict(t=10, b=10, l=5, r=55),  # Mobil alanda sağ marj daraltılarak etiket sıkışması önlendi
         height=380,
         xaxis=dict(
             range=[min_zaman, max_zaman],

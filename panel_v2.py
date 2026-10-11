@@ -666,8 +666,10 @@ if t_puan_val >= 130.0:
         total_sermaye_durumu = "Ayı Pençesi"
         t_alarm_renk = "#FF0000"
         
-    if st.session_state.get('total_sermaye_alarm') != total_sermaye_durumu:
-        st.session_state['total_sermaye_alarm'] = total_sermaye_durumu
+    # Sadece gün içinde son 4 saat içinde aynı alarm gönderilmediyse mail at (sayfa açılınca yığılmayı önlemek için)
+    alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
+    if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
+        st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
         m_konu = f"🚨 Total Market Sermaye Alarmı: {total_sermaye_durumu}!"
         m_icerik = f"""
             <h3>Piyasada Büyük Sermaye Hareketi Tespit Edildi!</h3>

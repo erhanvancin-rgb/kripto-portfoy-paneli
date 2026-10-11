@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import os
 import plotly.graph_objects as go
@@ -825,8 +825,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- İKİ SÜTUNLU YAPI: SOL (HIZLI İŞLEM) & SAĞ (TOTAL MARKET ÇİZGİ GRAFİK VE MATRİS LEDLERİ) ---
-col_sol_panel, col_sag_panel = st.columns([1, 1])
+# --- İKİ SÜTUNLU YAPI: SOL (HIZLI İŞLEM + TOTAL MARKET BİLGİLERİ) & SAĞ (GENİŞLETİLMİŞ GRAFİK) ---
+col_sol_panel, col_sag_panel = st.columns([1, 2.5])
 
 with col_sol_panel:
     st.markdown("### 🚀 Hızlı İşlem Emri Ver (Senkronize Giriş)")
@@ -868,8 +868,61 @@ with col_sol_panel:
             if basari: st.success(mesaj); st.balloons(); time.sleep(1); st.rerun()
             else: st.error(mesaj)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- TOTAL MARKET ENDEKSİ BİLGİ PANELİ (SOL SÜTUNA TAŞINDI) ---
+    st.markdown("### Total Market Endeksi")
+    t_data = total_ham_veri
+    t_df = t_data["df_market"]
+    t_puan = t_data["nihai_puan"]
+    t_yon = t_data["aktif_yon"]
+    t_fiyat = 2.77e12 
+    t_y_yuzde = t_data["y_yuzde"]
+    t_k_yuzde = 100.0 - t_y_yuzde
+    
+    t_y_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0))))
+    t_k_gorsel = 10 - t_y_gorsel
+    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
+    
+    t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
+    
+    def periyot_degisim_hesapla(df, bar_sayisi):
+        if df is None or len(df) < bar_sayisi:
+            return 0.0
+        ilk_f = float(df.iloc[-bar_sayisi]['Open'])
+        son_f = float(df.iloc[-1]['Close'])
+        return ((son_f - ilk_f) / ilk_f) * 100.0
+
+    d_16 = periyot_degisim_hesapla(t_df, 192)
+    d_12 = periyot_degisim_hesapla(t_df, 144)
+    d_8  = periyot_degisim_hesapla(t_df, 96)
+    d_2  = periyot_degisim_hesapla(t_df, 24)
+    d_1  = periyot_degisim_hesapla(t_df, 12)
+
+    str_16 = f"16 S: {d_16:+,.2f}%"
+    str_12 = f"12 S: {d_12:+,.2f}%"
+    str_8  = f"8 S: {d_8:+,.2f}%"
+    str_2  = f"2 S: {d_2:+,.2f}%"
+    str_1  = f"1 S: {d_1:+,.2f}%"
+
+    t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
+
+    st.markdown(t_detay_matris_html, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <div class="metric-container" style="text-align: center;">
+            <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px;">
+                Piyasa Değeri: <span style="color: #0d6efd;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
+                Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span>
+            </div>
+            <div style="font-size: 12px; font-weight: 600;">
+                {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
 with col_sag_panel:
-    st.markdown("### 🌐 Total Market (16 Saatlik 5 Dakikalık Akış - Fibonacci & RSI)")
+    st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")
     t_data = total_ham_veri
     t_df = t_data["df_market"]
     
@@ -898,7 +951,7 @@ with col_sag_panel:
         1.0: max_f
     }
     
-    # Plotly Çift Y Eksenli / Entegre Grafik Oluşturma
+    # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
     # Fiyat Çizgisi
@@ -907,13 +960,13 @@ with col_sag_panel:
         secondary_y=False
     )
     
-    # RSI Çizgisi (Fiyat üstüne entegre, turuncu kontrast renk)
+    # RSI Çizgisi (Düz / Solid Stil)
     fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#ff9800', width=1.5, dash='dot')),
+        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#ff9800', width=1.5, dash='solid')),
         secondary_y=False
     )
     
-    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Kırmızıdan Yeşile)
+    # Fibonacci Bantları Arası Renkli Degrade Dolgular
     fib_keys = sorted(list(fib_levels.keys()))
     renkler = ['rgba(255, 0, 0, 0.12)', 'rgba(255, 128, 0, 0.10)', 'rgba(255, 235, 59, 0.10)', 'rgba(128, 255, 0, 0.10)', 'rgba(0, 255, 0, 0.12)', 'rgba(0, 200, 100, 0.15)']
     
@@ -954,63 +1007,25 @@ with col_sag_panel:
             annotation_font_color=renk_cizgi
         )
 
+    # X Eksenini 1'er saat aralıklarla 16 saati gösterecek şekilde ayarlama
+    max_zaman = t_df['timestamp'].max()
+    min_zaman = max_zaman - timedelta(hours=16)
+    
     fig_total.update_layout(
         template="plotly_white", 
         margin=dict(t=10, b=10, l=10, r=60), 
-        height=280,
+        height=380,
+        xaxis=dict(
+            range=[min_zaman, max_zaman],
+            dtick=3600000 * 1,  # Tam 1 saatlik milisaniye aralığı
+            tickformat="%H:%M"
+        ),
         xaxis_rangeslider_visible=False, 
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_total, use_container_width=True)
-
-    t_puan = t_data["nihai_puan"]
-    t_yon = t_data["aktif_yon"]
-    t_fiyat = 2.77e12 
-    t_y_yuzde = t_data["y_yuzde"]
-    t_k_yuzde = 100.0 - t_y_yuzde
-    
-    t_y_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0))))
-    t_k_gorsel = 10 - t_y_gorsel
-    t_detay_matris_html = '<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">' + ("🟢" * t_y_gorsel) + ("🔴" * t_k_gorsel) + '</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%' + f"{t_y_yuzde:.1f}" + ' | <span style="color: #FF0000; display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: #FF0000; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%' + f"{t_k_yuzde:.1f}" + '</div></div>'
-    
-    t_renk = "#00FF00" if t_yon == "Long" else ("#FF0000" if t_yon == "Short" else "#ffc107")
-    
-    def periyot_degisim_hesapla(df, bar_sayisi):
-        if df is None or len(df) < bar_sayisi:
-            return 0.0
-        ilk_f = float(df.iloc[-bar_sayisi]['Open'])
-        son_f = float(df.iloc[-1]['Close'])
-        return ((son_f - ilk_f) / ilk_f) * 100.0
-
-    d_16 = periyot_degisim_hesapla(t_df, 192)
-    d_12 = periyot_degisim_hesapla(t_df, 144)
-    d_8  = periyot_degisim_hesapla(t_df, 96)
-    d_2  = periyot_degisim_hesapla(t_df, 24)
-    d_1  = periyot_degisim_hesapla(t_df, 12)
-
-    str_16 = f"16 S: {d_16:+,.2f}%"
-    str_12 = f"12 S: {d_12:+,.2f}%"
-    str_8  = f"8 S: {d_8:+,.2f}%"
-    str_2  = f"2 S: {d_2:+,.2f}%"
-    str_1  = f"1 S: {d_1:+,.2f}%"
-
-    t_fiyat_trilyon = f"${t_fiyat / 1e12:.2f}T"
-
-    st.markdown(t_detay_matris_html, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-        <div class="metric-container" style="text-align: center;">
-            <div style="font-size: 14px; font-weight: bold; margin-bottom: 6px;">
-                Piyasa Değeri: <span style="color: #0d6efd;">{t_fiyat_trilyon}</span> &nbsp;|&nbsp; 
-                Matris Puanı: <span style="color: {t_renk};">{t_puan:.1f} / 200 ({t_yon})</span>
-            </div>
-            <div style="font-size: 13px; font-weight: 600;">
-                {str_16} &nbsp;|&nbsp; {str_12} &nbsp;|&nbsp; {str_8} &nbsp;|&nbsp; {str_2} &nbsp;|&nbsp; {str_1}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
 
 st.markdown("---")
 

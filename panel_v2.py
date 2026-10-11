@@ -399,7 +399,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             g_F = float(rw['Giris_Fiyat'])
             m_M = float(rw['Islem_Miktari'])
             y_Y = rw['Yon']
-            # Arka plan motoru çalışırken kendi çektiği canlı fiyatı da hesaba katsın:
             if not ortak_fiyat_havuzu:
                 anl_F = fiyat_cek_coinbase(c_SYM)
             else:
@@ -497,7 +496,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
             kar_al_f = float(row['Kar_Al'])
             miktar = float(row['Islem_Miktari'])
             
-            # Sayfadan tetiklendiyse havuzdan al, arka plandan tetiklendiyse anlık çek
             if ortak_fiyat_havuzu is not None and coin in ortak_fiyat_havuzu:
                 anl_f = ortak_fiyat_havuzu[coin]
             else:
@@ -524,7 +522,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 df.at[idx, 'Net_Kar_Zarar'] = float(round(net_kar, 2))
                 df.at[idx, 'Kapanis_Fiyati'] = float(round(kapanis_fiyat_degeri, 4))
                 
-                # Arka plandan geldiğinde boş havuz yolla
                 toplam_kasa, _, _, _ = bakiye_durumunu_getir({} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu)
                 df.at[idx, 'Guncel_Kasa'] = float(round(toplam_kasa + net_kar, 2))
                 
@@ -543,10 +540,10 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
 def arka_plan_dinleyicisi():
     while True:
         try:
-            otomatik_stop_kar_kontrolu(None)  # Havuz kullanmadan anlık fiyat çeker
+            otomatik_stop_kar_kontrolu(None)
         except Exception as e:
             print(f"Arka plan hata: {e}")
-        time.sleep(60) # 1 dakikada bir kontrol eder
+        time.sleep(60)
 
 @st.cache_resource
 def botu_baslat_bir_kez():
@@ -554,7 +551,6 @@ def botu_baslat_bir_kez():
     t.start()
     return t
 
-# Bu fonksiyon her Streamlit açılışında çağrılır ancak cache sayesinde thread sunucu uyuyana kadar sadece 1 kez yaratılır.
 arka_plan_thread = botu_baslat_bir_kez()
 
 
@@ -586,7 +582,6 @@ for sembol in tum_takip_edilenler:
 
     islenen_ham_veriler.append({"sembol": sembol, "anlik_fiyat": anlik_fiyat, "nihai_puan": nihai_puan, "aktif_yon": aktif_yon, "y_yuzde": y_yuzde, "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan, "gunluk_oran": gunluk_oran, "df_market": df_market})
 
-# Yüzey (UI) üzerinden de kontrol edelim (her ihtimale karşı sen ekrandayken hızlı tepki versin)
 otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 
 coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']

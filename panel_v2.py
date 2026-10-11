@@ -617,6 +617,9 @@ if 'sadece_aktifleri_goster' not in st.session_state:
 if 'gonderilen_mailler' not in st.session_state:
     st.session_state['gonderilen_mailler'] = set()
 
+if 'total_sermaye_alarm' not in st.session_state:
+    st.session_state['total_sermaye_alarm'] = None
+
 # --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (16 SAATLİK / 192 BAR) ---
 tum_takip_edilenler = coinler + ['TOTAL']
 islenen_ham_veriler = []
@@ -651,6 +654,29 @@ otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 
 coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
+
+# --- TOTAL MARKET SERMAYE AKIŞI KONTROLÜ (130 PUAN EŞİĞİ) ---
+t_puan_val = total_ham_veri["nihai_puan"]
+t_yuzde_val = total_ham_veri["y_yuzde"]
+if t_puan_val >= 130.0:
+    if t_yuzde_val >= 50.0:
+        total_sermaye_durumu = "Boğa Vuruşu"
+        t_alarm_renk = "#00FF00"
+    else:
+        total_sermaye_durumu = "Ayı Pençesi"
+        t_alarm_renk = "#FF0000"
+        
+    if st.session_state.get('total_sermaye_alarm') != total_sermaye_durumu:
+        st.session_state['total_sermaye_alarm'] = total_sermaye_durumu
+        m_konu = f"🚨 Total Market Sermaye Alarmı: {total_sermaye_durumu}!"
+        m_icerik = f"""
+            <h3>Piyasada Büyük Sermaye Hareketi Tespit Edildi!</h3>
+            <p><b>Durum:</b> <span style="color: {t_alarm_renk}; font-weight: bold;">{total_sermaye_durumu}</span></p>
+            <p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p>
+            <p><b>Yeşil Bar Yüzdesi (Giren/Çıkan):</b> %{t_yuzde_val:.1f}</p>
+            <p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>
+        """
+        gmail_bildirim_gonder(m_konu, m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
 
@@ -915,12 +941,7 @@ with col_orta_grafik:
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
     # --- İKİ AŞAMALI DEGRADE GEÇİŞ SİSTEMİ ---
-    # 1. Aşama (Alt Bölge): Bordo (0.0) -> Canlı Saf Sarı (0.5)
-    # 2. Aşama (Üst Bölge): Canlı Saf Sarı (0.5) -> Koyu Yeşil (1.0)
-    
-    alt_bolge_df = t_df_extended[t_df_extended['Close'] >= fib_levels[0.0]].copy() # Temel eksen dilimleri
-    
-    # Alt Aşama Bantları (0.0 - 0.236 ve 0.236 - 0.382 ve 0.382 - 0.5)
+    # Alt Aşama Bantları (0.0 - 0.236, 0.236 - 0.382, 0.382 - 0.5)
     fig_total.add_trace(
         go.Scatter(
             x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
@@ -943,7 +964,7 @@ with col_orta_grafik:
         ), secondary_y=False
     )
     
-    # Üst Aşama Bantları (0.5 - 0.618 ve 0.618 - 0.786 ve 0.786 - 1.0)
+    # Üst Aşama Bantları (0.5 - 0.618, 0.618 - 0.786, 0.786 - 1.0)
     fig_total.add_trace(
         go.Scatter(
             x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
@@ -981,11 +1002,11 @@ with col_orta_grafik:
     # Fibonacci Yatay Çizgileri ve 2 Satırlık Kalın (Bold) Siyah Etiketleri (Fib 0.5 Saf Sarı)
     for oran, val in fib_levels.items():
         if oran == 0.5:
-            renk_cizgi = "#CCCC00"  # Saf koyu sarı tonu (çizgi için görünür)
+            renk_cizgi = "#CCCC00"
         elif oran > 0.5:
-            renk_cizgi = "#006400"  # Yeşil
+            renk_cizgi = "#006400"
         else:
-            renk_cizgi = "#800020"  # Bordo
+            renk_cizgi = "#800020"
         
         deger_metni = f"${val/1e12:.3f}T" if val > 1e9 else f"{val:.2f}"
         
@@ -997,20 +1018,20 @@ with col_orta_grafik:
             annotation_text=f"<b>Fib {oran}</b><br><b>{deger_metni}</b>",
             annotation_position="right",
             annotation_font_size=10,
-            annotation_font_color="#000000"  # Siyah renk
+            annotation_font_color="#000000"
         )
 
     fig_total.update_layout(
         template="plotly_white", 
-        margin=dict(t=10, b=10, l=5, r=55),  # Mobil alanda sağ marj daraltılarak etiket sıkışması önlendi
+        margin=dict(t=10, b=10, l=5, r=55),
         height=380,
         xaxis=dict(
             range=[min_zaman, max_zaman],
-            dtick=3600000 * 1,  # Tam 1 saatlik aralık
+            dtick=3600000 * 1,
             tickformat="%H:%M"
         ),
         yaxis=dict(
-            showticklabels=False  # Sol taraftaki rakamsal bilgiler kaldırıldı
+            showticklabels=False
         ),
         xaxis_rangeslider_visible=False, 
         paper_bgcolor='rgba(0,0,0,0)', 

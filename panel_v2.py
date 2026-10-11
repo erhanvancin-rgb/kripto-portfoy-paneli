@@ -826,8 +826,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- SÜTUN ORANLARI OPTİMİZE EDİLEREK BOŞLUK TAMAMEN GİDERİLDİ ---
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.8, 2.9, 0.75])
+# --- SÜTUN ORANLARI EN AZA İNDİRİLEREK BOŞLUK TAMAMEN KAPATILDI ---
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.7, 3.15, 0.65])
 
 with col_sol_panel:
     st.markdown("### 🚀 Hızlı İşlem Emri Ver")
@@ -896,12 +896,20 @@ with col_orta_grafik:
         1.0: max_f
     }
     
-    # X Eksenini sol ve sağ marjları tam kapatacak şekilde ayarlama
+    # Genişletilmiş Zaman Ekseni (Sağ taraftaki 1 saatlik ileri marj dahil tüm alanı kaplaması için)
     min_zaman = t_df['timestamp'].min()
     max_zaman = t_df['timestamp'].max() + timedelta(hours=1)
     
-    # Degrade dolgular için zaman eksenini tüm başlangıç ve bitiş marjlarını kapsayacak şekilde uzatma
     t_df_extended = t_df.copy()
+    if len(t_df_extended) > 0:
+        son_zaman = t_df_extended['timestamp'].iloc[-1]
+        yeni_zamanlar = pd.date_range(start=son_zaman + timedelta(minutes=5), end=max_zaman, freq='5min')
+        if len(yeni_zamanlar) > 0:
+            ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
+            for col in ['Open', 'High', 'Low', 'Close', 'RSI_Norm']:
+                if col in t_df_extended.columns:
+                    ek_df[col] = t_df_extended[col].iloc[-1]
+            t_df_extended = pd.concat([t_df_extended, ek_df], ignore_index=True)
 
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
@@ -912,7 +920,7 @@ with col_orta_grafik:
         'rgba(128, 0, 32, 0.15)',   # 0.0 - 0.236 (Bordo)
         'rgba(180, 50, 0, 0.12)',   # 0.236 - 0.382
         'rgba(210, 150, 0, 0.12)',  # 0.382 - 0.5
-        'rgba(255, 255, 0, 0.15)',  # 0.5 - 0.618 (Saf Sarı: red=255, green=255, blue=0)
+        'rgba(255, 255, 0, 0.18)',  # 0.5 - 0.618 (Saf Sarı: red=255, green=255, blue=0)
         'rgba(100, 180, 50, 0.14)', # 0.618 - 0.786 (Açık Yeşil)
         'rgba(0, 100, 0, 0.16)'     # 0.786 - 1.0 (Koyu Yeşil)
     ]

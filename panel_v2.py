@@ -896,22 +896,26 @@ with col_orta_grafik:
         1.0: max_f
     }
     
+    # X Eksenini 16 saate ek olarak sağ tarafa 1 saatlik boşluk/marj ekleyerek ayarlama
+    max_zaman = t_df['timestamp'].max() + timedelta(hours=1)
+    min_zaman = max_zaman - timedelta(hours=17) # 16 saat + 1 saat sağ marj
+    
+    # Degrade dolgular için zaman eksenini sağ marjı da kapsayacak şekilde uzatma
+    t_df_extended = t_df.copy()
+    if len(t_df_extended) > 0:
+        son_zaman = t_df_extended['timestamp'].iloc[-1]
+        yeni_zamanlar = pd.date_range(start=son_zaman + timedelta(minutes=5), end=max_zaman, freq='5min')
+        if len(yeni_zamanlar) > 0:
+            ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
+            for col in ['Open', 'High', 'Low', 'Close', 'RSI_Norm']:
+                if col in t_df_extended.columns:
+                    ek_df[col] = t_df_extended[col].iloc[-1]
+            t_df_extended = pd.concat([t_df_extended, ek_df], ignore_index=True)
+
     # Plotly Grafik Oluşturma
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Fiyat Çizgisi (Parlament Mavi: #002FA7)
-    fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#002FA7', width=2)),
-        secondary_y=False
-    )
-    
-    # RSI Çizgisi (Bayrak Kırmızı: #E30A17, Düz Stil)
-    fig_total.add_trace(
-        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#E30A17', width=1.5, dash='solid')),
-        secondary_y=False
-    )
-    
-    # Fibonacci Bantları Arası Renkli Degrade Dolgular
+    # Fibonacci Bantları Arası Renkli Degrade Dolgular (Sağ marjı da kapsayacak şekilde)
     fib_keys = sorted(list(fib_levels.keys()))
     renkler = ['rgba(255, 0, 0, 0.12)', 'rgba(255, 128, 0, 0.10)', 'rgba(255, 235, 59, 0.10)', 'rgba(128, 255, 0, 0.10)', 'rgba(0, 255, 0, 0.12)', 'rgba(0, 200, 100, 0.15)']
     
@@ -924,8 +928,8 @@ with col_orta_grafik:
         
         fig_total.add_trace(
             go.Scatter(
-                x=list(t_df['timestamp']) + list(t_df['timestamp'][::-1]),
-                y=[ust_val] * len(t_df) + [alt_val] * len(t_df),
+                x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]),
+                y=[ust_val] * len(t_df_extended) + [alt_val] * len(t_df_extended),
                 fill='toself',
                 fillcolor=renk,
                 line=dict(color='rgba(255,255,255,0)'),
@@ -935,35 +939,48 @@ with col_orta_grafik:
             secondary_y=False
         )
 
-    # Fibonacci Yatay Çizgileri ve Etiketleri
+    # Fiyat Çizgisi (Parlament Mavi: #002FA7)
+    fig_total.add_trace(
+        go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#002FA7', width=2)),
+        secondary_y=False
+    )
+    
+    # RSI Çizgisi (Bayrak Kırmızı: #E30A17, Düz Stil)
+    fig_total.add_trace(
+        go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#E30A17', width=1.5, dash='solid')),
+        secondary_y=False
+    )
+
+    # Fibonacci Yatay Çizgileri ve 2 Satırlık Siyah Etiketleri
     for oran, val in fib_levels.items():
         renk_cizgi = "#00FF00" if oran >= 0.5 else "#FF0000"
         if oran == 0.0: renk_cizgi = "#000000"
         if oran == 1.0: renk_cizgi = "#00FF00"
+        
+        deger_metni = f"${val/1e12:.3f}T" if val > 1e9 else f"{val:.2f}"
         
         fig_total.add_hline(
             y=val, 
             line_dash="dash", 
             line_color=renk_cizgi, 
             line_width=1,
-            annotation_text=f"Fib {oran}: ${val/1e12:.3f}T" if val > 1e9 else f"Fib {oran}: {val:.2f}",
+            annotation_text=f"Fib {oran}<br>{deger_metni}",
             annotation_position="right",
             annotation_font_size=10,
-            annotation_font_color=renk_cizgi
+            annotation_font_color="#000000"  # Siyah renk
         )
 
-    # X Eksenini 16 saate ek olarak sağ tarafa 1 saatlik boşluk/marj ekleyerek ayarlama
-    max_zaman = t_df['timestamp'].max() + timedelta(hours=1)
-    min_zaman = max_zaman - timedelta(hours=17) # 16 saat + 1 saat sağ marj
-    
     fig_total.update_layout(
         template="plotly_white", 
-        margin=dict(t=10, b=10, l=10, r=60), 
+        margin=dict(t=10, b=10, l=10, r=70), 
         height=380,
         xaxis=dict(
             range=[min_zaman, max_zaman],
             dtick=3600000 * 1,  # Tam 1 saatlik aralık
             tickformat="%H:%M"
+        ),
+        yaxis=dict(
+            showticklabels=False  # Sol taraftaki rakamsal bilgiler kaldırıldı
         ),
         xaxis_rangeslider_visible=False, 
         paper_bgcolor='rgba(0,0,0,0)', 

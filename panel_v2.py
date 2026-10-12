@@ -23,6 +23,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="�
 
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
+
 # --- CSS STİLLERİ ---
 st.markdown("""
     <style>

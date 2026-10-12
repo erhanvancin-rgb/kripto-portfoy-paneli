@@ -230,13 +230,11 @@ def hesapla_zaman_dilimi_puan(y, k, max_puan):
     r_y = y / toplam
     r_k = k / toplam
     
-    # Long skoru (Orana göre doğrusal interpolasyon: %50 güvenilirlikte %25 puan, %100 güvenilirlikte %100 puan)
     if r_y <= 0.5:
         s_long = max_puan * 0.5 * r_y
     else:
         s_long = max_puan * (0.25 + 1.5 * (r_y - 0.5))
         
-    # Short skoru
     if r_k <= 0.5:
         s_short = max_puan * 0.5 * r_k
     else:
@@ -247,16 +245,10 @@ def hesapla_zaman_dilimi_puan(y, k, max_puan):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 5 Zaman Dilimi Kurgusu:
-    # 16 Saat (%3): 4m (240s) x 240 bar, Max Puan: 6.0
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
-    # 8 Saat (%8): 2m (120s) x 240 bar, Max Puan: 16.0
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
-    # 4 Saat (%22): 1m (60s) x 240 bar, Max Puan: 44.0
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
-    # 2 Saat (%31): 1m (60s) x 120 bar, Max Puan: 62.0
     y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-    # 1 Saat (%36): 1m (60s) x 60 bar, Max Puan: 72.0
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
     dilimler = [

@@ -800,7 +800,7 @@ with col_sag_endeks:
 
 st.markdown("---")
 
-# --- SANAL PORTFÖY VE AÇIK POZİSYONLAR (YENİ SÜTUN YAPISI) ---
+# --- SANAL PORTFÖY VE AÇIK POZİSYONLAR ---
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist()
@@ -831,100 +831,15 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     with col_orta_durum:
         st.markdown("### İşlem Durumu")
-        col_btn1, col_btn2, col_btn3 = st.columns(3)
-        with col_btn1:
-            if st.button("Aktif İşlemler", use_container_width=True): 
-                st.session_state['sadece_aktifleri_goster'] = True
-                st.rerun()
-        with col_btn2:
-            if st.button("Tüm İşlemler", use_container_width=True): 
-                st.session_state['sadece_aktifleri_goster'] = False
-                st.rerun()
-        with col_btn3:
-            durum_raporu_tiklandi = st.button("Durum Raporunu Göster", use_container_width=True)
-            if durum_raporu_tiklandi:
-                st.session_state['durum_raporu_aktif'] = not st.session_state.get('durum_raporu_aktif', False)
-                st.rerun()
-        
-        # Eğer buton aktifse VEYA df_gecmis doluysa veriyi garanti gösterelim
-        if st.session_state.get('durum_raporu_aktif', False):
-            if df_gecmis.empty:
-                st.warning("⚠️ Gösterilecek işlem geçmişi verisi bulunamadı.")
-            else:
-                rapor_html = """
-                <div style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
-                <table class="custom-table">
-                    <thead class="custom-table-header">
-                        <tr>
-                            <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
-                            <th>Yatırım</th><th>Stop</th><th>Hedef</th><th>Beklenen Kâr</th><th>Matris Puanı</th><th>Olası Stop</th>
-                            <th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                for _, row in df_gecmis.iterrows():
-                    c_coin = str(row['Coin'])
-                    logo_url = logo_urls.get(c_coin, "")
-                    logo_h = f'<img src="{logo_url}" width="24" height="24">' if logo_url else ""
-                    
-                    yon_val = str(row['Yon'])
-                    yon_renk = "#00FF00" if "Long" in yon_val else "rgb(200, 50, 0)"
-                    yon_h = f'<div style="background-color: {yon_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{yon_val}</div>'
-                    
-                    giris_f = float(row.get('Giris_Fiyat', 0) or 0)
-                    bas = 4 if c_coin == "XRP/USDT" else 2
-                    
-                    durum_str = str(row.get('Durum', '')).lower()
-                    if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
-                        durum_h = '<div style="background-color: rgb(50, 0, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
-                        kapanis_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
-                    else:
-                        is_kar = "kar" in durum_str or "aktif" not in durum_str and float(row.get('Net_Kar_Zarar', 0) or 0) >= 0
-                        k_stil = "#00FF00" if is_kar else "rgb(200, 50, 0)"
-                        durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
-                        kap_f = float(row.get('Kapanis_Fiyati', 0) or giris_f)
-                        kapanis_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{kap_f:,.{bas}f}&nbsp;$</div>'
-
-                    kz_val = float(row.get('Net_Kar_Zarar', 0) or 0)
-                    if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
-                        anl_f = ortak_fiyat_havuzu.get(c_coin, giris_f)
-                        miktar = float(row.get('Islem_Miktari', 0) or 0)
-                        fark = ((anl_f - giris_f) / giris_f) if 'Long' in yon_val else ((giris_f - anl_f) / giris_f)
-                        kz_val = round(miktar * KALDIRAC * fark, 2)
-                    
-                    kz_renk = "#00FF00" if kz_val >= 0 else "rgb(200, 50, 0)"
-                    kz_h = f'<div style="background-color: {kz_renk}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
-                    
-                    anl_fiyat_val = ortak_fiyat_havuzu.get(c_coin, giris_f)
-                    anl_renk = "#00FF00" if anl_fiyat_val > giris_f else "rgb(200, 50, 0)"
-                    anl_h = f'<div style="background-color: {anl_renk}; color: white; padding: 5px; font-weight: bold;">{anl_fiyat_val:,.{bas}f}&nbsp;$</div>'
-
-                    rapor_html += f"""
-                        <tr>
-                            <td>{row.get('Islem_ID', '')}</td>
-                            <td>{row.get('Acilis_Zamani', '')}</td>
-                            <td>{logo_h}</td>
-                            <td>{c_coin}</td>
-                            <td>{yon_h}</td>
-                            <td>{giris_f:,.{bas}f}&nbsp;$</td>
-                            <td>{anl_h}</td>
-                            <td>{kapanis_h}</td>
-                            <td>{float(row.get('Islem_Miktari', 0) or 0):,.2f}&nbsp;$</td>
-                            <td>{float(row.get('Stop', 0) or 0):,.{bas}f}&nbsp;$</td>
-                            <td>{float(row.get('Kar_Al', 0) or 0):,.{bas}f}&nbsp;$</td>
-                            <td>{float(row.get('Beklenen_Kar', 0) or 0):,.2f}&nbsp;$</td>
-                            <td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', ''))}</td>
-                            <td>{float(row.get('Olasi_Stop', 0) or 0):,.2f}&nbsp;$</td>
-                            <td>{durum_h}</td>
-                            <td>{kz_h}</td>
-                            <td>{row.get('Kapanis_Zamani', '')}</td>
-                            <td>{float(row.get('Guncel_Kasa', 0) or 0):,.2f}&nbsp;$</td>
-                        </tr>
-                    """
-                rapor_html += "</tbody></table></div>"
-                import streamlit.components.v1 as components
-                components.html(rapor_html, height=520, scrolling=True)
+        if st.button("Aktif İşlemler", use_container_width=True): 
+            st.session_state['sadece_aktifleri_goster'] = True
+            st.rerun()
+        if st.button("Tüm İşlemler", use_container_width=True): 
+            st.session_state['sadece_aktifleri_goster'] = False
+            st.rerun()
+        if st.button("Durum Raporunu Göster", use_container_width=True): 
+            st.session_state['durum_raporu_aktif'] = not st.session_state.get('durum_raporu_aktif', False)
+            st.rerun()
 
     with col_sag_sonlandir:
         st.markdown("### 🛑 İşlemi Sonlandır")
@@ -943,58 +858,87 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 else: st.info("Kapatılacak açık işlem yok.")
 
     st.markdown("---")
-    df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()
-    if st.session_state['sadece_aktifleri_goster']: st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
 
-    anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
-    for _, row in df_gecmis.iterrows():
-        islem_id, coin, giris_f, miktar, kar_al_f, stop_f, yon = row['Islem_ID'], row['Coin'], float(row['Giris_Fiyat']), float(row['Islem_Miktari']), float(row['Kar_Al']), float(row['Stop']), row['Yon']
-        anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
-        anlik_fiyat_sozluk[islem_id] = anl_f
-        
-        if giris_f > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - kar_al_f) / giris_f)), 2)
-            olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - stop_f) / giris_f)), 2)
-        else: hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
-
-        if not ('kapandi' in str(row['Durum']).lower() or 'kar' in str(row['Durum']).lower() or 'zarar' in str(row['Durum']).lower()):
-            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - anl_f) / giris_f)), 2)
-        else: anlik_kz_sozluk[islem_id] = float(row['Net_Kar_Zarar'])
-
-    df_gecmis_copy = df_gosterilecek.copy()
-    df_gecmis_copy['Anlik_Fiyat_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_fiyat_sozluk)
-    df_gecmis_copy['Canli_Beklenen_Kar'] = df_gecmis_copy['Islem_ID'].map(hedef_kar_sozluk)
-    df_gecmis_copy['Canli_Olasi_Stop'] = df_gecmis_copy['Islem_ID'].map(olasi_stop_sozluk)
-    df_gecmis_copy['Anlik_KZ_Deger'] = df_gecmis_copy['Islem_ID'].map(anlik_kz_sozluk)
-    
-    portfoy_html = """
-    <table class="custom-table"><thead class="custom-table-header"><tr>
-     <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
-     <th>Yatırım</th><th>Stop</th><th>Hedef</th><th>Beklenen Kâr</th><th>Matris Puanı</th><th>Olası Stop</th>
-     <th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th>
-     </tr></thead><tbody>
-    """
-
-    for _, row in df_gecmis_copy.iterrows():
-        logo_h = f'<img src="{logo_urls.get(row["Coin"], "")}" width="24" height="24">'
-        yon_h = f'<div style="background-color: {"#00FF00" if "Long" in row["Yon"] else "rgb(200, 50, 0)"}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{row["Yon"]}</div>'
-        anlik_fiyat_h = f'<div style="background-color: {"#00FF00" if row["Anlik_Fiyat_Deger"] > float(row["Giris_Fiyat"]) else "rgb(200, 50, 0)"}; color: white; padding: 5px; font-weight: bold;">{float(row["Anlik_Fiyat_Deger"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
-        
-        if not ('kapandi' in str(row['Durum']).lower() or 'kar' in str(row['Durum']).lower() or 'zarar' in str(row['Durum']).lower()):
-            kapanis_fiyat_h, durum_h = '<div style="padding: 5px; color: #6c757d;">-</div>', '<div style="background-color: rgb(50, 0, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+    # --- DURUM RAPORU TABLOSU (3'LÜ BLOĞUN ALTINDA TAM GENİŞLİKTE) ---
+    if st.session_state.get('durum_raporu_aktif', False):
+        if df_gecmis.empty:
+            st.warning("⚠️ Gösterilecek işlem geçmişi verisi bulunamadı.")
         else:
-            is_kar = float(row['Net_Kar_Zarar']) >= 0
-            k_stil = "#00FF00" if is_kar else "rgb(200, 50, 0)"
-            kapanis_fiyat_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
-            durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+            st.markdown("#### 📋 Detaylı Durum Raporu Tablosu")
+            rapor_html = """
+            <div class="table-container">
+            <table class="custom-table">
+                <thead class="custom-table-header">
+                    <tr>
+                        <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
+                        <th>Yatırım</th><th>Stop</th><th>Hedef</th><th>Beklenen Kâr</th><th>Matris Puanı</th><th>Olası Stop</th>
+                        <th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for _, row in df_gecmis.iterrows():
+                c_coin = str(row['Coin'])
+                logo_url = logo_urls.get(c_coin, "")
+                logo_h = f'<img src="{logo_url}" width="24" height="24">' if logo_url else ""
+                
+                yon_val = str(row['Yon'])
+                yon_renk = "#00FF00" if "Long" in yon_val else "rgb(200, 50, 0)"
+                yon_h = f'<div style="background-color: {yon_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{yon_val}</div>'
+                
+                giris_f = float(row.get('Giris_Fiyat', 0) or 0)
+                bas = 4 if c_coin == "XRP/USDT" else 2
+                
+                durum_str = str(row.get('Durum', '')).lower()
+                if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
+                    durum_h = '<div style="background-color: rgb(50, 0, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+                    kapanis_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
+                else:
+                    is_kar = "kar" in durum_str or "aktif" not in durum_str and float(row.get('Net_Kar_Zarar', 0) or 0) >= 0
+                    k_stil = "#00FF00" if is_kar else "rgb(200, 50, 0)"
+                    durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+                    kap_f = float(row.get('Kapanis_Fiyati', 0) or giris_f)
+                    kapanis_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{kap_f:,.{bas}f}&nbsp;$</div>'
 
-        kz_h = f'<div style="background-color: {"#00FF00" if row["Anlik_KZ_Deger"] >= 0 else "rgb(200, 50, 0)"}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{row["Anlik_KZ_Deger"]:+,.2f}&nbsp;$</div>'
+                kz_val = float(row.get('Net_Kar_Zarar', 0) or 0)
+                if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
+                    anl_f = ortak_fiyat_havuzu.get(c_coin, giris_f)
+                    miktar = float(row.get('Islem_Miktari', 0) or 0)
+                    fark = ((anl_f - giris_f) / giris_f) if 'Long' in yon_val else ((giris_f - anl_f) / giris_f)
+                    kz_val = round(miktar * KALDIRAC * fark, 2)
+                
+                kz_renk = "#00FF00" if kz_val >= 0 else "rgb(200, 50, 0)"
+                kz_h = f'<div style="background-color: {kz_renk}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
+                
+                anl_fiyat_val = ortak_fiyat_havuzu.get(c_coin, giris_f)
+                anl_renk = "#00FF00" if anl_fiyat_val > giris_f else "rgb(200, 50, 0)"
+                anl_h = f'<div style="background-color: {anl_renk}; color: white; padding: 5px; font-weight: bold;">{anl_fiyat_val:,.{bas}f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '145.2 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
-    portfoy_html += "</tbody></table>"
-    st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
-
-    st.markdown("---")
+                rapor_html += f"""
+                    <tr>
+                        <td>{row.get('Islem_ID', '')}</td>
+                        <td>{row.get('Acilis_Zamani', '')}</td>
+                        <td>{logo_h}</td>
+                        <td>{c_coin}</td>
+                        <td>{yon_h}</td>
+                        <td>{giris_f:,.{bas}f}&nbsp;$</td>
+                        <td>{anl_h}</td>
+                        <td>{kapanis_h}</td>
+                        <td>{float(row.get('Islem_Miktari', 0) or 0):,.2f}&nbsp;$</td>
+                        <td>{float(row.get('Stop', 0) or 0):,.{bas}f}&nbsp;$</td>
+                        <td>{float(row.get('Kar_Al', 0) or 0):,.{bas}f}&nbsp;$</td>
+                        <td>{float(row.get('Beklenen_Kar', 0) or 0):,.2f}&nbsp;$</td>
+                        <td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', ''))}</td>
+                        <td>{float(row.get('Olasi_Stop', 0) or 0):,.2f}&nbsp;$</td>
+                        <td>{durum_h}</td>
+                        <td>{kz_h}</td>
+                        <td>{row.get('Kapanis_Zamani', '')}</td>
+                        <td>{float(row.get('Guncel_Kasa', 0) or 0):,.2f}&nbsp;$</td>
+                    </tr>
+                """
+            rapor_html += "</tbody></table></div>"
+            st.markdown(rapor_html, unsafe_allow_html=True)
+            st.markdown("---")
     st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
     if os.path.exists(ARSIV_KLASORU):
         try:

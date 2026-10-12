@@ -469,7 +469,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
     toplam_kasa, _, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr, "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_f, 
+        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr, "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
         "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, "Beklenen_Kar": round(beklenen_kar, 2), 
         "Matris_Puan_RH": matris_rh_metin, "Olasi_Stop": round(olasi_stop, 2), "Durum": "Acik", "Net_Kar_Zarar": 0.0, 
         "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0

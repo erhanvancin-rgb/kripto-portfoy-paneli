@@ -24,7 +24,7 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="�
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
 st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ (YENİ RENK PALETİ: Mavi rgb(70, 0, 255), Kırmızı rgb(255, 75, 0)) ---
+# --- CSS STİLLERİ (Mavi rgb(70, 0, 255), Kırmızı rgb(255, 75, 0)) ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -87,7 +87,6 @@ logo_urls = {
 }
 baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489, 'TOTAL': 2.77e12}
 
-# --- GMAIL BİLDİRİM FONKSİYONU ---
 def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
     uygulama_sifresi = "jkef zgaf zwtg qyom"
@@ -225,38 +224,78 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     k_yedek = toplam_bar - y_yedek
     return y_yedek, k_yedek
 
-def periyot_puan_hesapla(yesil_sayisi, toplam_bar):
-    if toplam_bar <= 0: return 0.0
-    oran = (yesil_sayisi / toplam_bar) * 100.0
-    puan = (oran / 100.0) * 200.0
-    return float(puan)
+def hesapla_zaman_dilimi_puan(y, k, max_puan):
+    toplam = y + k
+    if toplam <= 0: return 0.0, 0.0, 50.0
+    r_y = y / toplam
+    r_k = k / toplam
+    
+    # Long skoru (Orana göre doğrusal interpolasyon: %50 güvenilirlikte %25 puan, %100 güvenilirlikte %100 puan)
+    if r_y <= 0.5:
+        s_long = max_puan * 0.5 * r_y
+    else:
+        s_long = max_puan * (0.25 + 1.5 * (r_y - 0.5))
+        
+    # Short skoru
+    if r_k <= 0.5:
+        s_short = max_puan * 0.5 * r_k
+    else:
+        s_short = max_puan * (0.25 + 1.5 * (r_k - 0.5))
+        
+    return s_long, s_short, r_y * 100.0
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
-    y60, k60 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 60)
-    y40, k40 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 40)
-    y20, k20 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 20)
-    p_60 = periyot_puan_hesapla(y60, 60)
-    p_40 = periyot_puan_hesapla(y40, 40)
-    p_20 = periyot_puan_hesapla(y20, 20)
-    toplam_puan = (p_60 * 0.50) + (p_40 * 0.30) + (p_20 * 0.20)
-    nihai_puan = round(max(0.0, min(200.0, toplam_puan)), 1)
-    toplam_y = y60 + y40 + y20
-    toplam_k = k60 + k40 + k20
-    net_bar = toplam_y + toplam_k
-    y_yuzde = (toplam_y / net_bar * 100.0) if net_bar > 0 else 50.0
-
-    if 'trend_hafiza' not in st.session_state: st.session_state['trend_hafiza'] = {}
-    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, y_yuzde)
-    y_yuzde = (onceki_y_yuzde * 0.85) + (y_yuzde * 0.15)
-    st.session_state['trend_hafiza'][coin_symbol] = y_yuzde
     
-    if nihai_puan >= 120.0 and y_yuzde >= 52.0: aktif_yon = "Long"
-    elif nihai_puan >= 120.0 and y_yuzde <= 48.0: aktif_yon = "Short"
-    elif nihai_puan >= 50.0: aktif_yon = "Long" if y_yuzde >= 50.0 else "Short"
-    else: aktif_yon = "Nötr"
+    # 5 Zaman Dilimi Kurgusu:
+    # 16 Saat (%3): 4m (240s) x 240 bar, Max Puan: 6.0
+    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
+    # 8 Saat (%8): 2m (120s) x 240 bar, Max Puan: 16.0
+    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
+    # 4 Saat (%22): 1m (60s) x 240 bar, Max Puan: 44.0
+    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
+    # 2 Saat (%31): 1m (60s) x 120 bar, Max Puan: 62.0
+    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
+    # 1 Saat (%36): 1m (60s) x 60 bar, Max Puan: 72.0
+    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    
+    dilimler = [
+        (y16, k16, 6.0, 0.03),
+        (y8, k8, 16.0, 0.08),
+        (y4, k4, 44.0, 0.22),
+        (y2, k2, 62.0, 0.31),
+        (y1, k1, 72.0, 0.36)
+    ]
+    
+    toplam_long = 0.0
+    toplam_short = 0.0
+    agirlikli_y_yuzde = 0.0
+    
+    for y, k, max_p, agirlik in dilimler:
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan(y, k, max_p)
+        toplam_long += sl
+        toplam_short += ss
+        agirlikli_y_yuzde += ry_yuzde * agirlik
         
-    return anlik_fiyat, nihai_puan, aktif_yon, y_yuzde
+    nihai_long = round(max(0.0, min(200.0, toplam_long)), 1)
+    nihai_short = round(max(0.0, min(200.0, toplam_short)), 1)
+    
+    if 'trend_hafiza' not in st.session_state: st.session_state['trend_hafiza'] = {}
+    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, agirlikli_y_yuzde)
+    agirlikli_y_yuzde = (onceki_y_yuzde * 0.85) + (agirlikli_y_yuzde * 0.15)
+    st.session_state['trend_hafiza'][coin_symbol] = agirlikli_y_yuzde
+    
+    if toplam_long >= toplam_short:
+        nihai_puan = nihai_long
+        aktif_yon = "Long"
+    else:
+        nihai_puan = nihai_short
+        aktif_yon = "Short"
+        
+    if nihai_puan < 50.0:
+        aktif_yon = "Nötr"
+        
+    return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde
 
 def google_sheets_baglan(sayfa_adi):
     try:
@@ -438,7 +477,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
     toplam_kasa, _, _, _ = bakiye_durumunu_getir()
     yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr, "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_fiyat, 
+        "Islem_ID": yeni_id, "Acilis_Zamani": suan_tr, "Coin": coin, "Yon": yon, "Zaman_Dilimi": zaman_dilimi, "Giris_Fiyat": giris_f, 
         "Islem_Miktari": round(islem_miktari, 2), "Stop": stop, "Kar_Al": kar_al, "Beklenen_Kar": round(beklenen_kar, 2), 
         "Matris_Puan_RH": matris_rh_metin, "Olasi_Stop": round(olasi_stop, 2), "Durum": "Acik", "Net_Kar_Zarar": 0.0, 
         "Guncel_Kasa": round(toplam_kasa, 2), "Kapanis_Zamani": "-", "Kapanis_Fiyati": 0.0
@@ -477,7 +516,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
         return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
     except Exception as e: return False, f"Hata: {str(e)}"
 
-# --- ARKA PLAN / YÜZEY STOP & KÂR KONTROL MOTORU ---
 def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
     df = islem_gecmisi_getir(sheet_guncelle=False)
     if df.empty or 'Durum' not in df.columns: return
@@ -536,7 +574,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
 
-# --- ARKA PLAN 7/24 MOTORUNU BAŞLATMA İŞLEMİ ---
 def arka_plan_dinleyicisi():
     while True:
         try:
@@ -553,9 +590,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-
-# --- ARAYÜZ AKIŞI ---
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Ağırlıklı Ortalama Matris Puanı)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Revize Matris Puanı)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -564,7 +599,6 @@ if 'sadece_aktifleri_goster' not in st.session_state: st.session_state['sadece_a
 if 'gonderilen_mailler' not in st.session_state: st.session_state['gonderilen_mailler'] = set()
 if 'total_sermaye_alarm' not in st.session_state: st.session_state['total_sermaye_alarm'] = None
 
-# --- TÜM VARLIKLAR VE TOTAL MARKET ANALİZİ (16 SAATLİK / 192 BAR) ---
 tum_takip_edilenler = coinler + ['TOTAL']
 islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
@@ -587,7 +621,6 @@ otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
-# --- TOTAL MARKET SERMAYE AKIŞI KONTROLÜ (130 PUAN EŞİĞİ) ---
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
 if t_puan_val >= 130.0:
     if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
@@ -596,7 +629,7 @@ if t_puan_val >= 130.0:
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Büyük Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p><p><b>Yeşil Bar Yüzdesi (Giren/Çıkan):</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Büyük Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Total Market Sermaye Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
@@ -615,7 +648,7 @@ for data in coin_ham_veriler:
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 120.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 125.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
@@ -653,7 +686,6 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu
 
 for v in islenen_veriler: v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-# --- ÜST BİLGİ PANELİ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6 = st.columns([2, 2, 2, 2, 1.5, 1.2])
 with col_ust1: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">📊 Aktif Yatırım</p><h1 style="color: rgb(70, 0, 255); margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust2: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">🟢 Boştaki Nakit</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>', unsafe_allow_html=True)
@@ -668,7 +700,6 @@ with col_ust6:
     st.write("")
     if st.button("🔄 Yenile", use_container_width=True): st.rerun()
 
-# --- KASA İŞLEMLERİ AÇILIR PANELİ ---
 if st.session_state['kasa_islem_acik']:
     with st.container():
         st.markdown(f'<div style="background-color: #ffffff; padding: 20px; border: 2px solid rgb(70, 0, 255); border-radius: 10px; margin-bottom: 20px;"><h4 style="margin-top: 0px; color: rgb(70, 0, 255);">👍 Kasa Sermaye Yönetimi</h4>', unsafe_allow_html=True)
@@ -694,7 +725,6 @@ if st.session_state['kasa_islem_acik']:
 
 st.markdown("---")
 
-# --- ANA TABLO ---
 table_html = """
 <table class="custom-table"><thead class="custom-table-header"><tr>
  <th>Logo</th><th>Coin<br>Adı</th><th>Güncel<br>Fiyat</th><th>Trend<br>Durumu</th>
@@ -715,7 +745,6 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# --- MOBİL UYUMLU SÜTUN ORANLARI VE GRAFİK YERLEŞİMİ ---
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.6, 3.4, 0.6])
 
 with col_sol_panel:
@@ -799,7 +828,6 @@ with col_sag_endeks:
 
 st.markdown("---")
 
-# --- SANAL PORTFÖY VE AÇIK POZİSYONLAR ---
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist()
@@ -861,7 +889,6 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     st.markdown("---")
 
-    # --- ANA PORTFÖY TABLOSU ---
     df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()
     if st.session_state['sadece_aktifleri_goster']: st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
 

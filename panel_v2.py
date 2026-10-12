@@ -841,12 +841,16 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 st.session_state['sadece_aktifleri_goster'] = False
                 st.rerun()
         with col_btn3:
-            if st.button("Raporu Gizle/Göster", use_container_width=True): 
+            durum_raporu_tiklandi = st.button("Durum Raporunu Göster", use_container_width=True)
+            if durum_raporu_tiklandi:
                 st.session_state['durum_raporu_aktif'] = not st.session_state.get('durum_raporu_aktif', False)
                 st.rerun()
         
+        # Eğer buton aktifse VEYA df_gecmis doluysa veriyi garanti gösterelim
         if st.session_state.get('durum_raporu_aktif', False):
-            if not df_gecmis.empty:
+            if df_gecmis.empty:
+                st.warning("⚠️ Gösterilecek işlem geçmişi verisi bulunamadı.")
+            else:
                 rapor_html = """
                 <div style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
                 <table class="custom-table">
@@ -919,7 +923,8 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                         </tr>
                     """
                 rapor_html += "</tbody></table></div>"
-                import streamlit.components.v1 as components  # ... (tablo oluşturulduktan sonra) components.html(rapor_html, height=450, scrolling=True)
+                import streamlit.components.v1 as components
+                components.html(rapor_html, height=520, scrolling=True)
 
     with col_sag_sonlandir:
         st.markdown("### 🛑 İşlemi Sonlandır")

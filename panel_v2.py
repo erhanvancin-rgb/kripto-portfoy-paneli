@@ -921,21 +921,97 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 rapor_html += "</tbody></table></div>"
                 if st.session_state.get('durum_raporu_aktif', False):         if not df_gecmis.empty:             # (Yukarıda oluşturduğumuz rapor_html kodları burada yer alıyor)             st.markdown(f'<div class="table-container">{rapor_html}</div>', unsafe_allow_html=True)
 
-    with col_sag_sonlandir:
-        st.markdown("### 🛑 İşlemi Sonlandır")
-        with st.form(key="pozisyon_kapat_form"):
-            kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id")
-            onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")
-            submit_kapat = st.form_submit_button("İşlemi Kapat", use_container_width=True)
-            if submit_kapat:
-                if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                    if onay_verildi:
-                        kapanacak_coin = df_gecmis[df_gecmis['Islem_ID'] == kapatilacak_id]['Coin'].iloc[0]
-                        b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, ortak_fiyat_havuzu.get(kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0)))
-                        if b_durum: st.success(b_mesaj); time.sleep(1); st.rerun()
-                        else: st.error(b_mesaj)
-                    else: st.warning("Onay kutusunu işaretleyin!")
-                else: st.info("Kapatılacak açık işlem yok.")
+    with col_orta_durum:
+        st.markdown("### İşlem Durumu")
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        with col_btn1:
+            if st.button("Aktif İşlemler", use_container_width=True): 
+                st.session_state['sadece_aktifleri_goster'] = True
+                st.rerun()
+        with col_btn2:
+            if st.button("Tüm İşlemler", use_container_width=True): 
+                st.session_state['sadece_aktifleri_goster'] = False
+                st.rerun()
+        with col_btn3:
+            if st.button("Raporu Gizle/Göster", use_container_width=True): 
+                st.session_state['durum_raporu_aktif'] = not st.session_state.get('durum_raporu_aktif', False)
+                st.rerun()
+        
+        if st.session_state.get('durum_raporu_aktif', False):
+            if not df_gecmis.empty:
+                rapor_html = """
+                <div style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
+                <table class="custom-table">
+                    <thead class="custom-table-header">
+                        <tr>
+                            <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
+                            <th>Yatırım</th><th>Stop</th><th>Hedef</th><th>Beklenen Kâr</th><th>Matris Puanı</th><th>Olası Stop</th>
+                            <th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                for _, row in df_gecmis.iterrows():
+                    c_coin = str(row['Coin'])
+                    logo_url = logo_urls.get(c_coin, "")
+                    logo_h = f'<img src="{logo_url}" width="24" height="24">' if logo_url else ""
+                    
+                    yon_val = str(row['Yon'])
+                    yon_renk = "#00FF00" if "Long" in yon_val else "rgb(200, 50, 0)"
+                    yon_h = f'<div style="background-color: {yon_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{yon_val}</div>'
+                    
+                    giris_f = float(row.get('Giris_Fiyat', 0) or 0)
+                    bas = 4 if c_coin == "XRP/USDT" else 2
+                    
+                    durum_str = str(row.get('Durum', '')).lower()
+                    if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
+                        durum_h = '<div style="background-color: rgb(50, 0, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+                        kapanis_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
+                    else:
+                        is_kar = "kar" in durum_str or "aktif" not in durum_str and float(row.get('Net_Kar_Zarar', 0) or 0) >= 0
+                        k_stil = "#00FF00" if is_kar else "rgb(200, 50, 0)"
+                        durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+                        kap_f = float(row.get('Kapanis_Fiyati', 0) or giris_f)
+                        kapanis_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{kap_f:,.{bas}f}&nbsp;$</div>'
+
+                    kz_val = float(row.get('Net_Kar_Zarar', 0) or 0)
+                    if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
+                        anl_f = ortak_fiyat_havuzu.get(c_coin, giris_f)
+                        miktar = float(row.get('Islem_Miktari', 0) or 0)
+                        fark = ((anl_f - giris_f) / giris_f) if 'Long' in yon_val else ((giris_f - anl_f) / giris_f)
+                        kz_val = round(miktar * KALDIRAC * fark, 2)
+                    
+                    kz_renk = "#00FF00" if kz_val >= 0 else "rgb(200, 50, 0)"
+                    kz_h = f'<div style="background-color: {kz_renk}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
+                    
+                    anl_fiyat_val = ortak_fiyat_havuzu.get(c_coin, giris_f)
+                    anl_renk = "#00FF00" if anl_fiyat_val > giris_f else "rgb(200, 50, 0)"
+                    anl_h = f'<div style="background-color: {anl_renk}; color: white; padding: 5px; font-weight: bold;">{anl_fiyat_val:,.{bas}f}&nbsp;$</div>'
+
+                    rapor_html += f"""
+                        <tr>
+                            <td>{row.get('Islem_ID', '')}</td>
+                            <td>{row.get('Acilis_Zamani', '')}</td>
+                            <td>{logo_h}</td>
+                            <td>{c_coin}</td>
+                            <td>{yon_h}</td>
+                            <td>{giris_f:,.{bas}f}&nbsp;$</td>
+                            <td>{anl_h}</td>
+                            <td>{kapanis_h}</td>
+                            <td>{float(row.get('Islem_Miktari', 0) or 0):,.2f}&nbsp;$</td>
+                            <td>{float(row.get('Stop', 0) or 0):,.{bas}f}&nbsp;$</td>
+                            <td>{float(row.get('Kar_Al', 0) or 0):,.{bas}f}&nbsp;$</td>
+                            <td>{float(row.get('Beklenen_Kar', 0) or 0):,.2f}&nbsp;$</td>
+                            <td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', ''))}</td>
+                            <td>{float(row.get('Olasi_Stop', 0) or 0):,.2f}&nbsp;$</td>
+                            <td>{durum_h}</td>
+                            <td>{kz_h}</td>
+                            <td>{row.get('Kapanis_Zamani', '')}</td>
+                            <td>{float(row.get('Guncel_Kasa', 0) or 0):,.2f}&nbsp;$</td>
+                        </tr>
+                    """
+                rapor_html += "</tbody></table></div>"
+                st.markdown(rapor_html, unsafe_allow_html=True)
 
     st.markdown("---")
     df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()

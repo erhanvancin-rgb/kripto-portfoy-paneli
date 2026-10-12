@@ -927,7 +927,7 @@ for v in islenen_veriler:
         </tr>
     """
 table_html += "    </tbody>\n</table>"
-st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
+st.components.v1.html(f'<div class="table-container">{table_html}</div>', height=400, scrolling=True)
 
 # --- MOBİL UYUMLU SÜTUN ORANLARI VE GRAFİK YERLEŞİMİ ---
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.6, 3.4, 0.6])

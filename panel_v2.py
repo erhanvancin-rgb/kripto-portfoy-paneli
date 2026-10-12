@@ -804,7 +804,7 @@ df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist()
     
-    col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.8, 1.1, 1.1])
+    col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.9, 0.9, 1.3])
 
     with col_sol_analiz:
         st.markdown("### 📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi")
@@ -822,16 +822,16 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             zarar_yuzde = (zararli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             
-            sub_p1, sub_p2, sub_p3 = st.columns([1.2, 1.4, 1.4])
+            sub_p1, sub_p2, sub_p3 = st.columns([1.1, 1.45, 1.45])
             with sub_p1:
                 fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.45, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
-                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#212529', size=13), margin=dict(t=0, b=0, l=0, r=0), height=170, showlegend=False)
-                fig.update_traces(textfont_size=13, textinfo='percent')
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#212529', size=15), margin=dict(t=0, b=0, l=0, r=0), height=210, showlegend=False)
+                fig.update_traces(textfont_size=15, textinfo='percent')
                 st.plotly_chart(fig, use_container_width=True)
             with sub_p2:
-                st.markdown(f'<div style="font-size: 13px; font-weight: bold; color: #212529; margin-bottom: 2px;">📈 Strateji Metrikleri</div><p style="margin: 2px 0px 0px 0px; font-size: 11px; color: #495057;">Toplam Kapanan</p><p style="margin: 0px; font-size: 15px; font-weight: bold; color: #212529;">{toplam_kapanan} Adet</p><p style="margin: 5px 0px 0px 0px; font-size: 12px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 3px 0px 0px 0px; font-size: 12px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #212529;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>', unsafe_allow_html=True)
             with sub_p3:
-                st.markdown(f'<div style="font-size: 13px; font-weight: bold; color: #212529; margin-bottom: 2px;">💰 Para Değerleri</div><p style="margin: 2px 0px 0px 0px; font-size: 11px; color: #495057;">Toplam Kâr:</p><p style="margin: 0px; font-size: 14px; font-weight: bold; color: #00FF00;">+{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 4px 0px 0px 0px; font-size: 11px; color: #495057;">Toplam Zarar:</p><p style="margin: 0px; font-size: 14px; font-weight: bold; color: rgb(255, 75, 0);">-{toplam_kayip_dolar:,.2f} $</p><hr style="margin: 5px 0px;"><p style="margin: 0px; font-size: 11px; color: #495057;">Net Fark:</p><p style="margin: 0px; font-size: 14px; font-weight: bold; color: {"#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"};">{net_fark_dolar:+,.2f} $</p>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">💰 Para Değerleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kâr:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: #00FF00;">+{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 6px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Zarar:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: rgb(255, 75, 0);">-{toplam_kayip_dolar:,.2f} $</p><hr style="margin: 6px 0px;"><p style="margin: 0px; font-size: 13px; color: #495057;">Net Fark:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: {"#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"};">{net_fark_dolar:+,.2f} $</p>', unsafe_allow_html=True)
 
     with col_orta_durum:
         st.markdown("### İşlem Durumu")
@@ -848,6 +848,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id")
             onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")
             submit_kapat = st.form_submit_button("İşlemi Kapat", use_container_width=True)
+            
             if submit_kapat:
                 if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                     if onay_verildi:

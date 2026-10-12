@@ -1297,26 +1297,69 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
         kz_renk = "#00FF00" if kz_val >= 0 else "rgb(255, 100, 0)"
         kz_h = f'<div style="background-color: {kz_renk}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
 
+        portfoy_html = """
+    <table class="custom-table">
+        <thead>
+            <tr>
+                <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
+                <th>Yatırım</th><th>Stop</th><th>Hedef</th><th>Beklenen Kâr</th><th>Matris Puanı</th><th>Olası Stop</th>
+                <th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+
+    for _, row in df_gecmis_copy.iterrows():
+        c_coin = str(row['Coin'])
+        logo_url = logo_urls.get(c_coin, "")
+        logo_h = f'<img src="{logo_url}" width="24" height="24">' if logo_url else ""
+        
+        yon_val = str(row['Yon'])
+        yon_renk = "#00FF00" if "Long" in yon_val else "rgb(255, 100, 0)"
+        yon_h = f'<div style="background-color: {yon_renk}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{yon_val}</div>'
+        
+        anlik_f_val = float(row.get('Anlik_Fiyat_Deger', 0) or 0)
+        giris_f_val = float(row.get('Giris_Fiyat', 0) or 0)
+        bas = 4 if c_coin == "XRP/USDT" else 2
+        
+        anlik_f_renk = "#00FF00" if anlik_f_val > giris_f_val else "rgb(255, 100, 0)"
+        anlik_fiyat_h = f'<div style="background-color: {anlik_f_renk}; color: white; padding: 5px; font-weight: bold;">{anlik_f_val:,.{bas}f}&nbsp;$</div>'
+        
+        durum_str = str(row.get('Durum', '')).lower()
+        if not ('kapandi' in durum_str or 'kar' in durum_str or 'zarar' in durum_str):
+            kapanis_fiyat_h = '<div style="padding: 5px; color: #6c757d;">-</div>'
+            durum_h = '<div style="background-color: rgb(100, 100, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+        else:
+            is_kar = float(row.get('Net_Kar_Zarar', 0) or 0) >= 0
+            k_stil = "#00FF00" if is_kar else "rgb(255, 100, 0)"
+            kap_f = float(row.get('Kapanis_Fiyati', 0.0) or giris_f_val)
+            kapanis_fiyat_h = f'<div style="background-color: {k_stil}; color: white; padding: 5px; font-weight: bold;">{kap_f:,.{bas}f}&nbsp;$</div>'
+            durum_h = f'<div style="background-color: {k_stil}; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+
+        kz_val = float(row.get('Anlik_KZ_Deger', 0) or 0)
+        kz_renk = "#00FF00" if kz_val >= 0 else "rgb(255, 100, 0)"
+        kz_h = f'<div style="background-color: {kz_renk}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{kz_val:+,.2f}&nbsp;$</div>'
+
         portfoy_html += f"""
             <tr>
-                <td>{row['Islem_ID']}</td>
-                <td>{row['Acilis_Zamani']}</td>
+                <td>{row.get('Islem_ID', '')}</td>
+                <td>{row.get('Acilis_Zamani', '')}</td>
                 <td>{logo_h}</td>
                 <td>{c_coin}</td>
                 <td>{yon_h}</td>
                 <td>{giris_f_val:,.{bas}f}&nbsp;$</td>
                 <td>{anlik_fiyat_h}</td>
                 <td>{kapanis_fiyat_h}</td>
-                <td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td>
-                <td>{float(row['Stop']):,.{bas}f}&nbsp;$</td>
-                <td>{float(row['Kar_Al']):,.{bas}f}&nbsp;$</td>
-                <td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td>
-                <td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '145.2 (1 / 2.5)'))}</td>
-                <td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td>
+                <td>{float(row.get('Islem_Miktari', 0) or 0):,.2f}&nbsp;$</td>
+                <td>{float(row.get('Stop', 0) or 0):,.{bas}f}&nbsp;$</td>
+                <td>{float(row.get('Kar_Al', 0) or 0):,.{bas}f}&nbsp;$</td>
+                <td>{float(row.get('Canli_Beklenen_Kar', 0) or 0):,.2f}&nbsp;$</td>
+                <td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', ''))}</td>
+                <td>{float(row.get('Canli_Olasi_Stop', 0) or 0):,.2f}&nbsp;$</td>
                 <td>{durum_h}</td>
                 <td>{kz_h}</td>
-                <td>{row['Kapanis_Zamani']}</td>
-                <td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td>
+                <td>{row.get('Kapanis_Zamani', '')}</td>
+                <td>{float(row.get('Guncel_Kasa', 0) or 0):,.2f}&nbsp;$</td>
             </tr>
         """
     portfoy_html += "</tbody></table>"

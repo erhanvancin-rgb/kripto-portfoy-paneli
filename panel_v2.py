@@ -22,9 +22,9 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # --- OTOMATİK YENİLEME (60 SANİYE) ---
-st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
+st_autorefresh(interval=60000, key<"kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ (Mavi rgb(70, 0, 255), Kırmızı rgb(255, 75, 0)) ---
+# --- CSS STİLLERİ ---
 st.markdown("""
     <style>
     .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -764,7 +764,17 @@ with col_sol_panel:
     if st.button("🚀 İşlemi Başlat", use_container_width=True, key="hizli_islem_btn"):
         if coin_verisii is not None and coin_verisii['Notr']: st.error("⚠️ Nötr coin!")
         elif coin_verisii is not None:
-            basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii['Aktif_Yon'], coin_verisii['Fiyat'], manuel_girilen_tutar, coin_verisii['Stopla'], coin_verisii['Kar_Al'], "Matris Kurgusu", anlik_matris_puani, anlik_risk_hedef_metin)
+            basari, mesaj = yeni_islem_ekle(
+                secilen_coin, 
+                coin_verisii['Aktif_Yon'], 
+                coin_verisii['Fiyat'], 
+                manuel_girilen_tutar, 
+                coin_verisii['Stopla'], 
+                coin_verisii['Kar_Al'], 
+                "Matris Kurgusu", 
+                anlik_matris_puani, 
+                anlik_risk_hedef_metin
+            )
             if basari: st.success(mesaj); st.balloons(); time.sleep(1); st.rerun()
             else: st.error(mesaj)
 

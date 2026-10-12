@@ -485,9 +485,9 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     if idx.empty: return False, "İşlem bulunamadı!"
     row = df.loc[idx[0]]
     try:
-        giris_f = float(row['Giris_Fiyat'])
+        giris_fiyat = float(row['Giris_Fiyat'])
         miktar = float(row['Islem_Miktari'])
-        fark_yuzde = ((anlik_kapatma_fiyati - giris_f) / giris_f) if 'Long' in row['Yon'] else ((giris_f - anlik_kapatma_fiyati) / giris_f)
+        fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if 'Long' in row['Yon'] else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
         net_kar = miktar * KALDIRAC * fark_yuzde
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
         
@@ -521,7 +521,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
             islem_id = int(row['Islem_ID'])
             coin = row['Coin']
             yon = row['Yon']
-            giris_f = float(row['Giris_Fiyat'])
+            giris_fiyat = float(row['Giris_Fiyat'])
             stop_f = float(row['Stop'])
             kar_al_f = float(row['Kar_Al'])
             miktar = float(row['Islem_Miktari'])
@@ -543,7 +543,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 elif anl_f <= kar_al_f: islem_kapatilacak, hedefe_ulasti, kapanis_fiyat_degeri = True, True, kar_al_f
                 
             if islem_kapatilacak:
-                fark_yuzde = ((kapanis_fiyat_degeri - giris_f) / giris_f) if 'Long' in yon else ((giris_f - kapanis_fiyat_degeri) / giris_f)
+                fark_yuzde = ((kapanis_fiyat_degeri - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - kapanis_fiyat_degeri) / giris_fiyat)
                 net_kar = miktar * KALDIRAC * fark_yuzde
                 durum_metni = 'Kapandi (Kar)' if hedefe_ulasti else 'Kapandi (Zarar)'
                 
@@ -896,17 +896,17 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
     for _, row in df_gecmis.iterrows():
-        islem_id, coin, giris_f, miktar, kar_al_f, stop_f, yon = row['Islem_ID'], row['Coin'], float(row['Giris_Fiyat']), float(row['Islem_Miktari']), float(row['Kar_Al']), float(row['Stop']), row['Yon']
+        islem_id, coin, giris_fiyat, miktar, kar_al_f, stop_f, yon = row['Islem_ID'], row['Coin'], float(row['Giris_Fiyat']), float(row['Islem_Miktari']), float(row['Kar_Al']), float(row['Stop']), row['Yon']
         anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
         anlik_fiyat_sozluk[islem_id] = anl_f
         
-        if giris_f > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - kar_al_f) / giris_f)), 2)
-            olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - stop_f) / giris_f)), 2)
+        if giris_fiyat > 0 and kar_al_f > 0 and stop_f > 0:
+            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - kar_al_f) / giris_fiyat)), 2)
+            olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - stop_f) / giris_fiyat)), 2)
         else: hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 
         if not ('kapandi' in str(row['Durum']).lower() or 'kar' in str(row['Durum']).lower() or 'zarar' in str(row['Durum']).lower()):
-            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_f) / giris_f) if 'Long' in yon else ((giris_f - anl_f) / giris_f)), 2)
+            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - anl_f) / giris_fiyat)), 2)
         else: anlik_kz_sozluk[islem_id] = float(row['Net_Kar_Zarar'])
 
     df_gecmis_copy = df_gosterilecek.copy()

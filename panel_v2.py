@@ -919,7 +919,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                         </tr>
                     """
                 rapor_html += "</tbody></table></div>"
-                st.markdown(rapor_html, unsafe_allow_html=True)
+                if st.session_state.get('durum_raporu_aktif', False):         if not df_gecmis.empty:             # (Yukarıda oluşturduğumuz rapor_html kodları burada yer alıyor)             st.markdown(f'<div class="table-container">{rapor_html}</div>', unsafe_allow_html=True)
 
     with col_sag_sonlandir:
         st.markdown("### 🛑 İşlemi Sonlandır")

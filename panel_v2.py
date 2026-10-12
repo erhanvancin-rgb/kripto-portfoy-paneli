@@ -804,7 +804,7 @@ df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist()
     
-    col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.2, 1.2, 1.2])
+    col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.8, 1.1, 1.1])
 
     with col_sol_analiz:
         st.markdown("### 📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi")
@@ -822,7 +822,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             zarar_yuzde = (zararli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             
-            sub_p1, sub_p2, sub_p3 = st.columns([1.4, 1.3, 1.3])
+            sub_p1, sub_p2, sub_p3 = st.columns([1.5, 1.4, 1.4])
             with sub_p1:
                 fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.4, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#212529', margin=dict(t=5, b=5, l=5, r=5), height=160, showlegend=False)

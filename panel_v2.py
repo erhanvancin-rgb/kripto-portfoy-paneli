@@ -919,7 +919,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                         </tr>
                     """
                 rapor_html += "</tbody></table></div>"
-                st.markdown(rapor_html, unsafe_allow_html=True)
+                import streamlit.components.v1 as components  # ... (tablo oluşturulduktan sonra) components.html(rapor_html, height=450, scrolling=True)
 
     with col_sag_sonlandir:
         st.markdown("### 🛑 İşlemi Sonlandır")

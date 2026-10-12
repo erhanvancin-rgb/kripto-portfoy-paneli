@@ -1180,11 +1180,11 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 st.markdown(f"<p style='margin:0px; font-size:11px; color:rgb(255, 100, 0);'>🔴 Zarar: <b>{zararli_sayisi}</b></p>", unsafe_allow_html=True)
                 
             with sub_p3:
+                net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 100, 0)"
                 st.markdown("<p style='margin:0px; font-weight:bold; font-size:12px;'>💰 Para Akışı</p>", unsafe_allow_html=True)
                 st.markdown(f"<p style='margin:0px; font-size:11px; color:#00FF00;'>+<b>{toplam_kazanc_dolar:,.1f}$</b></p>", unsafe_allow_html=True)
                 st.markdown(f"<p style='margin:0px; font-size:11px; color:rgb(255, 100, 0);'>-<b>{toplam_kayip_dolar:,.1f}$</b></p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='margin:0px; font-size:11px; color:{\"#00FF00\" if net_fark_dolar >= 0 else \"rgb(255, 100, 0)\"};'>Net: <b>{net_fark_dolar:+,.1f}$</b></p>", unsafe_allow_html=True)
-
+                st.markdown(f"<p style='margin:0px; font-size:11px; color:{net_renk};'>Net: <b>{net_fark_dolar:+,.1f}$</b></p>", unsafe_allow_html=True)
     st.markdown("---")
     df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()
     if st.session_state['sadece_aktifleri_goster']: 

@@ -209,7 +209,7 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
+        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={bar_saniye}"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
@@ -227,9 +227,11 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
 
 def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay):
     toplam = y + k
-    if toplam <= 0: return 0.0, 0.0, 50.0
+    if toplam <= 0: return 50.0, 50.0, 50.0
     r_y = y / toplam
+    r_k = k / toplam
     
+    # Long Puanı Hesabı
     if y >= tam_onay:
         s_long = tam_max
     elif y >= yari_onay:
@@ -237,6 +239,7 @@ def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
     else:
         s_long = (yari_max * (y / yari_onay)) if yari_onay > 0 else 0.0
         
+    # Short Puanı Hesabı
     if k >= tam_onay:
         s_short = tam_max
     elif k >= yari_onay:
@@ -248,37 +251,42 @@ def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
-    bar_sn = 120 if coin_symbol != 'TOTAL' else 120
     
-    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
-    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
-    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
-    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
-    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
+    # Yeni kurguya uygun granülite ve bar sayıları:
+    # 16 Saat: 16m (960s) x 60 bar (Tam onay: 48, Yarı onay: 30) -> 7 puan
+    # 8 Saat: 16m (960s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 13 puan
+    # 4 Saat: 8m (480s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 25 puan
+    # 2 Saat: 4m (240s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 25 puan
+    # 1 Saat: 2m (120s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 30 puan
+    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
+    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
+    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
+    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 30)
+    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 30)
     
-    # Yeni Güncellenmiş Kurgu (Tam max, tam onay, yarı max, yarı onay, ağırlık)
     dilimler = [
-        (y16, k16, 7.0, 48, 3.5, 240, 0.07),
-        (y8, k8, 13.0, 24, 6.5, 120, 0.13),
-        (y4, k4, 25.0, 24, 12.5, 60, 0.25),
-        (y2, k2, 25.0, 24, 12.5, 30, 0.25),
+        (y16, k16, 7.0, 48, 3.5, 30, 0.07),
+        (y8, k8, 13.0, 24, 6.5, 15, 0.13),
+        (y4, k4, 25.0, 24, 12.5, 15, 0.25),
+        (y2, k2, 25.0, 24, 12.5, 15, 0.25),
         (y1, k1, 30.0, 24, 15.0, 15, 0.30)
     ]
     
-    toplam_long = 0.0
-    toplam_short = 0.0
+    toplam_long_puan = 0.0
+    toplam_short_puan = 0.0
     agirlikli_y_yuzde = 0.0
     
     for y, k, tam_max, tam_onay, yari_max, yari_onay, agirlik in dilimler:
         sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
-        toplam_long += sl
-        toplam_short += ss
+        toplam_long_puan += sl
+        toplam_short_puan += ss
         agirlikli_y_yuzde += ry_yuzde * agirlik
         
-    nihai_long = round(max(0.0, min(100.0, toplam_long)), 1)
-    nihai_short = round(max(0.0, min(100.0, toplam_short)), 1)
+    # Puanların 50 tabanlı dengeli dağılımı (Dibe çakılmayı önleyen normalizasyon)
+    nihai_long = round(max(0.0, min(100.0, toplam_long_puan)), 1)
+    nihai_short = round(max(0.0, min(100.0, toplam_short_puan)), 1)
     
-    if toplam_long >= toplam_short:
+    if nihai_long >= nihai_short:
         nihai_puan = nihai_long
         aktif_yon = "Long"
     else:

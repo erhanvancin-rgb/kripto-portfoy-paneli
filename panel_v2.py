@@ -737,19 +737,18 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.6, 3.4, 0.6])
+# İSTENEN [0.9, 3.0, 0.9] ORANLI YENİ KOLON YERLEŞİMİ
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.9, 3.0, 0.9])
 
 with col_sol_panel:
-    st.markdown("### 🚀 Hızlı İşlem Emri Ver")
+    st.markdown("### 🚀 İşlem Emri Ver")
     df_gosterge = pd.DataFrame(islenen_veriler)
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
 
-    # Form kullanarak her widget değişiminde sayfanın yenilenmesini engelliyoruz
     with st.form(key="hizli_islem_formu"):
         secilen_coin = st.selectbox("Coin Seç:", coin_listesi) if coin_listesi else None
-        if not coin_listesi: 
-            st.warning("Uygun coin yok.")
+        if not coin_listesi: st.warning("Uygun coin yok.")
 
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 2,0", None
         if secilen_coin:
@@ -762,14 +761,13 @@ with col_sol_panel:
 
         st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-        # Sadece butona basıldığında işlemler tetiklenecek
         submit_islem = st.form_submit_button("🚀 İşlemi Başlat", use_container_width=True)
 
         if submit_islem:
             if not secilen_coin or coin_listesi == []:
                 st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-            elif coin_verisii is not None and coin_verisii['Notr']: 
-                st.error("⚠️ Nötr konumdaki coinlere işlem açılamaz!")
+            elif coin_verisii is not None and coin_verisii['Notr']:
+                st.error("⚠️ Nötr coin!")
             elif coin_verisii is not None:
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 
@@ -782,12 +780,12 @@ with col_sol_panel:
                     anlik_matris_puani, 
                     anlik_risk_hedef_metin
                 )
-                if basari: 
+                if basari:
                     st.success(mesaj)
                     st.balloons()
                     time.sleep(1)
                     st.rerun()
-                else: 
+                else:
                     st.error(mesaj)
 
 with col_orta_grafik:

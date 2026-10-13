@@ -881,7 +881,21 @@ with col_orta_grafik:
         renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
         fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b><br><b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
-    fig_total.update_layout(template="plotly_white", margin=dict(t=10, b=10, l=5, r=55), height=380, xaxis=dict(range=[min_zaman, max_zaman], dtick=3600000 * 1, tickformat="%H:%M"), yaxis=dict(showticklabels=False), xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig_total.update_layout(
+        template="plotly_white", 
+        margin=dict(t=10, b=10, l=5, r=55), 
+        height=380, 
+        xaxis=dict(
+            range=[min_zaman, max_zaman], 
+            dtick=3600000 * 3,  # Etiketleri 3 saatte bir gösterecek şekilde seyreltir
+            tickformat="%H:%M"
+        ), 
+        yaxis=dict(showticklabels=False), 
+        xaxis_rangeslider_visible=False, 
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:

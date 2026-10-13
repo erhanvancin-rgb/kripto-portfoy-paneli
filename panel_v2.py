@@ -218,7 +218,6 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
                     return yesil, kirmizi
     except: pass
     
-    # Gerçekçi ve stabil oran koruması (Kilitlenmeyi önler)
     return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
 def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
@@ -241,8 +240,7 @@ def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # 2 Dakikalık Periyot Matrisi (Coinler için 120 sn, Total Market için 300 sn bazlı uyarlama)
-    bar_sn = 300 if coin_symbol == 'TOTAL' else 120
+    bar_sn = 120 if coin_symbol != 'TOTAL' else 120
     
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 480)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 240)
@@ -250,12 +248,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
     
-    # 2 Dakikalık Bar Kurgusu (100 Puan Tavanı):
-    # 16 Saat: 7 puan (%7 ağırlık), 384 onay (yarı kapasite: 3.5 puan, 240 onay)
-    # 8 Saat: 13 puan (%13 ağırlık), 192 onay (yarı kapasite: 6.5 puan, 60 onay)
-    # 4 Saat: 35 puan (%35 ağırlık), 96 onay (yarı kapasite: 17.5 puan, 30 onay)
-    # 2 Saat: 25 puan (%25 ağırlık), 48 onay (yarı kapasite: 12.5 puan, 15 onay)
-    # 1 Saat: 20 puan (%20 ağırlık), 24 onay (yarı kapasite: 10 puan, 8 onay)
     dilimler = [
         (y16, k16, 7.0, 384, 240, 0.07),
         (y8, k8, 13.0, 192, 60, 0.13),
@@ -269,7 +261,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     agirlikli_y_yuzde = 0.0
     
     for y, k, max_p, tam_onay, yari_onay, agirlik in dilimler:
-        # Dinamik onay seçimi (Eğer barlar yarı kapasiteye uygunsa yarı onay hedefi aranır)
         hedef_onay = tam_onay if (y + k) >= tam_onay else yari_onay
         sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_orijinal(y, k, max_p, hedef_onay)
         toplam_long += sl
@@ -286,7 +277,6 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = nihai_short
         aktif_yon = "Short"
         
-    # --- RSI KORELASYON ETKİSİ ---
     df_m = load_5min_market_data(coin_symbol)
     if not df_m.empty and len(df_m) >= 14:
         delta = df_m['Close'].diff()
@@ -863,6 +853,22 @@ with col_orta_grafik:
     st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
+    st.markdown("### Total Market Endeksi")
+    t_y_yuzde = total_ham_veri["y_yuzde"]
+    t_y_gorsel, t_k_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(t_y_yuzde / 10.0))))
+    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
+    
+    def pd_hesap(bar_sayisi): 
+        if t_df is not None and not t_df.empty and len(t_df) >= bar_sayisi:
+            ilk_fiyat = float(t_df.iloc[-bar_sayisi]['Open'])
+            son_fiyat = float(t_df.iloc[-1]['Close'])
+            if ilk_fiyat > 0:
+                return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
+        return 0.0
+    
+    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
+    
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 

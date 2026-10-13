@@ -615,14 +615,15 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-if t_puan_val >= 130.0:
+# Total market alarm eşiği kısa vadeye uyumlu olarak 100 puana düşürüldü
+if t_puan_val >= 100.0:
     if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
-    else: total_sermaye_durumu, t_alarm_renk = "rgb(255, 75, 0)"
+    else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Büyük Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 100)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Total Market Sermaye Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
@@ -638,11 +639,9 @@ for data in coin_ham_veriler:
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
     is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
-    if is_notr: 
-        trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
+    if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        # 90 puan üzeri artık Güçlü Trend / Momentum olarak etiketlenir
         trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 90.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
@@ -667,7 +666,6 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    # Kısa vadeli momentum için optimize edilmiş sepet oranı eğrisi
     sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 120.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
@@ -905,7 +903,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             st.session_state['sadece_aktifleri_goster'] = False
             st.rerun()
         
-        # Duruma göre blok içinde bilgilendirme metni
+        # Duruma göre blok içi bilgilendirme metni
         if st.session_state['sadece_aktifleri_goster']: 
             st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
         else:
@@ -931,7 +929,6 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     st.markdown("---")
 
     df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()
-    if st.session_state['sadece_aktifleri_goster']: st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
 
     anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
     for _, row in df_gecmis.iterrows():

@@ -233,11 +233,9 @@ def hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay):
     if toplam <= 0: return 0.0, 0.0, 50.0
     r_y = (y / toplam) * 100.0
     
-    # İvmesel (Üstel) Puan Hesaplama Fonksiyonu (0'dan başlatıp ivmeyle tavan puana ulaştırır)
     def ivmeli_hesap(val, tam, yari, t_max):
         if val <= 0: return 0.0
         if val >= tam: return t_max
-        # Üstel (ivmesel) oran eğrisi
         oran = (val / tam) ** 1.8
         return t_max * oran
 
@@ -251,9 +249,9 @@ def kurgusal_matris_hesapla(coin_symbol):
     
     # 16 Saat: 16m (960s) x 60 bar (Tam: 48, Yarı: 30) -> Max 7 Puan
     # 8 Saat: 16m (960s) x 30 bar (Tam: 24, Yarı: 15) -> Max 13 Puan
-    # 4 Saat: 8m (480s) x 30 bar (Tam: 24, Yarı: 15) -> Max 25 Puan
+    # 4 Saat: 8m (480s) x 30 bar (Tam: 24, Yarı: 15) -> Max 20 Puan
     # 2 Saat: 4m (240s) x 30 bar (Tam: 24, Yarı: 15) -> Max 25 Puan
-    # 1 Saat: 2m (120s) x 30 bar (Tam: 24, Yarı: 15) -> Max 30 Puan
+    # 1 Saat: 2m (120s) x 30 bar (Tam: 24, Yarı: 15) -> Max 35 Puan
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
@@ -263,17 +261,16 @@ def kurgusal_matris_hesapla(coin_symbol):
     dilimler = [
         (y16, k16, 7.0, 48, 30),
         (y8, k8, 13.0, 24, 15),
-        (y4, k4, 25.0, 24, 15),
+        (y4, k4, 20.0, 24, 15),
         (y2, k2, 25.0, 24, 15),
-        (y1, k1, 30.0, 24, 15)
+        (y1, k1, 35.0, 24, 15)
     ]
     
     toplam_long_puan = 0.0
     toplam_short_puan = 0.0
     agirlikli_y_yuzde = 0.0
     
-    # Ağırlıklar
-    agirliklar = [0.07, 0.13, 0.25, 0.25, 0.30]
+    agirliklar = [0.07, 0.13, 0.20, 0.25, 0.35]
     
     for idx, (y, k, max_puan, tam_onay, yari_onay) in enumerate(dilimler):
         sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay)
@@ -309,7 +306,6 @@ def kurgusal_matris_hesapla(coin_symbol):
                 
         nihai_puan = round(max(0.0, min(100.0, nihai_puan)), 1)
 
-    # Nötr Eşiği 45 Puan Olarak Güncellendi
     if nihai_puan < 45.0:
         aktif_yon = "Nötr"
         
@@ -679,7 +675,6 @@ for data in coin_ham_veriler:
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    # 2 Ledli Yapı (C ve T)
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_durum_led}{t_durum_led}</div><div style="font-size: 10px; font-weight: 500;">C:{c_durum_led} | T:{t_durum_led}</div></div>'
     
     if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">(Nötr)</span></div>'

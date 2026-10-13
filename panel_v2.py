@@ -224,21 +224,23 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     k_yedek = toplam_bar - y_yedek
     return y_yedek, k_yedek
 
-def hesapla_zaman_dilimi_puan(y, k, max_puan):
+def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
     toplam = y + k
     if toplam <= 0: return 0.0, 0.0, 50.0
     r_y = y / toplam
     r_k = k / toplam
     
-    if r_y <= 0.5:
-        s_long = max_puan * 0.4 * r_y
+    # Long Puanı
+    if y >= hedef_onay:
+        s_long = tam_max
     else:
-        s_long = max_puan * (0.2 + 1.8 * (r_y - 0.5))
+        s_long = tam_max * (y / hedef_onay) if hedef_onay > 0 else 0.0
         
-    if r_k <= 0.5:
-        s_short = max_puan * 0.4 * r_k
+    # Short Puanı
+    if k >= hedef_onay:
+        s_short = tam_max
     else:
-        s_short = max_puan * (0.2 + 1.8 * (r_k - 0.5))
+        s_short = tam_max * (k / hedef_onay) if hedef_onay > 0 else 0.0
         
     return s_long, s_short, r_y * 100.0
 
@@ -246,12 +248,11 @@ def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
     if coin_symbol == 'TOTAL':
-        # 16S, 8S, 4S, 2S, 1S periyotlarına denk gelen bar adetleri (5 dk aralıklarla: 192, 96, 48, 24, 12 bar)
-        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 192) # 16 Saat
-        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)    # 8 Saat
-        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)    # 4 Saat
-        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 24)    # 2 Saat
-        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 12)    # 1 Saat
+        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 192)
+        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)
+        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)
+        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 24)
+        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 12)
     else:
         y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
         y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
@@ -259,31 +260,31 @@ def kurgusal_matris_hesapla(coin_symbol):
         y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
         y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
+    # 1. Senaryo (Tam kapasite ve 192/96/48 vb. arama) veya 2. Senaryo (Yarı kapasite ve 120/60/30 arama)
+    # İstediğiniz orijinal kurgu parametreleri:
+    # 16 Saat: 240 bar üzerinden 192 onay (Değer: 6) veya 120 onay (Değer: 1.5)
+    # Burada kullanıcının belirttiği iki setin birincisini veya ikincisini baz alabiliriz. 
+    # İlk setteki tam puanlar toplamı: 6 + 16 + 44 + 62 + 72 = 200 puan tam eşiktir.
     dilimler = [
-        (y16, k16, 6.0, 0.03),
-        (y8, k8, 16.0, 0.08),
-        (y4, k4, 44.0, 0.22),
-        (y2, k2, 62.0, 0.31),
-        (y1, k1, 72.0, 0.36)
+        (y16, k16, 6.0, 192, 0.03),
+        (y8, k8, 16.0, 192, 0.08),
+        (y4, k4, 44.0, 192, 0.22),
+        (y2, k2, 62.0, 96, 0.31),
+        (y1, k1, 72.0, 48, 0.36)
     ]
     
     toplam_long = 0.0
     toplam_short = 0.0
     agirlikli_y_yuzde = 0.0
     
-    for y, k, max_p, agirlik in dilimler:
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan(y, k, max_p)
+    for y, k, max_p, onay_hedefi, agirlik in dilimler:
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_orijinal(y, k, max_p, onay_hedefi)
         toplam_long += sl
         toplam_short += ss
         agirlikli_y_yuzde += ry_yuzde * agirlik
         
     nihai_long = round(max(0.0, min(200.0, toplam_long)), 1)
     nihai_short = round(max(0.0, min(200.0, toplam_short)), 1)
-    
-    if 'trend_hafiza' not in st.session_state: st.session_state['trend_hafiza'] = {}
-    onceki_y_yuzde = st.session_state['trend_hafiza'].get(coin_symbol, agirlikli_y_yuzde)
-    agirlikli_y_yuzde = (onceki_y_yuzde * 0.85) + (agirlikli_y_yuzde * 0.15)
-    st.session_state['trend_hafiza'][coin_symbol] = agirlikli_y_yuzde
     
     if toplam_long >= toplam_short:
         nihai_puan = nihai_long
@@ -292,6 +293,38 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = nihai_short
         aktif_yon = "Short"
         
+    # --- RSI KORELASYON ETKİSİ (PUAN MODÜLASYONU) ---
+    df_m = load_5min_market_data(coin_symbol)
+    if not df_m.empty and len(df_m) >= 14:
+        delta = df_m['Close'].diff()
+        rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
+        
+        son_rsi = df_m['RSI'].iloc[-1]
+        son_fiyat = df_m['Close'].iloc[-1]
+        ilk_fiyat = df_m['Close'].iloc[0]
+        fiyat_degisim_oran = (son_fiyat - ilk_fiyat) / ilk_fiyat if ilk_fiyat > 0 else 0.0
+        
+        # RSI normalizasyonu (0-100 arası RSI değerini fiyat değişim oranına göre ölçekleme)
+        rsi_oran = son_rsi / 100.0
+        
+        # Long yönündeyse ve RSI momentumu destekliyorsa (+) etki, aksi halde (-) etki
+        # Short yönündeyse ve RSI düşükse (+) etki, aksi halde (-) etki
+        korelasyon_farki = (rsi_oran - 0.5) * 10.0 # ±5 puana kadar modülasyon
+        
+        if aktif_yon == "Long":
+            if son_rsi > 50.0:
+                nihai_puan += abs(korelasyon_farki)
+            else:
+                nihai_puan -= abs(korelasyon_farki)
+        elif aktif_yon == "Short":
+            if son_rsi < 50.0:
+                nihai_puan += abs(korelasyon_farki)
+            else:
+                nihai_puan -= abs(korelasyon_farki)
+                
+        nihai_puan = round(max(0.0, min(200.0, nihai_puan)), 1)
+
     if nihai_puan < 50.0:
         aktif_yon = "Nötr"
         
@@ -590,7 +623,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Revize Matris Puanı)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Orijinal Matris & RSI Korelasyonu)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -622,15 +655,15 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-if t_puan_val >= 100.0:
-    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
-    else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
+if t_puan_val >= 125.0:
+    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
+    else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 100)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
-        gmail_bildirim_gonder(f"🚨 Total Market Sermaye Alarmı: {total_sermaye_durumu}!", m_icerik)
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Güçlü Trend Eşiği: 125)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        gmail_bildirim_gonder(f"🚨 Total Market Güçlü Trend Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
 islenen_veriler = []
@@ -648,7 +681,7 @@ for data in coin_ham_veriler:
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 90.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 125.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
@@ -672,7 +705,7 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 120.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 150.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
@@ -746,7 +779,6 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-# İSTENEN [0.9, 3.0, 0.9] ORANLI YENİ KOLON YERLEŞİMİ
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.9, 3.0, 0.9])
 
 with col_sol_panel:
@@ -766,7 +798,6 @@ with col_sol_panel:
 
     onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
-    # Matrisin önerdiği oran ve tutar bilgi paneli
     st.markdown(f"""
         <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
             <b>💡 Matris Önerisi:</b><br>
@@ -775,7 +806,6 @@ with col_sol_panel:
         </div>
     """, unsafe_allow_html=True)
 
-    # Form kullanarak tutar girildiğinde anlık sayfa yenilenmesini engelliyoruz
     with st.form(key="manuel_islem_formu"):
         manuel_girilen_tutar = st.number_input(
             "Tutar ($ Giriniz):", 
@@ -787,7 +817,6 @@ with col_sol_panel:
 
         st.markdown(f"🟢 **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-        # Sadece butona basıldığında veriler işleme alınır
         submit_islem = st.form_submit_button("🚀 İşlemi Başlat", use_container_width=True)
 
         if submit_islem:
@@ -861,7 +890,7 @@ with col_sag_endeks:
     
     def pd_hesap(bar): return ((float(t_df.iloc[-1]['Close']) - float(t_df.iloc[-bar]['Open'])) / float(t_df.iloc[-bar]['Open']) * 100.0) if t_df is not None and len(t_df) >= bar else 0.0
     
-    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(192)), ("12 S", pd_hesap(144)), ("8 S", pd_hesap(96)), ("2 S", pd_hesap(24)), ("1 S", pd_hesap(12))]])
+    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(192)), ("8 S", pd_hesap(96)), ("4 S", pd_hesap(48)), ("2 S", pd_hesap(24)), ("1 S", pd_hesap(12))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 
@@ -909,7 +938,6 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             st.session_state['sadece_aktifleri_goster'] = False
             st.rerun()
         
-        # Duruma göre blok içi bilgilendirme metni
         if st.session_state['sadece_aktifleri_goster']: 
             st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
         else:

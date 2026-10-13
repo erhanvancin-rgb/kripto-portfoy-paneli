@@ -227,9 +227,11 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
 
 def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay):
     toplam = y + k
-    if toplam <= 0: return 50.0, 50.0, 50.0
-    r_y = y / toplam
-    r_k = k / toplam
+    if toplam <= 0: return 0.0, 0.0, 50.0
+    
+    # Gerçek yeşil ve kırmızı bar yüzdelerini hesaplıyoruz
+    r_y = (y / toplam) * 100.0
+    r_k = (k / toplam) * 100.0
     
     # Long Puanı Hesabı
     if y >= tam_onay:
@@ -247,7 +249,7 @@ def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
     else:
         s_short = (yari_max * (k / yari_onay)) if yari_onay > 0 else 0.0
         
-    return s_long, s_short, r_y * 100.0
+    return s_long, s_short, r_y
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)

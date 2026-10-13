@@ -784,9 +784,9 @@ with col_sol_panel:
     
     manuel_girilen_tutar = st.number_input(
         "Tutar ($):", 
-        0.0, 
-        float(max(100.0, mevcut_bakiye)), 
-        value=st.session_state['islem_tutar_val'], 
+        min_value=0.0, 
+        max_value=999999.0, 
+        value=float(st.session_state['islem_tutar_val']), 
         key='number_tutar', 
         on_change=tutar_guncelle
     )

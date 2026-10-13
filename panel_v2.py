@@ -136,7 +136,6 @@ def fiyat_cek_coinbase(coin_symbol):
     
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-# Önbellek kilitlenmesini önlemek için TTL süresi 30 saniyeye düşürüldü
 @st.cache_data(ttl=30)
 def load_5min_market_data(coin_symbol: str):
     limit = 480
@@ -180,7 +179,7 @@ def load_5min_market_data(coin_symbol: str):
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
     base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
-    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32) # Sabit kalmaması için zamana bağlı seed
+    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
     close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
     open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
     high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
@@ -284,24 +283,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = nihai_short
         aktif_yon = "Short"
         
-    df_m = load_5min_market_data(coin_symbol)
-    if not df_m.empty and len(df_m) >= 14:
-        delta = df_m['Close'].diff()
-        rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
-        
-        son_rsi = df_m['RSI'].iloc[-1]
-        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 6.0
-        
-        if aktif_yon == "Long":
-            if son_rsi > 50.0: nihai_puan += abs(korelasyon_farki)
-            else: nihai_puan -= abs(korelasyon_farki)
-        elif aktif_yon == "Short":
-            if son_rsi < 50.0: nihai_puan += abs(korelasyon_farki)
-            else: nihai_puan -= abs(korelasyon_farki)
-                
-        nihai_puan = round(max(0.0, min(100.0, nihai_puan)), 1)
-
+    # RSI etkisi kaldırıldı, doğrudan düz puanlama ve ivmesel ağırlıklar baz alınıyor.
     if nihai_puan < 45.0:
         aktif_yon = "Nötr"
         
@@ -600,7 +582,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (90 Saniye Periyot & İvmesel Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (90 Saniye Periyot & Saf Matris Puanı)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False

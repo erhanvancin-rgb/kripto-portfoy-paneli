@@ -741,7 +741,7 @@ st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_htm
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([0.9, 3.0, 0.9])
 
 with col_sol_panel:
-    st.markdown("### 🚀 İşlem Emri Ver")
+    st.markdown("<h3 style='font-size: 22px; white-space: nowrap; margin-bottom: 0px;'>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
@@ -787,9 +787,6 @@ with col_sol_panel:
             elif coin_verisii is not None and coin_verisii['Notr']:
                 st.error("⚠️ Nötr coin!")
             elif coin_verisii is not None:
-                # Manuel girilen tutara göre anlık oranı yüzdesel olarak hesaplıyoruz
-                hesaplanan_oran = min(100.0, max(0.0, (manuel_girilen_tutar / mevcut_bakiye) * 100.0)) if mevcut_bakiye > 0 else 0.0
-                
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 
                     coin_verisii['Aktif_Yon'], 

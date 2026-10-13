@@ -193,8 +193,10 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     if coin_symbol == 'TOTAL':
         df_m = load_5min_market_data('TOTAL')
         yesil, kirmizi = 0, 0
-        if not df_m.empty and len(df_m) >= toplam_bar:
-            for _, row in df_m.tail(toplam_bar).iterrows():
+        if not df_m.empty:
+            # Mevcut veri uzunluğuna göre güvenli dilim al
+            alt_df = df_m.tail(toplam_bar)
+            for _, row in alt_df.iterrows():
                 if row['Close'] > row['Open']: yesil += 1
                 elif row['Close'] < row['Open']: kirmizi += 1
             if (yesil + kirmizi) > 0: return yesil, kirmizi
@@ -204,7 +206,8 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={bar_saniye}"
+        # Coinbase candles endpoint isteği
+        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
@@ -859,8 +862,10 @@ with col_sag_endeks:
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
     def pd_hesap(bar_sayisi): 
-        if t_df is not None and not t_df.empty and len(t_df) >= bar_sayisi:
-            ilk_fiyat = float(t_df.iloc[-bar_sayisi]['Open'])
+        if t_df is not None and not t_df.empty:
+            mevcut_uzunluk = len(t_df)
+            hedef_index = max(0, mevcut_uzunluk - bar_sayisi)
+            ilk_fiyat = float(t_df.iloc[hedef_index]['Open'])
             son_fiyat = float(t_df.iloc[-1]['Close'])
             if ilk_fiyat > 0:
                 return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0

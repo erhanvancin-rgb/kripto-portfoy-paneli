@@ -253,12 +253,12 @@ def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Yeni 200 Puanlık Kurgu Eşikleri:
-    # 16 Saat (Max 14 Puan, Tam Onay 60 bar)
-    # 8 Saat (Max 26 Puan, Tam Onay 30 bar)
-    # 4 Saat (Max 40 Puan, Tam Onay 30 bar)
-    # 2 Saat (Max 50 Puan, Tam Onay 30 bar)
-    # 1 Saat (Max 70 Puan, Tam Onay 30 bar)
+    # Doğru Zaman Dilimi ve Led Kurgusu:
+    # 16 Saat: 16m x 60 bar (Max 14 Puan, Tam Onay 60)
+    # 8 Saat:  16m x 30 bar (Max 26 Puan, Tam Onay 30)
+    # 4 Saat:  8m  x 30 bar (Max 40 Puan, Tam Onay 30)
+    # 2 Saat:  4m  x 30 bar (Max 50 Puan, Tam Onay 30)
+    # 1 Saat:  2m  x 30 bar (Max 70 Puan, Tam Onay 30)
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
@@ -287,7 +287,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     nihai_long = round(max(0.0, min(200.0, toplam_long_puan)), 2)
     nihai_short = round(max(0.0, min(200.0, toplam_short_puan)), 2)
     
-    # 200 üzerinden hesaplanan puanı 100'lük sisteme ölçeklendiriyoruz (Gösterge standartlığı için)
     if nihai_long >= nihai_short:
         nihai_puan = round(nihai_long / 2.0, 1)
         aktif_yon = "Long"
@@ -295,8 +294,8 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = round(nihai_short / 2.0, 1)
         aktif_yon = "Short"
         
-    # Nötr Eşiği: 50 Puanın altı
-    if nihai_puan < 50.0:
+    # Nötr Sınırı: 40 Puanın altı
+    if nihai_puan < 40.0:
         aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde
@@ -462,7 +461,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 50.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (50 puan altı) işlem açılamaz!"
+    if matris_puan < 40.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (40 puan altı) işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -626,15 +625,15 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-if t_puan_val >= 75.0:
-    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
-    else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
+if t_puan_val >= 50.0:
+    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
+    else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Güçlü Trend Eşiği: 75)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
-        gmail_bildirim_gonder(f"🚨 Total Market Güçlü Trend Alarmı: {total_sermaye_durumu}!", m_icerik)
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Eşik: 50)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        gmail_bildirim_gonder(f"🚨 Total Market Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 total_puan_val = total_ham_veri["nihai_puan"]
 total_yon_val = total_ham_veri["aktif_yon"]
@@ -644,19 +643,19 @@ for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, y_yuzde, anlik_fiyat, stop_uzde = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["y_yuzde"], data["anlik_fiyat"], data["stop_uzde"]
     hedef_carpan, gunluk_oran, k_yuzde = data["hedef_carpan"], data["gunluk_oran"], 100.0 - y_yuzde
     
-    c_durum_led = "🟢" if (nihai_puan >= 50.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 50.0 and aktif_yon == "Short") else "🟡")
-    t_durum_led = "🟢" if (total_puan_val >= 50.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 50.0 and total_yon_val == "Short") else "🟡")
+    c_durum_led = "🟢" if (nihai_puan >= 40.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 40.0 and aktif_yon == "Short") else "🟡")
+    t_durum_led = "🟢" if (total_puan_val >= 40.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 40.0 and total_yon_val == "Short") else "🟡")
     
     y_gorsel, k_gorsel = max(0, min(10, int(round(y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(y_yuzde / 10.0))))
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
+    is_notr = (nihai_puan < 40.0 or aktif_yon == "Nötr")
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan >= 75.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan >= 50.0 else f"{aktif_yon_turu} (Onaylı)"
         
-    if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
+    if nihai_puan >= 50.0 and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
         gmail_bildirim_gonder(f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
 
@@ -673,12 +672,12 @@ for data in coin_ham_veriler:
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
     
-    if "Güçlü Trend" in trend: yon_html = f'<div style="background-color: {"#00FF00" if "Long" in trend else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">🔥 {trend}</div>'
+    if nihai_puan >= 50.0: yon_html = f'<div style="background-color: {"#00FF00" if "Long" in aktif_yon_turu else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">🔥 Güçlü Trend {aktif_yon_turu}</div>'
     elif "Long" in trend: yon_html = f'<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(100.0, nihai_puan)) - 50.0) / 50.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(40.0, min(100.0, nihai_puan)) - 40.0) / 60.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
@@ -853,16 +852,15 @@ with col_orta_grafik:
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
             fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b><br><b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
-        # X ekseni sıkışmasını önleyen optimize edilmiş ayarlar
         fig_total.update_layout(
             template="plotly_white", 
             margin=dict(t=10, b=30, l=5, r=55), 
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman], 
-                dtick=7200000, # 2 saatlik aralıklarla etiket gösterimi (sıkışmayı önler)
+                dtick=7200000, 
                 tickformat="%H:%M",
-                tickangle=25  # Etiketlere hafif açı vererek üst üste binmeyi engeller
+                tickangle=25
             ), 
             yaxis=dict(showticklabels=False, range=[min_f * 0.999, max_f * 1.001]), 
             xaxis_rangeslider_visible=False, 
@@ -890,6 +888,12 @@ with col_sag_endeks:
                 return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
         return 0.0
     
+    # Doğru süre ve bar sayıları ile eşleştirilmiş Total Market Sağ Panel Yüzdeleri:
+    # 16 S: 16m x 60 bar (16 Saatlik periyot) -> 480 bar (2 dakikalık bazda)
+    # 8 S:  16m x 30 bar (8 Saatlik periyot)  -> 240 bar
+    # 4 S:  8m  x 30 bar (4 Saatlik periyot)  -> 120 bar
+    # 2 S:  4m  x 30 bar (2 Saatlik periyot)  -> 60 bar
+    # 1 S:  2m  x 30 bar (1 Saatlik periyot)  -> 30 bar
     boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)

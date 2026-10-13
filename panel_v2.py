@@ -168,7 +168,7 @@ def load_5min_market_data(coin_symbol: str):
         cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
         headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
         try:
-            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=120"
+            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
             r = requests.get(url, headers=headers, timeout=15.0)
             if r.status_code == 200:
                 data = r.json()
@@ -182,7 +182,7 @@ def load_5min_market_data(coin_symbol: str):
                     if not df.empty: return df
         except: pass
     
-    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
+    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='5min')
     base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
     np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
@@ -253,24 +253,24 @@ def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Doğru Zaman Dilimi ve Led Kurgusu:
-    # 16 Saat: 16m x 60 bar (Max 14 Puan, Tam Onay 60)
-    # 8 Saat:  16m x 30 bar (Max 26 Puan, Tam Onay 30)
-    # 4 Saat:  8m  x 30 bar (Max 40 Puan, Tam Onay 30)
-    # 2 Saat:  4m  x 30 bar (Max 50 Puan, Tam Onay 30)
-    # 1 Saat:  2m  x 30 bar (Max 70 Puan, Tam Onay 30)
-    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
-    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
-    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
-    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 30)
-    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 30)
+    # Güncellenen Kesin Bar ve Saniye Kurgusu:
+    # 16 Saat: 15dk (900s) x 64 bar (Max 14 Puan, Tam Onay 64)
+    # 8 Saat:  5dk  (300s) x 96 bar (Max 26 Puan, Tam Onay 96)
+    # 4 Saat:  5dk  (300s) x 48 bar (Max 40 Puan, Tam Onay 48)
+    # 2 Saat:  1dk  (60s)  x 120 bar (Max 50 Puan, Tam Onay 120)
+    # 1 Saat:  1dk  (60s)  x 60 bar  (Max 70 Puan, Tam Onay 60)
+    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 900, 64)
+    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)
+    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)
+    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
+    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
     dilimler = [
-        (y16, k16, 14.0, 60),
-        (y8, k8, 26.0, 30),
-        (y4, k4, 40.0, 30),
-        (y2, k2, 50.0, 30),
-        (y1, k1, 70.0, 30)
+        (y16, k16, 14.0, 64),
+        (y8, k8, 26.0, 96),
+        (y4, k4, 40.0, 48),
+        (y2, k2, 50.0, 120),
+        (y1, k1, 70.0, 60)
     ]
     
     toplam_long_puan = 0.0
@@ -593,7 +593,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (200 Puanlık Hibrit Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (200 Puanlık Kesin Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -888,13 +888,7 @@ with col_sag_endeks:
                 return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
         return 0.0
     
-    # Doğru süre ve bar sayıları ile eşleştirilmiş Total Market Sağ Panel Yüzdeleri:
-    # 16 S: 16m x 60 bar (16 Saatlik periyot) -> 480 bar (2 dakikalık bazda)
-    # 8 S:  16m x 30 bar (8 Saatlik periyot)  -> 240 bar
-    # 4 S:  8m  x 30 bar (4 Saatlik periyot)  -> 120 bar
-    # 2 S:  4m  x 30 bar (2 Saatlik periyot)  -> 60 bar
-    # 1 S:  2m  x 30 bar (1 Saatlik periyot)  -> 30 bar
-    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
+    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(64)), ("8 S", pd_hesap(96)), ("4 S", pd_hesap(48)), ("2 S", pd_hesap(120)), ("1 S", pd_hesap(60))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 

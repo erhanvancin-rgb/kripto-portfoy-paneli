@@ -745,38 +745,50 @@ with col_sol_panel:
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
 
-    secilen_coin = st.selectbox("Coin Seç:", coin_listesi, key="hizli_coin_secim") if coin_listesi else None
-    if not coin_listesi: st.warning("Uygun coin yok.")
+    # Form kullanarak her widget değişiminde sayfanın yenilenmesini engelliyoruz
+    with st.form(key="hizli_islem_formu"):
+        secilen_coin = st.selectbox("Coin Seç:", coin_listesi) if coin_listesi else None
+        if not coin_listesi: 
+            st.warning("Uygun coin yok.")
 
-    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 2,0", None
-    if secilen_coin:
-        coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
-        onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii['Sepet_Orani']), float(coin_verisii['Skor']), coin_verisii['Risk_Hedef_Metin']
+        onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 2,0", None
+        if secilen_coin:
+            coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
+            onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii['Sepet_Orani']), float(coin_verisii['Skor']), coin_verisii['Risk_Hedef_Metin']
 
-    if 'last_selected_coin' not in st.session_state or st.session_state['last_selected_coin'] != secilen_coin:
-        st.session_state.update({'last_selected_coin': secilen_coin, 'hizli_oran_slider': onerilen_oran_val, 'hizli_manuel_tutar_input': round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)})
+        oran_slider = st.slider("Oran (%):", 0.0, 100.0, float(onerilen_oran_val))
+        hesaplanan_tutar = round(mevcut_bakiye * (oran_slider / 100.0), 2)
+        manuel_girilen_tutar = st.number_input("Tutar ($):", 0.0, float(max(100.0, mevcut_bakiye)), float(hesaplanan_tutar))
 
-    st.slider("Oran (%):", 0.0, 100.0, 0.5, key="hizli_oran_slider", on_change=lambda: st.session_state.update({'hizli_manuel_tutar_input': round(mevcut_bakiye * (st.session_state['hizli_oran_slider'] / 100.0), 2)}))
-    manuel_girilen_tutar = st.number_input("Tutar ($):", 0.0, float(max(100.0, mevcut_bakiye)), 10.0, key="hizli_manuel_tutar_input")
+        st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-    st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+        # Sadece butona basıldığında işlemler tetiklenecek
+        submit_islem = st.form_submit_button("🚀 İşlemi Başlat", use_container_width=True)
 
-    if st.button("🚀 İşlemi Başlat", use_container_width=True, key="hizli_islem_btn"):
-        if coin_verisii is not None and coin_verisii['Notr']: st.error("⚠️ Nötr coin!")
-        elif coin_verisii is not None:
-            basari, mesaj = yeni_islem_ekle(
-                secilen_coin, 
-                coin_verisii['Aktif_Yon'], 
-                coin_verisii['Fiyat'], 
-                manuel_girilen_tutar, 
-                coin_verisii['Stopla'], 
-                coin_verisii['Kar_Al'], 
-                "Matris Kurgusu", 
-                anlik_matris_puani, 
-                anlik_risk_hedef_metin
-            )
-            if basari: st.success(mesaj); st.balloons(); time.sleep(1); st.rerun()
-            else: st.error(mesaj)
+        if submit_islem:
+            if not secilen_coin or coin_listesi == []:
+                st.error("⚠️ Geçerli bir coin seçmelisiniz!")
+            elif coin_verisii is not None and coin_verisii['Notr']: 
+                st.error("⚠️ Nötr konumdaki coinlere işlem açılamaz!")
+            elif coin_verisii is not None:
+                basari, mesaj = yeni_islem_ekle(
+                    secilen_coin, 
+                    coin_verisii['Aktif_Yon'], 
+                    coin_verisii['Fiyat'], 
+                    manuel_girilen_tutar, 
+                    coin_verisii['Stopla'], 
+                    coin_verisii['Kar_Al'], 
+                    "Matris Kurgusu", 
+                    anlik_matris_puani, 
+                    anlik_risk_hedef_metin
+                )
+                if basari: 
+                    st.success(mesaj)
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
+                else: 
+                    st.error(mesaj)
 
 with col_orta_grafik:
     st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")

@@ -184,8 +184,8 @@ def load_5min_market_data(coin_symbol: str):
 
 def calculate_coin_atr_metrics(df, skor):
     stop_pct = 0.70
-    s_sinirli = max(0.0, min(200.0, abs(skor)))
-    t = s_sinirli / 200.0
+    s_sinirli = max(0.0, min(100.0, abs(skor)))
+    t = s_sinirli / 100.0
     hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
@@ -258,18 +258,18 @@ def kurgusal_matris_hesapla(coin_symbol):
         y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
         y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
-    # Yeni Güncellenmiş 4 Saat Odaklı Puan ve Ağırlık Kurgusu:
-    # 16 Saat: 14 puan (%7 ağırlık), 192 onay hedefi
-    # 8 Saat: 26 puan (%13 ağırlık), 192 onay hedefi
-    # 4 Saat: 70 puan (%35 ağırlık), 192 onay hedefi
-    # 2 Saat: 50 puan (%25 ağırlık), 96 onay hedefi
-    # 1 Saat: 40 puan (%20 ağırlık), 48 onay hedefi
+    # 100 Puan Tavanlı Yeni 4 Saat Odaklı Puan ve Ağırlık Kurgusu:
+    # 16 Saat: 7 puan (%7 ağırlık), 192 onay (yarı kapasite: 3.5 puan, 120 onay)
+    # 8 Saat: 13 puan (%13 ağırlık), 192 onay (yarı kapasite: 6.5 puan, 120 onay)
+    # 4 Saat: 35 puan (%35 ağırlık), 192 onay (yarı kapasite: 17.5 puan, 120 onay)
+    # 2 Saat: 25 puan (%25 ağırlık), 96 onay (yarı kapasite: 12.5 puan, 60 onay)
+    # 1 Saat: 20 puan (%20 ağırlık), 48 onay (yarı kapasite: 10 puan, 30 onay)
     dilimler = [
-        (y16, k16, 14.0, 192, 0.07),
-        (y8, k8, 26.0, 192, 0.13),
-        (y4, k4, 70.0, 192, 0.35),
-        (y2, k2, 50.0, 96, 0.25),
-        (y1, k1, 40.0, 48, 0.20)
+        (y16, k16, 7.0, 192, 0.07),
+        (y8, k8, 13.0, 192, 0.13),
+        (y4, k4, 35.0, 192, 0.35),
+        (y2, k2, 25.0, 96, 0.25),
+        (y1, k1, 20.0, 48, 0.20)
     ]
     
     toplam_long = 0.0
@@ -282,8 +282,8 @@ def kurgusal_matris_hesapla(coin_symbol):
         toplam_short += ss
         agirlikli_y_yuzde += ry_yuzde * agirlik
         
-    nihai_long = round(max(0.0, min(200.0, toplam_long)), 1)
-    nihai_short = round(max(0.0, min(200.0, toplam_short)), 1)
+    nihai_long = round(max(0.0, min(100.0, toplam_long)), 1)
+    nihai_short = round(max(0.0, min(100.0, toplam_short)), 1)
     
     if toplam_long >= toplam_short:
         nihai_puan = nihai_long
@@ -300,7 +300,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
         
         son_rsi = df_m['RSI'].iloc[-1]
-        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 10.0
+        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 5.0 # 100 puanlık tavana göre ölçekli modülasyon (±2.5 puan)
         
         if aktif_yon == "Long":
             if son_rsi > 50.0: nihai_puan += abs(korelasyon_farki)
@@ -309,7 +309,7 @@ def kurgusal_matris_hesapla(coin_symbol):
             if son_rsi < 50.0: nihai_puan += abs(korelasyon_farki)
             else: nihai_puan -= abs(korelasyon_farki)
                 
-        nihai_puan = round(max(0.0, min(200.0, nihai_puan)), 1)
+        nihai_puan = round(max(0.0, min(100.0, nihai_puan)), 1)
 
     if nihai_puan < 50.0:
         aktif_yon = "Nötr"
@@ -609,7 +609,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (4 Saat Odaklı Matris & RSI Korelasyonu)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puan Tavanlı 4 Saat Odaklı Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -641,14 +641,14 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-if t_puan_val >= 125.0:
+if t_puan_val >= 65.0:
     if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Güçlü Trend Eşiği: 125)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Güçlü Trend Eşiği: 65)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Total Market Güçlü Trend Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
@@ -667,11 +667,11 @@ for data in coin_ham_veriler:
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 125.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 65.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
-        gmail_bildirim_gonder(f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
+        gmail_bildirim_gonder(f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
 
     hedef_uzde = round(stop_uzde * hedef_carpan, 1)
     if aktif_yon_turu == "Long": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
@@ -680,8 +680,8 @@ for data in coin_ham_veriler:
         
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div><div style="font-size: 10px; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led}</div></div>'
     
-    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
-    else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
+    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">(Nötr)</span></div>'
+    else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
     
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
@@ -691,7 +691,7 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 150.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(100.0, nihai_puan)) - 50.0) / 50.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
@@ -878,7 +878,7 @@ with col_sag_endeks:
     
     boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(192)), ("8 S", pd_hesap(96)), ("4 S", pd_hesap(48)), ("2 S", pd_hesap(24)), ("1 S", pd_hesap(12))]])
     
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -994,7 +994,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
         kz_h = f'<div style="background-color: {"#00FF00" if row["Anlik_KZ_Deger"] >= 0 else "rgb(255, 75, 0)"}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{row["Anlik_KZ_Deger"]:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '145.2 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '65.2 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
 

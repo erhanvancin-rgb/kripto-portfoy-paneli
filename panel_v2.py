@@ -137,11 +137,11 @@ def fiyat_cek_coinbase(coin_symbol):
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
 @st.cache_data(ttl=30)
-def load_5min_market_data(coin_symbol: str):
+def load_15min_market_data(coin_symbol: str):
     limit = 64  # 16 saatlik kurgu için 15dk x 64 bar = 960 dk (16 saat)
     if coin_symbol == 'TOTAL':
         try:
-            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=2"
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 prices = r.json().get('prices', [])
@@ -168,7 +168,6 @@ def load_5min_market_data(coin_symbol: str):
         cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
         headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
         try:
-            # 16 saatlik 15dk barlar için granularity=900 (15 dakika)
             url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=900"
             r = requests.get(url, headers=headers, timeout=15.0)
             if r.status_code == 200:
@@ -187,35 +186,6 @@ def load_5min_market_data(coin_symbol: str):
     base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
     np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
-    close_prices = base_price + np.normal(0, vol_f, limit).cumsum() / 5 if hasattr(np, 'normal') else base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
-    open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
-    high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
-    low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.normal(0, vol_f/3, limit))
-    return pd.DataFrame({'timestamp': dates, 'Open': open_prices, 'High': high_prices, 'Low': low_prices, 'Close': close_prices})
-
-    if coin_symbol != 'TOTAL':
-        cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
-        cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-        try:
-            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
-            r = requests.get(url, headers=headers, timeout=15.0)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list) and len(data) > 0:
-                    df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_convert(TR_TZ)
-                    for col in ['Open', 'High', 'Low', 'Close']:
-                        df[col] = df[col].astype(float)
-                    df = df[(df['Close'] > 0) & (df['Open'] > 0)]
-                    df = df.sort_values('timestamp').tail(limit).reset_index(drop=True)
-                    if not df.empty: return df
-        except: pass
-    
-    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='5min')
-    base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
-    vol_f = base_price * 0.0005
-    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
     close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
     open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
     high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
@@ -231,7 +201,7 @@ def calculate_coin_atr_metrics(df, skor):
 
 def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     if coin_symbol == 'TOTAL':
-        df_m = load_5min_market_data('TOTAL')
+        df_m = load_15min_market_data('TOTAL')
         yesil, kirmizi = 0, 0
         if not df_m.empty:
             alt_df = df_m.tail(toplam_bar)
@@ -266,7 +236,7 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
 
 def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
     toplam = y + k
-    if toplam <= 0: return 0.0, 0.0, 50.0
+    if toplam <= 0: return 0.0, 0.0, 50.0, 0.0, 0.0
     r_y = (y / toplam) * 100.0
     
     def ivmeli_hesap_200(val, tam, t_max):
@@ -277,18 +247,18 @@ def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
 
     s_long = ivmeli_hesap_200(y, tam_onay, max_puan)
     s_short = ivmeli_hesap_200(k, tam_onay, max_puan)
+    
+    net_puan_katkisi = 0.0
+    if y >= k:
+        net_puan_katkisi = s_long - s_short if s_long > s_short else s_long
+    else:
+        net_puan_katkisi = -(s_short - s_long if s_short > s_long else s_short)
         
-    return s_long, s_short, r_y
+    return s_long, s_short, r_y, net_puan_katkisi, (y - k)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Güncellenen Kesin Bar ve Saniye Kurgusu:
-    # 16 Saat: 15dk (900s) x 64 bar (Max 14 Puan, Tam Onay 64)
-    # 8 Saat:  5dk  (300s) x 96 bar (Max 26 Puan, Tam Onay 96)
-    # 4 Saat:  5dk  (300s) x 48 bar (Max 40 Puan, Tam Onay 48)
-    # 2 Saat:  1dk  (60s)  x 120 bar (Max 50 Puan, Tam Onay 120)
-    # 1 Saat:  1dk  (60s)  x 60 bar  (Max 70 Puan, Tam Onay 60)
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 900, 64)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)
@@ -307,12 +277,15 @@ def kurgusal_matris_hesapla(coin_symbol):
     toplam_short_puan = 0.0
     agirlikli_y_yuzde = 0.0
     agirliklar = [0.07, 0.13, 0.20, 0.25, 0.35]
+    zaman_katkilari = {}
     
+    zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
     for idx, (y, k, max_puan, tam_onay) in enumerate(dilimler):
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay)
+        sl, ss, ry_yuzde, net_katki, fark_yk = hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay)
         toplam_long_puan += sl
         toplam_short_puan += ss
         agirlikli_y_yuzde += ry_yuzde * agirliklar[idx]
+        zaman_katkilari[zaman_isimleri[idx]] = net_katki
         
     nihai_long = round(max(0.0, min(200.0, toplam_long_puan)), 2)
     nihai_short = round(max(0.0, min(200.0, toplam_short_puan)), 2)
@@ -324,11 +297,11 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = round(nihai_short / 2.0, 1)
         aktif_yon = "Short"
         
-    # Nötr Sınırı: 40 Puanın altı
-    if nihai_puan < 40.0:
+    # Nötr Sınırı: 30 Puanın altı
+    if nihai_puan < 30.0:
         aktif_yon = "Nötr"
         
-    return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde
+    return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde, zaman_katkilari
 
 def google_sheets_baglan(sayfa_adi):
     try:
@@ -491,7 +464,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 40.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (40 puan altı) işlem açılamaz!"
+    if matris_puan < 30.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (30 puan altı) işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -637,17 +610,17 @@ islenen_ham_veriler = []
 ortak_fiyat_havuzu = {} 
 
 for sembol in tum_takip_edilenler:
-    anlik_fiyat, nihai_puan, aktif_yon, y_yuzde = kurgusal_matris_hesapla(sembol)
+    anlik_fiyat, nihai_puan, aktif_yon, y_yuzde, zaman_katkilari = kurgusal_matris_hesapla(sembol)
     if sembol == 'TOTAL': anlik_fiyat = 2.77e12
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
     
-    df_market = load_5min_market_data(sembol)
+    df_market = load_15min_market_data(sembol)
     stop_uzde, hedef_carpan = calculate_coin_atr_metrics(df_market, nihai_puan)
     if not df_market.empty and 'Open' in df_market.columns and 'Close' in df_market.columns:
         gunluk_oran = ((float(df_market.iloc[-1]['Close']) - float(df_market.iloc[0]['Open'])) / float(df_market.iloc[0]['Open'])) * 100.0
     else: gunluk_oran = 0.0
 
-    islenen_ham_veriler.append({"sembol": sembol, "anlik_fiyat": anlik_fiyat, "nihai_puan": nihai_puan, "aktif_yon": aktif_yon, "y_yuzde": y_yuzde, "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan, "gunluk_oran": gunluk_oran, "df_market": df_market})
+    islenen_ham_veriler.append({"sembol": sembol, "anlik_fiyat": anlik_fiyat, "nihai_puan": nihai_puan, "aktif_yon": aktif_yon, "y_yuzde": y_yuzde, "zaman_katkilari": zaman_katkilari, "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan, "gunluk_oran": gunluk_oran, "df_market": df_market})
 
 otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 
@@ -673,13 +646,13 @@ for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, y_yuzde, anlik_fiyat, stop_uzde = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["y_yuzde"], data["anlik_fiyat"], data["stop_uzde"]
     hedef_carpan, gunluk_oran, k_yuzde = data["hedef_carpan"], data["gunluk_oran"], 100.0 - y_yuzde
     
-    c_durum_led = "🟢" if (nihai_puan >= 40.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 40.0 and aktif_yon == "Short") else "🟡")
-    t_durum_led = "🟢" if (total_puan_val >= 40.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 40.0 and total_yon_val == "Short") else "🟡")
+    c_durum_led = "🟢" if (nihai_puan >= 30.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 30.0 and aktif_yon == "Short") else "🟡")
+    t_durum_led = "🟢" if (total_puan_val >= 30.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 30.0 and total_yon_val == "Short") else "🟡")
     
     y_gorsel, k_gorsel = max(0, min(10, int(round(y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(y_yuzde / 10.0))))
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    is_notr = (nihai_puan < 40.0 or aktif_yon == "Nötr")
+    is_notr = (nihai_puan < 30.0 or aktif_yon == "Nötr")
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
@@ -707,7 +680,7 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(40.0, min(100.0, nihai_puan)) - 40.0) / 60.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(30.0, min(100.0, nihai_puan)) - 30.0) / 70.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
@@ -849,7 +822,7 @@ with col_sol_panel:
 with col_orta_grafik:
     st.markdown("<h3>🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
-    t_df = t_df_ham.tail(64).reset_index(drop=True) # 15dk x 64 bar = 16 Saatlik Tam Görünüm
+    t_df = t_df_ham.tail(64).reset_index(drop=True)
     
     if not t_df.empty:
         delta = t_df['Close'].diff()
@@ -860,20 +833,12 @@ with col_orta_grafik:
         t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
         
         fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
-        min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max() + timedelta(hours=1)
+        min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max()
         
-        t_df_extended = t_df.copy()
-        yeni_zamanlar = pd.date_range(start=t_df_extended['timestamp'].iloc[-1] + timedelta(minutes=2), end=max_zaman, freq='2min')
-        if len(yeni_zamanlar) > 0:
-            ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
-            for col in ['Open', 'High', 'Low', 'Close', 'RSI_Norm']:
-                if col in t_df_extended.columns: ek_df[col] = t_df_extended[col].iloc[-1]
-            t_df_extended = pd.concat([t_df_extended, ek_df], ignore_index=True)
-
         fig_total = make_subplots(specs=[[{"secondary_y": True}]])
         
         for b_alt, b_ust, renk in [(0.0, 0.236, 'rgba(128, 0, 32, 0.16)'), (0.236, 0.382, 'rgba(180, 80, 0, 0.14)'), (0.382, 0.5, 'rgba(255, 255, 0, 0.18)'), (0.5, 0.618, 'rgba(255, 255, 0, 0.18)'), (0.618, 0.786, 'rgba(100, 180, 50, 0.15)'), (0.786, 1.0, 'rgba(0, 100, 0, 0.18)')]:
-            fig_total.add_trace(go.Scatter(x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]), y=[fib_levels[b_ust]] * len(t_df_extended) + [fib_levels[b_alt]] * len(t_df_extended), fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
+            fig_total.add_trace(go.Scatter(x=list(t_df['timestamp']) + list(t_df['timestamp'][::-1]), y=[fib_levels[b_ust]] * len(t_df) + [fib_levels[b_alt]] * len(t_df), fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
 
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')), secondary_y=False)
@@ -884,7 +849,7 @@ with col_orta_grafik:
 
         fig_total.update_layout(
             template="plotly_white", 
-            margin=dict(t=10, b=30, l=5, r=55), 
+            margin=dict(t=10, b=30, l=5, r=85), 
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman], 
@@ -892,7 +857,7 @@ with col_orta_grafik:
                 tickformat="%H:%M",
                 tickangle=25
             ), 
-            yaxis=dict(showticklabels=False, range=[min_f * 0.999, max_f * 1.001]), 
+            yaxis=dict(showticklabels=False, range=[min_f * 0.995, max_f * 1.005]), 
             xaxis_rangeslider_visible=False, 
             paper_bgcolor='rgba(0,0,0,0)', 
             plot_bgcolor='rgba(0,0,0,0)', 
@@ -906,19 +871,8 @@ with col_sag_endeks:
     t_y_gorsel, t_k_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(t_y_yuzde / 10.0))))
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
-    def pd_hesap(bar_sayisi): 
-        if t_df is not None and not t_df.empty:
-            toplam_satir = len(t_df)
-            if toplam_satir >= bar_sayisi:
-                ilk_fiyat = float(t_df.iloc[-bar_sayisi]['Open'])
-            else:
-                ilk_fiyat = float(t_df.iloc[0]['Open'])
-            son_fiyat = float(t_df.iloc[-1]['Close'])
-            if ilk_fiyat > 0:
-                return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
-        return 0.0
-    
-    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(64)), ("8 S", pd_hesap(96)), ("4 S", pd_hesap(48)), ("2 S", pd_hesap(120)), ("1 S", pd_hesap(60))]])
+    t_zaman_kat = total_ham_veri["zaman_katkilari"]
+    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etk}: {val:+,.2f} Puan</div>' for etk, val in t_zaman_kat.items()])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 

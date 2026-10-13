@@ -848,7 +848,10 @@ with col_sol_panel:
 
 with col_orta_grafik:
     st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")
-    t_df = total_ham_veri["df_market"]
+    t_df_ham = total_ham_veri["df_market"]
+    
+    # Grafiğin tam 16 saat (480 bar) göstermesini sağlıyoruz
+    t_df = t_df_ham.tail(480).reset_index(drop=True)
     
     delta = t_df['Close'].diff()
     rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()

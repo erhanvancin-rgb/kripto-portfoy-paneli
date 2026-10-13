@@ -755,69 +755,59 @@ with col_sol_panel:
         coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii['Sepet_Orani']), float(coin_verisii['Skor']), coin_verisii['Risk_Hedef_Metin']
 
-    # State tanımlamaları (İlk açılışta veya coin değişiminde varsayılan değerler)
-    if 'islem_oran_val' not in st.session_state:
-        st.session_state['islem_oran_val'] = float(onerilen_oran_val)
-    if 'islem_tutar_val' not in st.session_state:
-        st.session_state['islem_tutar_val'] = round(mevcut_bakiye * (float(onerilen_oran_val) / 100.0), 2)
+    onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
-    # Değişiklik tetikleyici fonksiyonlar (Slider ve Tutar karşılıklı senkronizasyon)
-    def oran_guncelle():
-        yeni_oran = st.session_state['slider_oran']
-        st.session_state['islem_oran_val'] = yeni_oran
-        st.session_state['islem_tutar_val'] = round(mevcut_bakiye * (yeni_oran / 100.0), 2)
+    # Matrisin önerdiği oran ve tutar bilgi paneli
+    st.markdown(f"""
+        <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
+            <b>💡 Matris Önerisi:</b><br>
+            • Oran: <b>%{onerilen_oran_val:.1f}</b><br>
+            • Tutar: <b>{onerilen_tutar_hesap:,.2f} $</b>
+        </div>
+    """, unsafe_allow_html=True)
 
-    def tutar_guncelle():
-        yeni_tutar = st.session_state['number_tutar']
-        st.session_state['islem_tutar_val'] = yeni_tutar
-        if mevcut_bakiye > 0:
-            st.session_state['islem_oran_val'] = min(100.0, max(0.0, round((yeni_tutar / mevcut_bakiye) * 100.0, 2)))
+    # Form kullanarak tutar girildiğinde anlık sayfa yenilenmesini engelliyoruz
+    with st.form(key="manuel_islem_formu"):
+        manuel_girilen_tutar = st.number_input(
+            "Tutar ($ Giriniz):", 
+            min_value=0.0, 
+            max_value=999999.0, 
+            value=float(onerilen_tutar_hesap), 
+            step=10.0
+        )
 
-    # Widget'lar (on_change ve value parametreleri ile birbirine kilitlenmiştir)
-    oran_slider = st.slider(
-        "Oran (%):", 
-        0.0, 100.0, 
-        value=st.session_state['islem_oran_val'], 
-        key='slider_oran', 
-        on_change=oran_guncelle
-    )
-    
-    manuel_girilen_tutar = st.number_input(
-        "Tutar ($):", 
-        min_value=0.0, 
-        max_value=999999.0, 
-        value=float(st.session_state['islem_tutar_val']), 
-        key='number_tutar', 
-        on_change=tutar_guncelle
-    )
+        st.markdown(f"🟢 **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-    st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
+        # Sadece butona basıldığında veriler işleme alınır
+        submit_islem = st.form_submit_button("🚀 İşlemi Başlat", use_container_width=True)
 
-    # Sadece butona basıldığında emir işleme alınır
-    if st.button("🚀 İşlemi Başlat", use_container_width=True):
-        if not secilen_coin or coin_listesi == []:
-            st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-        elif coin_verisii is not None and coin_verisii['Notr']:
-            st.error("⚠️ Nötr coin!")
-        elif coin_verisii is not None:
-            basari, mesaj = yeni_islem_ekle(
-                secilen_coin, 
-                coin_verisii['Aktif_Yon'], 
-                coin_verisii['Fiyat'], 
-                manuel_girilen_tutar, 
-                coin_verisii['Stopla'], 
-                coin_verisii['Kar_Al'], 
-                "Matris Kurgusu", 
-                anlik_matris_puani, 
-                anlik_risk_hedef_metin
-            )
-            if basari:
-                st.success(mesaj)
-                st.balloons()
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(mesaj)
+        if submit_islem:
+            if not secilen_coin or coin_listesi == []:
+                st.error("⚠️ Geçerli bir coin seçmelisiniz!")
+            elif coin_verisii is not None and coin_verisii['Notr']:
+                st.error("⚠️ Nötr coin!")
+            elif coin_verisii is not None:
+                # Manuel girilen tutara göre anlık oranı yüzdesel olarak hesaplıyoruz
+                hesaplanan_oran = min(100.0, max(0.0, (manuel_girilen_tutar / mevcut_bakiye) * 100.0)) if mevcut_bakiye > 0 else 0.0
+                
+                basari, mesaj = yeni_islem_ekle(
+                    secilen_coin, 
+                    coin_verisii['Aktif_Yon'], 
+                    coin_verisii['Fiyat'], 
+                    manuel_girilen_tutar, 
+                    coin_verisii['Stopla'], 
+                    coin_verisii['Kar_Al'], 
+                    "Matris Kurgusu", 
+                    anlik_matris_puani, 
+                    anlik_risk_hedef_metin
+                )
+                if basari:
+                    st.success(mesaj)
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(mesaj)
 
 with col_orta_grafik:
     st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")

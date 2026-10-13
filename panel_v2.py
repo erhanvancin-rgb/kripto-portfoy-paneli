@@ -250,18 +250,18 @@ def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     bar_sn = 120 if coin_symbol != 'TOTAL' else 120
     
-    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 480)
-    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 240)
-    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 120)
-    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
+    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
+    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
+    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
+    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
     
-    # Yeni Puanlama Kurgusu (Tam max, tam onay, yarı max, yarı onay)
+    # Yeni Güncellenmiş Kurgu (Tam max, tam onay, yarı max, yarı onay, ağırlık)
     dilimler = [
-        (y16, k16, 7.0, 384, 3.5, 240, 0.07),
-        (y8, k8, 13.0, 192, 6.5, 120, 0.13),
-        (y4, k4, 25.0, 96, 12.5, 60, 0.25),
-        (y2, k2, 25.0, 48, 12.5, 30, 0.25),
+        (y16, k16, 7.0, 48, 3.5, 240, 0.07),
+        (y8, k8, 13.0, 24, 6.5, 120, 0.13),
+        (y4, k4, 25.0, 24, 12.5, 60, 0.25),
+        (y2, k2, 25.0, 24, 12.5, 30, 0.25),
         (y1, k1, 30.0, 24, 15.0, 15, 0.30)
     ]
     

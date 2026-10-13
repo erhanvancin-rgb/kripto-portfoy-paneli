@@ -138,10 +138,10 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=30)
 def load_5min_market_data(coin_symbol: str):
-    limit = 480
+    limit = 64  # 16 saatlik kurgu için 15dk x 64 bar = 960 dk (16 saat)
     if coin_symbol == 'TOTAL':
         try:
-            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3"
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=2"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 prices = r.json().get('prices', [])
@@ -162,6 +162,36 @@ def load_5min_market_data(coin_symbol: str):
                     df_t = df_t[(df_t['Close'] > 0) & (df_t['Open'] > 0)].dropna()
                     return df_t[['timestamp', 'Open', 'High', 'Low', 'Close']].tail(limit).reset_index(drop=True)
         except: pass
+
+    if coin_symbol != 'TOTAL':
+        cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
+        cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
+        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+        try:
+            # 16 saatlik 15dk barlar için granularity=900 (15 dakika)
+            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=900"
+            r = requests.get(url, headers=headers, timeout=15.0)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and len(data) > 0:
+                    df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_convert(TR_TZ)
+                    for col in ['Open', 'High', 'Low', 'Close']:
+                        df[col] = df[col].astype(float)
+                    df = df[(df['Close'] > 0) & (df['Open'] > 0)]
+                    df = df.sort_values('timestamp').tail(limit).reset_index(drop=True)
+                    if not df.empty: return df
+        except: pass
+    
+    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='15min')
+    base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
+    vol_f = base_price * 0.0005
+    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
+    close_prices = base_price + np.normal(0, vol_f, limit).cumsum() / 5 if hasattr(np, 'normal') else base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
+    open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
+    high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
+    low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.normal(0, vol_f/3, limit))
+    return pd.DataFrame({'timestamp': dates, 'Open': open_prices, 'High': high_prices, 'Low': low_prices, 'Close': close_prices})
 
     if coin_symbol != 'TOTAL':
         cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}

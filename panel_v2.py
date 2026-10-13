@@ -909,14 +909,17 @@ with col_sag_endeks:
     
     def pd_hesap(bar_sayisi): 
         if t_df is not None and not t_df.empty:
-            mevcut_uzunluk = len(t_df)
-            hedef_index = max(0, mevcut_uzunluk - bar_sayisi)
-            ilk_fiyat = float(t_df.iloc[hedef_index]['Open'])
+            toplam_satir = len(t_df)
+            if toplam_satir >= bar_sayisi:
+                ilk_fiyat = float(t_df.iloc[-bar_sayisi]['Open'])
+            else:
+                ilk_fiyat = float(t_df.iloc[0]['Open']) # Yetersiz veri varsa başlangıcı al
             son_fiyat = float(t_df.iloc[-1]['Close'])
             if ilk_fiyat > 0:
                 return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
         return 0.0
     
+    # 16 S (480 bar), 8 S (240 bar), 4 S (120 bar), 2 S (60 bar), 1 S (30 bar)
     boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)

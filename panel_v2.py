@@ -21,8 +21,8 @@ from streamlit_autorefresh import st_autorefresh
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- OTOMATİK YENİLEME (90 SANİYE) ---
-st_autorefresh(interval=90000, key="kripto_panel_otomatik_yenileme")
+# --- OTOMATİK YENİLEME (60 SANİYE) ---
+st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
 
 # --- CSS STİLLERİ ---
 st.markdown("""

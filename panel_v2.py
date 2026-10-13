@@ -209,16 +209,13 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        # Coinbase API üzerinden istenen bar_saniye ve toplam_bar sayısına göre mum verilerini çekiyoruz
         url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={bar_saniye}"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
                 yesil, kirmizi = 0, 0
-                # Gelen veriyi istenen toplam bar adedince sınırlandırıyoruz
-                alt_data = data[:toplam_bar]
-                for bar in alt_data:
+                for bar in data[:toplam_bar]:
                     o, c = float(bar[3]), float(bar[4])
                     if c > o: yesil += 1
                     elif c < o: kirmizi += 1
@@ -226,49 +223,37 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
                     return yesil, kirmizi
     except: pass
     
-    # API'den veri alınamadığı durumlarda bile sabit %50 yerine coine özel küçük bir varyasyon üretelim ki kilitlenme olmasın
     np.random.seed(hash(coin_symbol + str(toplam_bar)) % 2**32)
     rastgele_yesil = int(toplam_bar * np.random.uniform(0.3, 0.7))
     rastgele_kirmizi = toplam_bar - rastgele_yesil
     return rastgele_yesil, rastgele_kirmizi
-    
-    return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
-def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay):
+def hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay):
     toplam = y + k
     if toplam <= 0: return 0.0, 0.0, 50.0
-    
-    # Gerçek yeşil ve kırmızı bar yüzdelerini hesaplıyoruz
     r_y = (y / toplam) * 100.0
-    r_k = (k / toplam) * 100.0
     
-    # Long Puanı Hesabı
-    if y >= tam_onay:
-        s_long = tam_max
-    elif y >= yari_onay:
-        s_long = yari_max
-    else:
-        s_long = (yari_max * (y / yari_onay)) if yari_onay > 0 else 0.0
-        
-    # Short Puanı Hesabı
-    if k >= tam_onay:
-        s_short = tam_max
-    elif k >= yari_onay:
-        s_short = yari_max
-    else:
-        s_short = (yari_max * (k / yari_onay)) if yari_onay > 0 else 0.0
+    # İvmesel (Üstel) Puan Hesaplama Fonksiyonu (0'dan başlatıp ivmeyle tavan puana ulaştırır)
+    def ivmeli_hesap(val, tam, yari, t_max):
+        if val <= 0: return 0.0
+        if val >= tam: return t_max
+        # Üstel (ivmesel) oran eğrisi
+        oran = (val / tam) ** 1.8
+        return t_max * oran
+
+    s_long = ivmeli_hesap(y, tam_onay, yari_onay, max_puan)
+    s_short = ivmeli_hesap(k, tam_onay, yari_onay, max_puan)
         
     return s_long, s_short, r_y
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    # Yeni kurguya uygun granülite ve bar sayıları:
-    # 16 Saat: 16m (960s) x 60 bar (Tam onay: 48, Yarı onay: 30) -> 7 puan
-    # 8 Saat: 16m (960s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 13 puan
-    # 4 Saat: 8m (480s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 25 puan
-    # 2 Saat: 4m (240s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 25 puan
-    # 1 Saat: 2m (120s) x 30 bar (Tam onay: 24, Yarı onay: 15) -> 30 puan
+    # 16 Saat: 16m (960s) x 60 bar (Tam: 48, Yarı: 30) -> Max 7 Puan
+    # 8 Saat: 16m (960s) x 30 bar (Tam: 24, Yarı: 15) -> Max 13 Puan
+    # 4 Saat: 8m (480s) x 30 bar (Tam: 24, Yarı: 15) -> Max 25 Puan
+    # 2 Saat: 4m (240s) x 30 bar (Tam: 24, Yarı: 15) -> Max 25 Puan
+    # 1 Saat: 2m (120s) x 30 bar (Tam: 24, Yarı: 15) -> Max 30 Puan
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
@@ -276,24 +261,26 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 30)
     
     dilimler = [
-        (y16, k16, 7.0, 48, 3.5, 30, 0.07),
-        (y8, k8, 13.0, 24, 6.5, 15, 0.13),
-        (y4, k4, 25.0, 24, 12.5, 15, 0.25),
-        (y2, k2, 25.0, 24, 12.5, 15, 0.25),
-        (y1, k1, 30.0, 24, 15.0, 15, 0.30)
+        (y16, k16, 7.0, 48, 30),
+        (y8, k8, 13.0, 24, 15),
+        (y4, k4, 25.0, 24, 15),
+        (y2, k2, 25.0, 24, 15),
+        (y1, k1, 30.0, 24, 15)
     ]
     
     toplam_long_puan = 0.0
     toplam_short_puan = 0.0
     agirlikli_y_yuzde = 0.0
     
-    for y, k, tam_max, tam_onay, yari_max, yari_onay, agirlik in dilimler:
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
+    # Ağırlıklar
+    agirliklar = [0.07, 0.13, 0.25, 0.25, 0.30]
+    
+    for idx, (y, k, max_puan, tam_onay, yari_onay) in enumerate(dilimler):
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay)
         toplam_long_puan += sl
         toplam_short_puan += ss
-        agirlikli_y_yuzde += ry_yuzde * agirlik
+        agirlikli_y_yuzde += ry_yuzde * agirliklar[idx]
         
-    # Puanların 50 tabanlı dengeli dağılımı (Dibe çakılmayı önleyen normalizasyon)
     nihai_long = round(max(0.0, min(100.0, toplam_long_puan)), 1)
     nihai_short = round(max(0.0, min(100.0, toplam_short_puan)), 1)
     
@@ -311,7 +298,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
         
         son_rsi = df_m['RSI'].iloc[-1]
-        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 5.0
+        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 6.0
         
         if aktif_yon == "Long":
             if son_rsi > 50.0: nihai_puan += abs(korelasyon_farki)
@@ -322,7 +309,8 @@ def kurgusal_matris_hesapla(coin_symbol):
                 
         nihai_puan = round(max(0.0, min(100.0, nihai_puan)), 1)
 
-    if nihai_puan < 50.0:
+    # Nötr Eşiği 45 Puan Olarak Güncellendi
+    if nihai_puan < 45.0:
         aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde
@@ -488,7 +476,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 50.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (50 puan altı) işlem açılamaz!"
+    if matris_puan < 45.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (45 puan altı) işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -653,7 +641,7 @@ total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
 if t_puan_val >= 75.0:
-    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
+    if t_yuzde_val >= 45.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
@@ -662,19 +650,21 @@ if t_puan_val >= 75.0:
         m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Güçlü Trend Eşiği: 75)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Total Market Güçlü Trend Alarmı: {total_sermaye_durumu}!", m_icerik)
 
-usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
+total_puan_val = total_ham_veri["nihai_puan"]
+total_yon_val = total_ham_veri["aktif_yon"]
 islenen_veriler = []
 
 for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, y_yuzde, anlik_fiyat, stop_uzde = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["y_yuzde"], data["anlik_fiyat"], data["stop_uzde"]
     hedef_carpan, gunluk_oran, k_yuzde = data["hedef_carpan"], data["gunluk_oran"], 100.0 - y_yuzde
     
-    c_durum_led = "🟢" if (nihai_puan >= 50.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 50.0 and aktif_yon == "Short") else "🟡")
-    u_durum_led = "🟢" if usdt_puan_ort >= 50.0 else "🟡"
+    c_durum_led = "🟢" if (nihai_puan >= 45.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 45.0 and aktif_yon == "Short") else "🟡")
+    t_durum_led = "🟢" if (total_puan_val >= 45.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 45.0 and total_yon_val == "Short") else "🟡")
+    
     y_gorsel, k_gorsel = max(0, min(10, int(round(y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(y_yuzde / 10.0))))
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
+    is_notr = (nihai_puan < 45.0 or aktif_yon == "Nötr")
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
@@ -689,7 +679,8 @@ for data in coin_ham_veriler:
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 2px;">{c_durum_led}{u_durum_led}{c_durum_led}</div><div style="font-size: 10px; font-weight: 500;">C:{c_durum_led} | U:{u_durum_led}</div></div>'
+    # 2 Ledli Yapı (C ve T)
+    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_durum_led}{t_durum_led}</div><div style="font-size: 10px; font-weight: 500;">C:{c_durum_led} | T:{t_durum_led}</div></div>'
     
     if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
@@ -702,7 +693,7 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(100.0, nihai_puan)) - 50.0) / 50.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(45.0, min(100.0, nihai_puan)) - 45.0) / 55.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({

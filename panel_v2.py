@@ -230,13 +230,11 @@ def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
     r_y = y / toplam
     r_k = k / toplam
     
-    # Long Puanı
     if y >= hedef_onay:
         s_long = tam_max
     else:
         s_long = tam_max * (y / hedef_onay) if hedef_onay > 0 else 0.0
         
-    # Short Puanı
     if k >= hedef_onay:
         s_short = tam_max
     else:
@@ -260,17 +258,18 @@ def kurgusal_matris_hesapla(coin_symbol):
         y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
         y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
-    # 1. Senaryo (Tam kapasite ve 192/96/48 vb. arama) veya 2. Senaryo (Yarı kapasite ve 120/60/30 arama)
-    # İstediğiniz orijinal kurgu parametreleri:
-    # 16 Saat: 240 bar üzerinden 192 onay (Değer: 6) veya 120 onay (Değer: 1.5)
-    # Burada kullanıcının belirttiği iki setin birincisini veya ikincisini baz alabiliriz. 
-    # İlk setteki tam puanlar toplamı: 6 + 16 + 44 + 62 + 72 = 200 puan tam eşiktir.
+    # Yeni Güncellenmiş 4 Saat Odaklı Puan ve Ağırlık Kurgusu:
+    # 16 Saat: 14 puan (%7 ağırlık), 192 onay hedefi
+    # 8 Saat: 26 puan (%13 ağırlık), 192 onay hedefi
+    # 4 Saat: 70 puan (%35 ağırlık), 192 onay hedefi
+    # 2 Saat: 50 puan (%25 ağırlık), 96 onay hedefi
+    # 1 Saat: 40 puan (%20 ağırlık), 48 onay hedefi
     dilimler = [
-        (y16, k16, 6.0, 192, 0.03),
-        (y8, k8, 16.0, 192, 0.08),
-        (y4, k4, 44.0, 192, 0.22),
-        (y2, k2, 62.0, 96, 0.31),
-        (y1, k1, 72.0, 48, 0.36)
+        (y16, k16, 14.0, 192, 0.07),
+        (y8, k8, 26.0, 192, 0.13),
+        (y4, k4, 70.0, 192, 0.35),
+        (y2, k2, 50.0, 96, 0.25),
+        (y1, k1, 40.0, 48, 0.20)
     ]
     
     toplam_long = 0.0
@@ -301,27 +300,14 @@ def kurgusal_matris_hesapla(coin_symbol):
         df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
         
         son_rsi = df_m['RSI'].iloc[-1]
-        son_fiyat = df_m['Close'].iloc[-1]
-        ilk_fiyat = df_m['Close'].iloc[0]
-        fiyat_degisim_oran = (son_fiyat - ilk_fiyat) / ilk_fiyat if ilk_fiyat > 0 else 0.0
-        
-        # RSI normalizasyonu (0-100 arası RSI değerini fiyat değişim oranına göre ölçekleme)
-        rsi_oran = son_rsi / 100.0
-        
-        # Long yönündeyse ve RSI momentumu destekliyorsa (+) etki, aksi halde (-) etki
-        # Short yönündeyse ve RSI düşükse (+) etki, aksi halde (-) etki
-        korelasyon_farki = (rsi_oran - 0.5) * 10.0 # ±5 puana kadar modülasyon
+        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 10.0
         
         if aktif_yon == "Long":
-            if son_rsi > 50.0:
-                nihai_puan += abs(korelasyon_farki)
-            else:
-                nihai_puan -= abs(korelasyon_farki)
+            if son_rsi > 50.0: nihai_puan += abs(korelasyon_farki)
+            else: nihai_puan -= abs(korelasyon_farki)
         elif aktif_yon == "Short":
-            if son_rsi < 50.0:
-                nihai_puan += abs(korelasyon_farki)
-            else:
-                nihai_puan -= abs(korelasyon_farki)
+            if son_rsi < 50.0: nihai_puan += abs(korelasyon_farki)
+            else: nihai_puan -= abs(korelasyon_farki)
                 
         nihai_puan = round(max(0.0, min(200.0, nihai_puan)), 1)
 
@@ -623,7 +609,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Orijinal Matris & RSI Korelasyonu)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (4 Saat Odaklı Matris & RSI Korelasyonu)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False

@@ -136,7 +136,8 @@ def fiyat_cek_coinbase(coin_symbol):
     
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-@st.cache_data(ttl=300)
+# Önbellek kilitlenmesini önlemek için TTL süresi 30 saniyeye düşürüldü
+@st.cache_data(ttl=30)
 def load_5min_market_data(coin_symbol: str):
     limit = 480
     if coin_symbol == 'TOTAL':
@@ -179,7 +180,7 @@ def load_5min_market_data(coin_symbol: str):
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
     base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
-    np.random.seed(hash(coin_symbol) % 2**32)
+    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32) # Sabit kalmaması için zamana bağlı seed
     close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
     open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
     high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
@@ -223,7 +224,7 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
                     return yesil, kirmizi
     except: pass
     
-    np.random.seed(hash(coin_symbol + str(toplam_bar)) % 2**32)
+    np.random.seed(int(time.time() // 60) + hash(coin_symbol + str(toplam_bar)) % 2**32)
     rastgele_yesil = int(toplam_bar * np.random.uniform(0.3, 0.7))
     rastgele_kirmizi = toplam_bar - rastgele_yesil
     return rastgele_yesil, rastgele_kirmizi
@@ -599,7 +600,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (2 Dakikalık Periyot & 75 Puan Güçlü Trend)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (90 Saniye Periyot & İvmesel Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -900,7 +901,6 @@ with col_sag_endeks:
 
 st.markdown("---")
 
-# --- ALT YÖNETİM VE PORTFÖY ALANI (HER KOŞULDA GÖRÜNÜR) ---
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist() if not df_gecmis.empty and 'Durum' in df_gecmis.columns else []
 

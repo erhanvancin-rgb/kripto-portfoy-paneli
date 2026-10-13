@@ -849,7 +849,7 @@ with col_sol_panel:
 with col_orta_grafik:
     st.markdown("<h3>🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
-    t_df = t_df_ham.tail(480).reset_index(drop=True)
+    t_df = t_df_ham.tail(64).reset_index(drop=True) # 15dk x 64 bar = 16 Saatlik Tam Görünüm
     
     if not t_df.empty:
         delta = t_df['Close'].diff()

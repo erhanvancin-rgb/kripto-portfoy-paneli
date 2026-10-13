@@ -230,7 +230,6 @@ def hesapla_zaman_dilimi_puan(y, k, max_puan):
     r_y = y / toplam
     r_k = k / toplam
     
-    # Kısa vadeye duyarlı agresif puan eğrisi
     if r_y <= 0.5:
         s_long = max_puan * 0.4 * r_y
     else:
@@ -246,11 +245,19 @@ def hesapla_zaman_dilimi_puan(y, k, max_puan):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
-    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
-    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
-    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    if coin_symbol == 'TOTAL':
+        # 16S, 8S, 4S, 2S, 1S periyotlarına denk gelen bar adetleri (5 dk aralıklarla: 192, 96, 48, 24, 12 bar)
+        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 192) # 16 Saat
+        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)    # 8 Saat
+        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)    # 4 Saat
+        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 24)    # 2 Saat
+        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 12)    # 1 Saat
+    else:
+        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
+        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
+        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
+        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
+        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
     
     dilimler = [
         (y16, k16, 6.0, 0.03),
@@ -615,7 +622,6 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-# Total market alarm eşiği kısa vadeye uyumlu olarak 100 puana düşürüldü
 if t_puan_val >= 100.0:
     if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"

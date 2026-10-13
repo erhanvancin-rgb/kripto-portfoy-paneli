@@ -892,13 +892,19 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">💰 Para Değerleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kâr:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: #00FF00;">+{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 6px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Zarar:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: rgb(255, 75, 0);">-{toplam_kayip_dolar:,.2f} $</p><hr style="margin: 6px 0px;"><p style="margin: 0px; font-size: 13px; color: #495057;">Net Fark:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: {"#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"};">{net_fark_dolar:+,.2f} $</p>', unsafe_allow_html=True)
 
     with col_orta_durum:
-        st.markdown("### İşlem Durumu")
+        st.markdown("### İşlem Sunumu")
         if st.button("Aktif İşlemler", use_container_width=True): 
             st.session_state['sadece_aktifleri_goster'] = True
             st.rerun()
         if st.button("Tüm İşlemler", use_container_width=True): 
             st.session_state['sadece_aktifleri_goster'] = False
             st.rerun()
+        
+        # Duruma göre blok içinde bilgilendirme metni
+        if st.session_state['sadece_aktifleri_goster']: 
+            st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
+        else:
+            st.info("ℹ️ Tüm pozisyonlar gösteriliyor.")
 
     with col_sag_sonlandir:
         st.markdown("### 🛑 İşlemi Sonlandır")

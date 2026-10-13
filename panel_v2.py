@@ -225,20 +225,24 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     
     return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
-def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
+def hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay):
     toplam = y + k
     if toplam <= 0: return 0.0, 0.0, 50.0
     r_y = y / toplam
     
-    if y >= hedef_onay:
+    if y >= tam_onay:
         s_long = tam_max
+    elif y >= yari_onay:
+        s_long = yari_max
     else:
-        s_long = tam_max * (y / hedef_onay) if hedef_onay > 0 else 0.0
+        s_long = (yari_max * (y / yari_onay)) if yari_onay > 0 else 0.0
         
-    if k >= hedef_onay:
+    if k >= tam_onay:
         s_short = tam_max
+    elif k >= yari_onay:
+        s_short = yari_max
     else:
-        s_short = tam_max * (k / hedef_onay) if hedef_onay > 0 else 0.0
+        s_short = (yari_max * (k / yari_onay)) if yari_onay > 0 else 0.0
         
     return s_long, s_short, r_y * 100.0
 
@@ -252,21 +256,21 @@ def kurgusal_matris_hesapla(coin_symbol):
     y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
     
+    # Yeni Puanlama Kurgusu (Tam max, tam onay, yarı max, yarı onay)
     dilimler = [
-        (y16, k16, 7.0, 384, 240, 0.07),
-        (y8, k8, 13.0, 192, 60, 0.13),
-        (y4, k4, 35.0, 96, 30, 0.35),
-        (y2, k2, 25.0, 48, 15, 0.25),
-        (y1, k1, 20.0, 24, 8, 0.20)
+        (y16, k16, 7.0, 384, 3.5, 240, 0.07),
+        (y8, k8, 13.0, 192, 6.5, 120, 0.13),
+        (y4, k4, 25.0, 96, 12.5, 60, 0.25),
+        (y2, k2, 25.0, 48, 12.5, 30, 0.25),
+        (y1, k1, 30.0, 24, 15.0, 15, 0.30)
     ]
     
     toplam_long = 0.0
     toplam_short = 0.0
     agirlikli_y_yuzde = 0.0
     
-    for y, k, max_p, tam_onay, yari_onay, agirlik in dilimler:
-        hedef_onay = tam_onay if (y + k) >= tam_onay else yari_onay
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_orijinal(y, k, max_p, hedef_onay)
+    for y, k, tam_max, tam_onay, yari_max, yari_onay, agirlik in dilimler:
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_yeni(y, k, tam_max, tam_onay, yari_max, yari_onay)
         toplam_long += sl
         toplam_short += ss
         agirlikli_y_yuzde += ry_yuzde * agirlik
@@ -756,7 +760,7 @@ st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_htm
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 
 with col_sol_panel:
-    st.markdown("<h3 style='white-space: nowrap; margin-bottom: 0px;'>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []

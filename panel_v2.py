@@ -134,10 +134,10 @@ def fiyat_cek_coinbase(coin_symbol):
 
 @st.cache_data(ttl=300)
 def load_5min_market_data(coin_symbol: str):
-    limit = 192
+    limit = 480
     if coin_symbol == 'TOTAL':
         try:
-            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=2"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 prices = r.json().get('prices', [])
@@ -159,7 +159,7 @@ def load_5min_market_data(coin_symbol: str):
         cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
         headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
         try:
-            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
+            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=120"
             r = requests.get(url, headers=headers, timeout=15.0)
             if r.status_code == 200:
                 data = r.json()
@@ -172,7 +172,7 @@ def load_5min_market_data(coin_symbol: str):
                     return df
         except: pass
     
-    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='5min')
+    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
     base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     vol_f = base_price * 0.0005
     np.random.seed(hash(coin_symbol) % 2**32)
@@ -217,18 +217,13 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
                     return yesil, kirmizi
     except: pass
     
-    seed_val = sum([ord(c) for c in coin_symbol]) + bar_saniye + int(time.time() / 300)
-    rnd = np.random.RandomState(seed_val)
-    yuzde_oran = rnd.uniform(0.35, 0.65)
-    y_yedek = int(toplam_bar * yuzde_oran)
-    k_yedek = toplam_bar - y_yedek
-    return y_yedek, k_yedek
+    # API hatası durumunda rastgelelik yerine son bilineni korumak veya stabil oran dönmek
+    return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
 def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
     toplam = y + k
     if toplam <= 0: return 0.0, 0.0, 50.0
     r_y = y / toplam
-    r_k = k / toplam
     
     if y >= hedef_onay:
         s_long = tam_max
@@ -245,39 +240,37 @@ def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
-    if coin_symbol == 'TOTAL':
-        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 192)
-        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)
-        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)
-        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 24)
-        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 12)
-    else:
-        y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 240, 240)
-        y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 240)
-        y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 240)
-        y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-        y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    # 2 Dakikalık Periyot Matrisi (Coinler için 120 sn, Total Market için 300 sn bazlı uyarlama)
+    bar_sn = 300 if coin_symbol == 'TOTAL' else 120
     
-    # 100 Puan Tavanlı Yeni 4 Saat Odaklı Puan ve Ağırlık Kurgusu:
-    # 16 Saat: 7 puan (%7 ağırlık), 192 onay (yarı kapasite: 3.5 puan, 120 onay)
-    # 8 Saat: 13 puan (%13 ağırlık), 192 onay (yarı kapasite: 6.5 puan, 120 onay)
-    # 4 Saat: 35 puan (%35 ağırlık), 192 onay (yarı kapasite: 17.5 puan, 120 onay)
-    # 2 Saat: 25 puan (%25 ağırlık), 96 onay (yarı kapasite: 12.5 puan, 60 onay)
-    # 1 Saat: 20 puan (%20 ağırlık), 48 onay (yarı kapasite: 10 puan, 30 onay)
+    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 480)
+    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 240)
+    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 120)
+    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 60)
+    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 30)
+    
+    # 2 Dakikalık Bar Kurgusu (100 Puan Tavanı):
+    # 16 Saat: 7 puan (%7 ağırlık), 384 onay (yarı kapasite: 3.5 puan, 240 onay)
+    # 8 Saat: 13 puan (%13 ağırlık), 192 onay (yarı kapasite: 6.5 puan, 60 onay)
+    # 4 Saat: 35 puan (%35 ağırlık), 96 onay (yarı kapasite: 17.5 puan, 30 onay)
+    # 2 Saat: 25 puan (%25 ağırlık), 48 onay (yarı kapasite: 12.5 puan, 15 onay)
+    # 1 Saat: 20 puan (%20 ağırlık), 24 onay (yarı kapasite: 10 puan, 8 onay)
     dilimler = [
-        (y16, k16, 7.0, 192, 0.07),
-        (y8, k8, 13.0, 192, 0.13),
-        (y4, k4, 35.0, 192, 0.35),
-        (y2, k2, 25.0, 96, 0.25),
-        (y1, k1, 20.0, 48, 0.20)
+        (y16, k16, 7.0, 384, 240, 0.07),
+        (y8, k8, 13.0, 192, 60, 0.13),
+        (y4, k4, 35.0, 96, 30, 0.35),
+        (y2, k2, 25.0, 48, 15, 0.25),
+        (y1, k1, 20.0, 24, 8, 0.20)
     ]
     
     toplam_long = 0.0
     toplam_short = 0.0
     agirlikli_y_yuzde = 0.0
     
-    for y, k, max_p, onay_hedefi, agirlik in dilimler:
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_orijinal(y, k, max_p, onay_hedefi)
+    for y, k, max_p, tam_onay, yari_onay, agirlik in dilimler:
+        # Dinamik onay seçimi (Eğer barlar yarı kapasiteye uygunsa yarı onay hedefi aranır)
+        hedef_onay = tam_onay if (y + k) >= tam_onay else yari_onay
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_orijinal(y, k, max_p, hedef_onay)
         toplam_long += sl
         toplam_short += ss
         agirlikli_y_yuzde += ry_yuzde * agirlik
@@ -292,7 +285,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = nihai_short
         aktif_yon = "Short"
         
-    # --- RSI KORELASYON ETKİSİ (PUAN MODÜLASYONU) ---
+    # --- RSI KORELASYON ETKİSİ ---
     df_m = load_5min_market_data(coin_symbol)
     if not df_m.empty and len(df_m) >= 14:
         delta = df_m['Close'].diff()
@@ -300,7 +293,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         df_m['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
         
         son_rsi = df_m['RSI'].iloc[-1]
-        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 5.0 # 100 puanlık tavana göre ölçekli modülasyon (±2.5 puan)
+        korelasyon_farki = (son_rsi / 100.0 - 0.5) * 5.0
         
         if aktif_yon == "Long":
             if son_rsi > 50.0: nihai_puan += abs(korelasyon_farki)
@@ -609,7 +602,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puan Tavanlı 4 Saat Odaklı Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (2 Dakikalık Periyot & 75 Puan Güçlü Trend)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -641,14 +634,14 @@ coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != 'TOTAL']
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
-if t_puan_val >= 65.0:
+if t_puan_val >= 75.0:
     if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Güçlü Trend Eşiği: 65)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Güçlü Trend Eşiği: 75)</p><p><b>Yeşil Bar Yüzdesi:</b> %{t_yuzde_val:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Total Market Güçlü Trend Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 usdt_puan_ort = sum([d["nihai_puan"] for d in coin_ham_veriler]) / len(coin_ham_veriler)
@@ -667,7 +660,7 @@ for data in coin_ham_veriler:
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 65.0 else f"{aktif_yon_turu} (Onaylı)"
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan >= 75.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
@@ -846,7 +839,7 @@ with col_orta_grafik:
     
     t_df_extended = t_df.copy()
     if len(t_df_extended) > 0:
-        yeni_zamanlar = pd.date_range(start=t_df_extended['timestamp'].iloc[-1] + timedelta(minutes=5), end=max_zaman, freq='5min')
+        yeni_zamanlar = pd.date_range(start=t_df_extended['timestamp'].iloc[-1] + timedelta(minutes=2), end=max_zaman, freq='2min')
         if len(yeni_zamanlar) > 0:
             ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
             for col in ['Open', 'High', 'Low', 'Close', 'RSI_Norm']:
@@ -876,7 +869,7 @@ with col_sag_endeks:
     
     def pd_hesap(bar): return ((float(t_df.iloc[-1]['Close']) - float(t_df.iloc[-bar]['Open'])) / float(t_df.iloc[-bar]['Open']) * 100.0) if t_df is not None and len(t_df) >= bar else 0.0
     
-    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(192)), ("8 S", pd_hesap(96)), ("4 S", pd_hesap(48)), ("2 S", pd_hesap(24)), ("1 S", pd_hesap(12))]])
+    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 
@@ -994,7 +987,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
 
         kz_h = f'<div style="background-color: {"#00FF00" if row["Anlik_KZ_Deger"] >= 0 else "rgb(255, 75, 0)"}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{row["Anlik_KZ_Deger"]:+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '65.2 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '75.0 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
     portfoy_html += "</tbody></table>"
     st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
 

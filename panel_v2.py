@@ -150,11 +150,16 @@ def load_5min_market_data(coin_symbol: str):
                     df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms').dt.tz_localize('UTC').dt.tz_convert(TR_TZ)
                     anlik_total = fiyat_cek_coinbase('TOTAL')
                     ilk_fiyat = df_t['price'].iloc[0]
-                    carpan = anlik_total / ilk_fiyat
-                    df_t['Close'] = df_t['price'] * carpan
+                    if ilk_fiyat > 0:
+                        carpan = anlik_total / ilk_fiyat
+                        df_t['Close'] = df_t['price'] * carpan
+                    else:
+                        df_t['Close'] = anlik_total
+                    
                     df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
                     df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0001
                     df_t['Low'] = df_t[['Open', 'Close']].min(axis=1) * 0.9999
+                    df_t = df_t[(df_t['Close'] > 0) & (df_t['Open'] > 0)].dropna()
                     return df_t[['timestamp', 'Open', 'High', 'Low', 'Close']].tail(limit).reset_index(drop=True)
         except: pass
 
@@ -172,8 +177,9 @@ def load_5min_market_data(coin_symbol: str):
                     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_convert(TR_TZ)
                     for col in ['Open', 'High', 'Low', 'Close']:
                         df[col] = df[col].astype(float)
+                    df = df[(df['Close'] > 0) & (df['Open'] > 0)]
                     df = df.sort_values('timestamp').tail(limit).reset_index(drop=True)
-                    return df
+                    if not df.empty: return df
         except: pass
     
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
@@ -228,25 +234,31 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     rastgele_kirmizi = toplam_bar - rastgele_yesil
     return rastgele_yesil, rastgele_kirmizi
 
-def hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay):
+def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
     toplam = y + k
     if toplam <= 0: return 0.0, 0.0, 50.0
     r_y = (y / toplam) * 100.0
     
-    def ivmeli_hesap(val, tam, yari, t_max):
+    def ivmeli_hesap_200(val, tam, t_max):
         if val <= 0: return 0.0
         if val >= tam: return t_max
         oran = (val / tam) ** 1.8
         return t_max * oran
 
-    s_long = ivmeli_hesap(y, tam_onay, yari_onay, max_puan)
-    s_short = ivmeli_hesap(k, tam_onay, yari_onay, max_puan)
+    s_long = ivmeli_hesap_200(y, tam_onay, max_puan)
+    s_short = ivmeli_hesap_200(k, tam_onay, max_puan)
         
     return s_long, s_short, r_y
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
     
+    # Yeni 200 Puanlık Kurgu Eşikleri:
+    # 16 Saat (Max 14 Puan, Tam Onay 60 bar)
+    # 8 Saat (Max 26 Puan, Tam Onay 30 bar)
+    # 4 Saat (Max 40 Puan, Tam Onay 30 bar)
+    # 2 Saat (Max 50 Puan, Tam Onay 30 bar)
+    # 1 Saat (Max 70 Puan, Tam Onay 30 bar)
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 60)
     y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 960, 30)
     y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 480, 30)
@@ -254,37 +266,37 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 120, 30)
     
     dilimler = [
-        (y16, k16, 7.0, 48, 30),
-        (y8, k8, 13.0, 24, 15),
-        (y4, k4, 20.0, 24, 15),
-        (y2, k2, 25.0, 24, 15),
-        (y1, k1, 35.0, 24, 15)
+        (y16, k16, 14.0, 60),
+        (y8, k8, 26.0, 30),
+        (y4, k4, 40.0, 30),
+        (y2, k2, 50.0, 30),
+        (y1, k1, 70.0, 30)
     ]
     
     toplam_long_puan = 0.0
     toplam_short_puan = 0.0
     agirlikli_y_yuzde = 0.0
-    
     agirliklar = [0.07, 0.13, 0.20, 0.25, 0.35]
     
-    for idx, (y, k, max_puan, tam_onay, yari_onay) in enumerate(dilimler):
-        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_ivmesel(y, k, max_puan, tam_onay, yari_onay)
+    for idx, (y, k, max_puan, tam_onay) in enumerate(dilimler):
+        sl, ss, ry_yuzde = hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay)
         toplam_long_puan += sl
         toplam_short_puan += ss
         agirlikli_y_yuzde += ry_yuzde * agirliklar[idx]
         
-    nihai_long = round(max(0.0, min(100.0, toplam_long_puan)), 1)
-    nihai_short = round(max(0.0, min(100.0, toplam_short_puan)), 1)
+    nihai_long = round(max(0.0, min(200.0, toplam_long_puan)), 2)
+    nihai_short = round(max(0.0, min(200.0, toplam_short_puan)), 2)
     
+    # 200 üzerinden hesaplanan puanı 100'lük sisteme ölçeklendiriyoruz (Gösterge standartlığı için)
     if nihai_long >= nihai_short:
-        nihai_puan = nihai_long
+        nihai_puan = round(nihai_long / 2.0, 1)
         aktif_yon = "Long"
     else:
-        nihai_puan = nihai_short
+        nihai_puan = round(nihai_short / 2.0, 1)
         aktif_yon = "Short"
         
-    # RSI etkisi kaldırıldı, doğrudan düz puanlama ve ivmesel ağırlıklar baz alınıyor.
-    if nihai_puan < 45.0:
+    # Nötr Eşiği: 50 Puanın altı
+    if nihai_puan < 50.0:
         aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, agirlikli_y_yuzde
@@ -450,7 +462,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 45.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (45 puan altı) işlem açılamaz!"
+    if matris_puan < 50.0 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (50 puan altı) işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -582,7 +594,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (90 Saniye Periyot & Saf Matris Puanı)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (200 Puanlık Hibrit Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -615,7 +627,7 @@ total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == 'TOTAL'][0]
 
 t_puan_val, t_yuzde_val = total_ham_veri["nihai_puan"], total_ham_veri["y_yuzde"]
 if t_puan_val >= 75.0:
-    if t_yuzde_val >= 45.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
+    if t_yuzde_val >= 50.0: total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu (Güçlü Trend)", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi (Güçlü Trend)", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
@@ -632,13 +644,13 @@ for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, y_yuzde, anlik_fiyat, stop_uzde = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["y_yuzde"], data["anlik_fiyat"], data["stop_uzde"]
     hedef_carpan, gunluk_oran, k_yuzde = data["hedef_carpan"], data["gunluk_oran"], 100.0 - y_yuzde
     
-    c_durum_led = "🟢" if (nihai_puan >= 45.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 45.0 and aktif_yon == "Short") else "🟡")
-    t_durum_led = "🟢" if (total_puan_val >= 45.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 45.0 and total_yon_val == "Short") else "🟡")
+    c_durum_led = "🟢" if (nihai_puan >= 50.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 50.0 and aktif_yon == "Short") else "🟡")
+    t_durum_led = "🟢" if (total_puan_val >= 50.0 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 50.0 and total_yon_val == "Short") else "🟡")
     
     y_gorsel, k_gorsel = max(0, min(10, int(round(y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(y_yuzde / 10.0))))
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    is_notr = (nihai_puan < 45.0 or aktif_yon == "Nötr")
+    is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
     if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
@@ -666,7 +678,7 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(45.0, min(100.0, nihai_puan)) - 45.0) / 55.0) ** 1.1), 1)
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(100.0, nihai_puan)) - 50.0) / 50.0) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
@@ -810,18 +822,18 @@ with col_orta_grafik:
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(480).reset_index(drop=True)
     
-    delta = t_df['Close'].diff()
-    rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    t_df['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
-    min_f, max_f = t_df['Close'].min(), t_df['Close'].max()
-    fiyat_fark = max_f - min_f if max_f != min_f else 1.0
-    t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
-    
-    fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
-    min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max() + timedelta(hours=1)
-    
-    t_df_extended = t_df.copy()
-    if len(t_df_extended) > 0:
+    if not t_df.empty:
+        delta = t_df['Close'].diff()
+        rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        t_df['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
+        min_f, max_f = t_df['Close'].min(), t_df['Close'].max()
+        fiyat_fark = max_f - min_f if max_f != min_f else 1.0
+        t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
+        
+        fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
+        min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max() + timedelta(hours=1)
+        
+        t_df_extended = t_df.copy()
         yeni_zamanlar = pd.date_range(start=t_df_extended['timestamp'].iloc[-1] + timedelta(minutes=2), end=max_zaman, freq='2min')
         if len(yeni_zamanlar) > 0:
             ek_df = pd.DataFrame({'timestamp': yeni_zamanlar})
@@ -829,35 +841,36 @@ with col_orta_grafik:
                 if col in t_df_extended.columns: ek_df[col] = t_df_extended[col].iloc[-1]
             t_df_extended = pd.concat([t_df_extended, ek_df], ignore_index=True)
 
-    fig_total = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    for b_alt, b_ust, renk in [(0.0, 0.236, 'rgba(128, 0, 32, 0.16)'), (0.236, 0.382, 'rgba(180, 80, 0, 0.14)'), (0.382, 0.5, 'rgba(255, 255, 0, 0.18)'), (0.5, 0.618, 'rgba(255, 255, 0, 0.18)'), (0.618, 0.786, 'rgba(100, 180, 50, 0.15)'), (0.786, 1.0, 'rgba(0, 100, 0, 0.18)')]:
-        fig_total.add_trace(go.Scatter(x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]), y=[fib_levels[b_ust]] * len(t_df_extended) + [fib_levels[b_alt]] * len(t_df_extended), fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
+        fig_total = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        for b_alt, b_ust, renk in [(0.0, 0.236, 'rgba(128, 0, 32, 0.16)'), (0.236, 0.382, 'rgba(180, 80, 0, 0.14)'), (0.382, 0.5, 'rgba(255, 255, 0, 0.18)'), (0.5, 0.618, 'rgba(255, 255, 0, 0.18)'), (0.618, 0.786, 'rgba(100, 180, 50, 0.15)'), (0.786, 1.0, 'rgba(0, 100, 0, 0.18)')]:
+            fig_total.add_trace(go.Scatter(x=list(t_df_extended['timestamp']) + list(t_df_extended['timestamp'][::-1]), y=[fib_levels[b_ust]] * len(t_df_extended) + [fib_levels[b_alt]] * len(t_df_extended), fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
 
-    fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
-    fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')), secondary_y=False)
+        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
+        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')), secondary_y=False)
 
-    for oran, val in fib_levels.items():
-        renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-        fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b><br><b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
+        for oran, val in fib_levels.items():
+            renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
+            fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b><br><b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
-    fig_total.update_layout(
-        template="plotly_white", 
-        margin=dict(t=10, b=10, l=5, r=55), 
-        height=380, 
-        xaxis=dict(
-            range=[min_zaman, max_zaman], 
-            dtick=3600000 * 1, 
-            tickformat="%H:%M",
-            tickangle=0
-        ), 
-        yaxis=dict(showticklabels=False), 
-        xaxis_rangeslider_visible=False, 
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig_total, use_container_width=True)
+        # X ekseni sıkışmasını önleyen optimize edilmiş ayarlar
+        fig_total.update_layout(
+            template="plotly_white", 
+            margin=dict(t=10, b=30, l=5, r=55), 
+            height=380, 
+            xaxis=dict(
+                range=[min_zaman, max_zaman], 
+                dtick=7200000, # 2 saatlik aralıklarla etiket gösterimi (sıkışmayı önler)
+                tickformat="%H:%M",
+                tickangle=25  # Etiketlere hafif açı vererek üst üste binmeyi engeller
+            ), 
+            yaxis=dict(showticklabels=False, range=[min_f * 0.999, max_f * 1.001]), 
+            xaxis_rangeslider_visible=False, 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
     st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)

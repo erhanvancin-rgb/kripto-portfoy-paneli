@@ -47,6 +47,10 @@ st.markdown("""
         color: #212529 !important;
     }
     
+    h3, .stMarkdown h3 {
+        font-size: 22px !important;
+    }
+    
     .stButton > button, div.stFormSubmitButton > button {
         background-color: #e9ecef !important;
         color: #212529 !important;
@@ -137,7 +141,6 @@ def load_5min_market_data(coin_symbol: str):
     limit = 480
     if coin_symbol == 'TOTAL':
         try:
-            # 16 saatlik ve daha uzun geçmişi garantilemek için gün sayısını 3 yapıyoruz
             url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
@@ -183,34 +186,6 @@ def load_5min_market_data(coin_symbol: str):
     low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.normal(0, vol_f/3, limit))
     return pd.DataFrame({'timestamp': dates, 'Open': open_prices, 'High': high_prices, 'Low': low_prices, 'Close': close_prices})
 
-    if coin_symbol != 'TOTAL':
-        cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
-        cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-        try:
-            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=120"
-            r = requests.get(url, headers=headers, timeout=15.0)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list) and len(data) > 0:
-                    df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_convert(TR_TZ)
-                    for col in ['Open', 'High', 'Low', 'Close']:
-                        df[col] = df[col].astype(float)
-                    df = df.sort_values('timestamp').tail(limit).reset_index(drop=True)
-                    return df
-        except: pass
-    
-    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='2min')
-    base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
-    vol_f = base_price * 0.0005
-    np.random.seed(hash(coin_symbol) % 2**32)
-    close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
-    open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
-    high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
-    low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.normal(0, vol_f/3, limit))
-    return pd.DataFrame({'timestamp': dates, 'Open': open_prices, 'High': high_prices, 'Low': low_prices, 'Close': close_prices})
-
 def calculate_coin_atr_metrics(df, skor):
     stop_pct = 0.70
     s_sinirli = max(0.0, min(100.0, abs(skor)))
@@ -223,7 +198,6 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
         df_m = load_5min_market_data('TOTAL')
         yesil, kirmizi = 0, 0
         if not df_m.empty:
-            # Mevcut veri uzunluğuna göre güvenli dilim al
             alt_df = df_m.tail(toplam_bar)
             for _, row in alt_df.iterrows():
                 if row['Close'] > row['Open']: yesil += 1
@@ -235,7 +209,6 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
     cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        # Coinbase candles endpoint isteği
         url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=300"
         r = requests.get(url, headers=headers, timeout=15.0)
         if r.status_code == 200:
@@ -271,7 +244,6 @@ def hesapla_zaman_dilimi_puan_orijinal(y, k, tam_max, hedef_onay):
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
-    
     bar_sn = 120 if coin_symbol != 'TOTAL' else 120
     
     y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, bar_sn, 480)
@@ -784,7 +756,7 @@ st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_htm
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 
 with col_sol_panel:
-    st.markdown("<h3 style='font-size: 22px; white-space: nowrap; margin-bottom: 0px;'>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='white-space: nowrap; margin-bottom: 0px;'>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     df_islem_yapilabilir = df_gosterge[df_gosterge['Notr'] == False]
     coin_listesi = df_islem_yapilabilir['Coin'].tolist() if not df_islem_yapilabilir.empty else []
@@ -847,10 +819,8 @@ with col_sol_panel:
                     st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("### 🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)")
+    st.markdown("<h3>🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
-    
-    # Grafiğin tam 16 saat (480 bar) göstermesini sağlıyoruz
     t_df = t_df_ham.tail(480).reset_index(drop=True)
     
     delta = t_df['Close'].diff()
@@ -890,9 +860,9 @@ with col_orta_grafik:
         height=380, 
         xaxis=dict(
             range=[min_zaman, max_zaman], 
-            dtick=3600000 * 1,  # Etiketleri her 1 saatte bir gösterir
+            dtick=3600000 * 1, 
             tickformat="%H:%M",
-            tickangle=0         # Etiketleri yatay ve okunur tutar
+            tickangle=0
         ), 
         yaxis=dict(showticklabels=False), 
         xaxis_rangeslider_visible=False, 
@@ -903,7 +873,7 @@ with col_orta_grafik:
     st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
-    st.markdown("### Total Market Endeksi")
+    st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)
     t_y_yuzde = total_ham_veri["y_yuzde"]
     t_y_gorsel, t_k_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(t_y_yuzde / 10.0))))
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
@@ -914,13 +884,12 @@ with col_sag_endeks:
             if toplam_satir >= bar_sayisi:
                 ilk_fiyat = float(t_df.iloc[-bar_sayisi]['Open'])
             else:
-                ilk_fiyat = float(t_df.iloc[0]['Open']) # Yetersiz veri varsa başlangıcı al
+                ilk_fiyat = float(t_df.iloc[0]['Open'])
             son_fiyat = float(t_df.iloc[-1]['Close'])
             if ilk_fiyat > 0:
                 return ((son_fiyat - ilk_fiyat) / ilk_fiyat) * 100.0
         return 0.0
     
-    # 16 S (480 bar), 8 S (240 bar), 4 S (120 bar), 2 S (60 bar), 1 S (30 bar)
     boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etiket}: {val:+,.2f}%</div>' for etiket, val in [("16 S", pd_hesap(480)), ("8 S", pd_hesap(240)), ("4 S", pd_hesap(120)), ("2 S", pd_hesap(60)), ("1 S", pd_hesap(30))]])
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
@@ -934,7 +903,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.9, 0.9, 1.3])
 
     with col_sol_analiz:
-        st.markdown("### 📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi")
+        st.markdown("<h3>📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi</h3>", unsafe_allow_html=True)
         kapananlar_df = df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
         if not kapananlar_df.empty:
             karli_sayisi, zararli_sayisi = 0, 0
@@ -961,7 +930,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
                 st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">💰 Para Değerleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kâr:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: #00FF00;">+{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 6px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Zarar:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: rgb(255, 75, 0);">-{toplam_kayip_dolar:,.2f} $</p><hr style="margin: 6px 0px;"><p style="margin: 0px; font-size: 13px; color: #495057;">Net Fark:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: {"#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"};">{net_fark_dolar:+,.2f} $</p>', unsafe_allow_html=True)
 
     with col_orta_durum:
-        st.markdown("### İşlem Sunumu")
+        st.markdown("<h3>İşlem Sunumu</h3>", unsafe_allow_html=True)
         if st.button("Aktif İşlemler", use_container_width=True): 
             st.session_state['sadece_aktifleri_goster'] = True
             st.rerun()
@@ -975,7 +944,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
             st.info("ℹ️ Tüm pozisyonlar gösteriliyor.")
 
     with col_sag_sonlandir:
-        st.markdown("### 🛑 İşlemi Sonlandır")
+        st.markdown("<h3>🛑 İşlemi Sonlandır</h3>", unsafe_allow_html=True)
         with st.form(key="pozisyon_kapat_form"):
             kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id")
             onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")
@@ -1044,7 +1013,7 @@ if not df_gecmis.empty and 'Durum' in df_gecmis.columns:
     st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("### 📁 50'şerli İşlem Arşivleri (Analiz Klasörü)")
+    st.markdown("<h3>📁 50'şerli İşlem Arşivleri (Analiz Klasörü)</h3>", unsafe_allow_html=True)
     if os.path.exists(ARSIV_KLASORU):
         try:
             arsiv_dosyalari = sorted(os.listdir(ARSIV_KLASORU))

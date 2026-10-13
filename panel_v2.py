@@ -890,8 +890,9 @@ with col_orta_grafik:
         height=380, 
         xaxis=dict(
             range=[min_zaman, max_zaman], 
-            dtick=3600000 * 3,  # Etiketleri 3 saatte bir gösterecek şekilde seyreltir
-            tickformat="%H:%M"
+            dtick=3600000 * 1,  # Etiketleri her 1 saatte bir gösterir
+            tickformat="%H:%M",
+            tickangle=0         # Etiketleri yatay ve okunur tutar
         ), 
         yaxis=dict(showticklabels=False), 
         xaxis_rangeslider_visible=False, 

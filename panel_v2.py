@@ -755,31 +755,45 @@ with col_sol_panel:
         coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii['Sepet_Orani']), float(coin_verisii['Skor']), coin_verisii['Risk_Hedef_Metin']
 
-    # State tanımlamaları (İlk açılışta önerilen oran ve hesaplanan tutar ile başlar)
+    # State tanımlamaları (İlk açılışta veya coin değişiminde varsayılan değerler)
     if 'islem_oran_val' not in st.session_state:
         st.session_state['islem_oran_val'] = float(onerilen_oran_val)
     if 'islem_tutar_val' not in st.session_state:
         st.session_state['islem_tutar_val'] = round(mevcut_bakiye * (float(onerilen_oran_val) / 100.0), 2)
 
-    # Değişiklik tetikleyici (Callback) fonksiyonları
-    def oran_degisti():
+    # Değişiklik tetikleyici fonksiyonlar (Slider ve Tutar karşılıklı senkronizasyon)
+    def oran_guncelle():
         yeni_oran = st.session_state['slider_oran']
         st.session_state['islem_oran_val'] = yeni_oran
         st.session_state['islem_tutar_val'] = round(mevcut_bakiye * (yeni_oran / 100.0), 2)
 
-    def tutar_degisti():
+    def tutar_guncelle():
         yeni_tutar = st.session_state['number_tutar']
         st.session_state['islem_tutar_val'] = yeni_tutar
         if mevcut_bakiye > 0:
             st.session_state['islem_oran_val'] = min(100.0, max(0.0, round((yeni_tutar / mevcut_bakiye) * 100.0, 2)))
 
-    # Widget'ları state ve callback'lere bağlıyoruz
-    oran_slider = st.slider("Oran (%):", 0.0, 100.0, key='slider_oran', value=st.session_state['islem_oran_val'], on_change=oran_degisti)
-    manuel_girilen_tutar = st.number_input("Tutar ($):", 0.0, float(max(100.0, mevcut_bakiye)), key='number_tutar', value=st.session_state['islem_tutar_val'], on_change=tutar_degisti)
+    # Widget'lar (on_change ve value parametreleri ile birbirine kilitlenmiştir)
+    oran_slider = st.slider(
+        "Oran (%):", 
+        0.0, 100.0, 
+        value=st.session_state['islem_oran_val'], 
+        key='slider_oran', 
+        on_change=oran_guncelle
+    )
+    
+    manuel_girilen_tutar = st.number_input(
+        "Tutar ($):", 
+        0.0, 
+        float(max(100.0, mevcut_bakiye)), 
+        value=st.session_state['islem_tutar_val'], 
+        key='number_tutar', 
+        on_change=tutar_guncelle
+    )
 
     st.markdown(f"💼 **Tutar:** `{manuel_girilen_tutar:,.2f} $`<br>🟢 **Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True)
 
-    # İşlemi Başlat butonu (Sadece butona basıldığında emir sisteme işlenir)
+    # Sadece butona basıldığında emir işleme alınır
     if st.button("🚀 İşlemi Başlat", use_container_width=True):
         if not secilen_coin or coin_listesi == []:
             st.error("⚠️ Geçerli bir coin seçmelisiniz!")

@@ -230,15 +230,16 @@ def hesapla_zaman_dilimi_puan(y, k, max_puan):
     r_y = y / toplam
     r_k = k / toplam
     
+    # Kısa vadeye duyarlı agresif puan eğrisi
     if r_y <= 0.5:
-        s_long = max_puan * 0.5 * r_y
+        s_long = max_puan * 0.4 * r_y
     else:
-        s_long = max_puan * (0.25 + 1.5 * (r_y - 0.5))
+        s_long = max_puan * (0.2 + 1.8 * (r_y - 0.5))
         
     if r_k <= 0.5:
-        s_short = max_puan * 0.5 * r_k
+        s_short = max_puan * 0.4 * r_k
     else:
-        s_short = max_puan * (0.25 + 1.5 * (r_k - 0.5))
+        s_short = max_puan * (0.2 + 1.8 * (r_k - 0.5))
         
     return s_long, s_short, r_y * 100.0
 
@@ -637,10 +638,12 @@ for data in coin_ham_veriler:
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * y_gorsel}{"🔴" * k_gorsel}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
     is_notr = (nihai_puan < 50.0 or aktif_yon == "Nötr")
-    if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
+    if is_notr: 
+        trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
     else:
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 125.0 else f"{aktif_yon_turu} (Onaylı)"
+        # 90 puan üzeri artık Güçlü Trend / Momentum olarak etiketlenir
+        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan > 90.0 else f"{aktif_yon_turu} (Onaylı)"
         
     if "Güçlü Trend" in trend and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
@@ -664,7 +667,9 @@ for data in coin_ham_veriler:
     elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
     else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
-    sepet_orani = 0.0 if is_notr else round(50.0 + 50.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 150.0) ** 1.4), 1)
+    # Kısa vadeli momentum için optimize edilmiş sepet oranı eğrisi
+    sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(50.0, min(200.0, nihai_puan)) - 50.0) / 120.0) ** 1.1), 1)
+    sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), "Yon": yon_html, "Teyit_Sunumu": detay_matris_html, 

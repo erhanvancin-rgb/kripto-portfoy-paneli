@@ -749,7 +749,7 @@ st.markdown("---")
 table_html = """
 <table class="custom-table"><thead class="custom-table-header"><tr>
  <th>Logo</th><th>Coin<br>Adı</th><th>Güncel<br>Fiyat</th><th>Trend<br>Durumu</th>
- <th>Matris Teyit</th><th>Piyasa &<br>Dominans</th><th>Matris<br>Puanı</th><th>Günlük<br>Oran</th><th>Önerilen<br>Oran</th>
+ <th>Matris Teyit</th><th>Piyasa &<br>Dominans</th><th>Matris<br>Puanı</th><th>Günlük<br>Değişim</th><th>Önerilen<br>Oran</th>
  <th>Yatırım<br>Tutarı</th><th>Kar Al<br>Hedefi</th><th>Stop<br>Seviyesi</th><th>Risk / Hedef</th>
  </tr></thead><tbody>
 """

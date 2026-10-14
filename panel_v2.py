@@ -211,6 +211,17 @@ def hesapla_zaman_dilimi_puan_200(y, k, max_puan):
     
     return s_long, s_short, r_y, net_katki
 
+def hesapla_zaman_dilimi_puan_200(y, k, max_puan):
+    toplam = y + k
+    if toplam <= 0: return 0.0, 0.0, 50.0, 0.0, 0, 0
+    r_y = (y / toplam) * 100.0
+    
+    s_long = (y / toplam) * max_puan
+    s_short = (k / toplam) * max_puan
+    net_katki = s_long - s_short
+    
+    return s_long, s_short, r_y, net_katki, y, k
+
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     
@@ -236,11 +247,15 @@ def kurgusal_matris_hesapla(coin_symbol):
     
     zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
     for idx, (y, k, max_puan) in enumerate(dilimler):
-        sl, ss, ry_yuzde, net_katki = hesapla_zaman_dilimi_puan_200(y, k, max_puan)
+        sl, ss, ry_yuzde, net_katki, y_adet, k_adet = hesapla_zaman_dilimi_puan_200(y, k, max_puan)
         toplam_long_puan += sl
         toplam_short_puan += ss
         agirlikli_y_yuzde += ry_yuzde * agirliklar[idx]
-        zaman_katkilari[zaman_isimleri[idx]] = net_katki
+        
+        # Kutularda detaylı göstermek için sözlüğe demet (tuple) olarak kaydediyoruz
+        zaman_katkilari[zaman_isimleri[idx]] = {
+            "sl": sl, "ss": ss, "y_adet": y_adet, "k_adet": k_adet
+        }
         
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
@@ -837,7 +852,20 @@ with col_sag_endeks:
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
-    boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etk}: {val:+,.2f} Puan</div>' for etk, val in t_zaman_kat.items()])
+    boxes = ""
+    for etk, veri in t_zaman_kat.items():
+        sl, ss = veri["sl"], veri["ss"]
+        y_ad, k_ad = veri["y_adet"], veri["k_adet"]
+        
+        # Hangi tarafın puanı fazlaysa kutu rengini o belirler (Long: Yeşil, Short: Turuncu)
+        kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
+        
+        boxes += f'''
+        <div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">
+            {etk}<br>
+            L: {sl:.2f}p ({y_ad}) | S: {ss:.2f}p ({k_ad})
+        </div>
+        '''
     
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 

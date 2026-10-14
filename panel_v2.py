@@ -860,12 +860,9 @@ with col_sag_endeks:
         
         kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
         
-        kutucuk_html = f"""
-        <div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">
-            {etk}<br>
-            L: {sl:.2f}p ({y_ad}) | S: {ss:.2f}p ({k_ad})
-        </div>
-        """
+        # HTML yapısını alt alta satırlar yerine tek satır (inline) olarak yazıyoruz:
+        kutucuk_html = f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p ({y_ad}) | S: {ss:.2f}p ({k_ad})</div>'
+        
         boxes_listesi.append(kutucuk_html)
         
     boxes_birlestirilmis = "".join(boxes_listesi)

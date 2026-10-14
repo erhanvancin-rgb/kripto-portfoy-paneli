@@ -185,11 +185,17 @@ def load_15min_market_data(coin_symbol: str):
     base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p]*limit, 'Low': [base_p]*limit, 'Close': [base_p]*limit})
 
-def calculate_coin_atr_metrics(df, skor):
-    stop_pct = 0.70
-    t = (max(102.5, min(200.0, skor)) - 102.5) / 97.5
-    hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
-    return stop_pct, hedef_carpan
+def calculate_coin_atr_metrics(trend_kademesi):
+    if "Güçlü" in trend_kademesi:
+        return 0.7, 3.57, "0,7 / 2,5"
+    elif "Avcısı" in trend_kademesi:
+        return 0.8, 2.87, "0,8 / 2,3"
+    elif "Onaylı" in trend_kademesi:
+        return 1.0, 1.8, "1 / 1,8"
+    elif "Ters Akıntı" in trend_kademesi:
+        return 0.8, 1.62, "0,8 / 1,3"
+    else:
+        return 1.0, 1.5, "Nötr"
 
 # --- HİYERARŞİK RSI MOMENTUM & FIBONACCI DESTEK/DİRENÇ FİLTRESİ ---
 def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
@@ -619,12 +625,11 @@ for sembol in tum_takip_edilenler:
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
     
     df_market = load_15min_market_data(sembol)
-    stop_uzde, hedef_carpan = calculate_coin_atr_metrics(df_market, nihai_puan)
     if not df_market.empty and 'Open' in df_market.columns and 'Close' in df_market.columns:
         gunluk_oran = ((float(df_market.iloc[-1]['Close']) - float(df_market.iloc[0]['Open'])) / float(df_market.iloc[0]['Open'])) * 100.0
     else: gunluk_oran = 0.0
 
-    islenen_ham_veriler.append({"sembol": sembol, "anlik_fiyat": anlik_fiyat, "nihai_puan": nihai_puan, "aktif_yon": aktif_yon, "l_puan": l_puan, "s_puan": s_puan, "zaman_katkilari": zaman_katkilari, "stop_uzde": stop_uzde, "hedef_carpan": hedef_carpan, "gunluk_oran": gunluk_oran, "df_market": df_market})
+    islenen_ham_veriler.append({"sembol": sembol, "anlik_fiyat": anlik_fiyat, "nihai_puan": nihai_puan, "aktif_yon": aktif_yon, "l_puan": l_puan, "s_puan": s_puan, "zaman_katkilari": zaman_katkilari, "gunluk_oran": gunluk_oran, "df_market": df_market})
 
 otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
 
@@ -650,8 +655,8 @@ total_yon_val = total_ham_veri["aktif_yon"]
 islenen_veriler = []
 
 for data in coin_ham_veriler:
-    sembol, nihai_puan, aktif_yon, l_puan, s_puan, anlik_fiyat, stop_uzde = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["l_puan"], data["s_puan"], data["anlik_fiyat"], data["stop_uzde"]
-    hedef_carpan, gunluk_oran = data["hedef_carpan"], data["gunluk_oran"]
+    sembol, nihai_puan, aktif_yon, l_puan, s_puan, anlik_fiyat = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["l_puan"], data["s_puan"], data["anlik_fiyat"]
+    gunluk_oran = data["gunluk_oran"]
     
     puan_toplam = l_puan + s_puan
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
@@ -666,7 +671,7 @@ for data in coin_ham_veriler:
     
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    # --- YENİ HİYERARŞİK 5 YILDIZLI TREND DURUMU Kurgusu ---
+    # --- 5 YILDIZLI HİYERARŞİK TREND DURUMU ---
     c_yonu = "Long" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "Nötr")
     d_yonu = total_yon_val
     
@@ -701,15 +706,15 @@ for data in coin_ham_veriler:
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
 
     is_notr = (aktif_yon_turu == "Nötr")
+    stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_atr_metrics(trend)
     
     if nihai_puan >= 130.0 and not is_notr and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
         gmail_bildirim_gonder(f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
 
-    hedef_uzde = round(stop_uzde * hedef_carpan, 1)
-    if aktif_yon_turu == "Long": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
-    elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
-    else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
+    if aktif_yon_turu == "Long": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
+    elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - (stop_uzde * hedef_carpan) / 100.0)
+    else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
         
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{d_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
@@ -727,7 +732,7 @@ for data in coin_ham_veriler:
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), "Yon": yon_html, "Teyit_Sunumu": detay_matris_html, 
         "Dom_Sunumu": dom_html, "Matris_Puan_Sunumu": puan_html, "Gunluk_Oran": f"<span>{gunluk_oran:+,.2f}%</span>",
         "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak), "Skor": nihai_puan, "Sepet_Orani": sepet_orani,
-        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
+        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": risk_hedef_metin
     })
 
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
@@ -806,7 +811,7 @@ with col_sol_panel:
     if not coin_listesi: 
         st.warning("Uygun coin yok.")
 
-    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 2,0", None
+    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1 / 1,8", None
     if secilen_coin:
         coin_verisii = df_gosterge[df_gosterge['Coin'] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii['Sepet_Orani']), float(coin_verisii['Skor']), coin_verisii['Risk_Hedef_Metin']
@@ -932,6 +937,8 @@ with col_sag_endeks:
     
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
+    t_df_zaman = load_15min_market_data('BTC/USDT') # Örnek referans
+    # Zaman katkilari total ham veriden alınır
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():

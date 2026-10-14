@@ -115,35 +115,18 @@ def gmail_bildirim_gonder(konu, icerik_html):
 def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
         try:
-            # Binance'ten ana coinlerin anlık fiyatlarını alıp piyasa büyüklükleriyle harmanlıyoruz
             btc = fiyat_cek_binance('BTC/USDT')
             eth = fiyat_cek_binance('ETH/USDT')
             bnb = fiyat_cek_binance('BNB/USDT')
             sol = fiyat_cek_binance('SOL/USDT')
             xrp = fiyat_cek_binance('XRP/USDT')
             
-            # Yaklaşık dolaşımdaki arz ve dominans katsayıları ile anlık Total Market hesaplama
-            # (BTC ve ilk 5 büyük coin piyasanın yaklaşık %75-80'ini oluşturur)
             tahmini_total = (btc * 19700000) + (eth * 120000000) + (bnb * 145000000) + (sol * 470000000) + (xrp * 5700000000)
             if tahmini_total > 0:
                 return float(tahmini_total)
         except: pass
         return baz_fiyatlar['TOTAL']
 
-    sym = coin_symbol.replace('/', '')
-    endpoints = [
-        f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
-        f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
-    ]
-    for ep in endpoints:
-        try:
-            r = requests.get(ep, timeout=3)
-            if r.status_code == 200:
-                val = float(r.json()['price'])
-                if val > 0: return val
-        except: continue
-    
-    return baz_fiyatlar.get(coin_symbol, 100.0)
     sym = coin_symbol.replace('/', '')
     endpoints = [
         f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
@@ -208,59 +191,101 @@ def calculate_coin_atr_metrics(df, skor):
     hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
-def kline_cek_detayli_binance_ozel(coin_symbol, bar_saniye, toplam_bar):
-    if coin_symbol == 'TOTAL': coin_symbol = 'BTC/USDT'
-    
-    intervals = {900: '15m', 300: '5m', 60: '1m'}
-    interval = intervals.get(bar_saniye, '5m')
-    
-    df = kline_cek_binance(coin_symbol, interval, toplam_bar)
-    if not df.empty:
-        yesil = len(df[df['Close'] > df['Open']])
-        kirmizi = len(df[df['Close'] < df['Open']])
-        if (yesil + kirmizi) > 0: return yesil, kirmizi
+# --- HİYERARŞİK RSI MOMENTUM & MIKNATIS ETKİSİ ---
+def rsi_momentum_katkisi_hesapla(df, zaman_agirligi):
+    if df.empty or len(df) < 15:
+        return 0.0, 0.0
         
-    return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
-
-def hesapla_zaman_dilimi_puan_200(y, k, max_puan):
-    toplam = y + k
-    if toplam <= 0: return 0.0, 0.0, 0.0, 0, 0
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi_serisi = 100 - (100 / (1 + rs))
     
-    s_long = (y / toplam) * max_puan
-    s_short = (k / toplam) * max_puan
-    net_katki = s_long - s_short
+    if len(rsi_serisi) < 3:
+        return 0.0, 0.0
+        
+    fiyat_delta = float(df['Close'].iloc[-1] - df['Close'].iloc[-3])
+    rsi_delta = float(rsi_serisi.iloc[-1] - rsi_serisi.iloc[-3])
     
-    return s_long, s_short, net_katki, y, k
+    long_bonus = 0.0
+    short_bonus = 0.0
+    
+    # Sağlıklı Uyum (Fiyat ve RSI aynı yönde)
+    if fiyat_delta > 0 and rsi_delta > 0:
+        long_bonus += 1.5 * zaman_agirligi
+    elif fiyat_delta < 0 and rsi_delta < 0:
+        short_bonus += 1.5 * zaman_agirligi
+        
+    # Negatif Uyumsuzluk / Mıknatıs Baskısı (Fiyat çıkarken RSI iniyor -> Fiyatı aşağı çeker)
+    elif fiyat_delta > 0 and rsi_delta < 0:
+        short_bonus += 2.0 * zaman_agirligi
+        long_bonus -= 1.0 * zaman_agirligi
+        
+    # Pozitif Uyumsuzluk (Fiyat inerken RSI çıkıyor -> Fiyatı yukarı çeker)
+    elif fiyat_delta < 0 and rsi_delta > 0:
+        long_bonus += 2.0 * zaman_agirligi
+        short_bonus -= 1.0 * zaman_agirligi
+        
+    return long_bonus, short_bonus
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     
-    y16, k16 = kline_cek_detayli_binance_ozel(coin_symbol, 900, 64)
-    y8, k8 = kline_cek_detayli_binance_ozel(coin_symbol, 300, 96)
-    y4, k4 = kline_cek_detayli_binance_ozel(coin_symbol, 300, 48)
-    y2, k2 = kline_cek_detayli_binance_ozel(coin_symbol, 60, 120)
-    y1, k1 = kline_cek_detayli_binance_ozel(coin_symbol, 60, 60)
+    # Zaman dilimleri için özel mum verileri
+    df_16s = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '15m', 64)
+    df_8s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '5m', 96)
+    df_4s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '5m', 48)
+    df_2s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '1m', 120)
+    df_1s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '1m', 60)
     
+    y16 = len(df_16s[df_16s['Close'] > df_16s['Open']]) if not df_16s.empty else 32
+    k16 = len(df_16s[df_16s['Close'] < df_16s['Open']]) if not df_16s.empty else 32
+    
+    y8 = len(df_8s[df_8s['Close'] > df_8s['Open']]) if not df_8s.empty else 48
+    k8 = len(df_8s[df_8s['Close'] < df_8s['Open']]) if not df_8s.empty else 48
+    
+    y4 = len(df_4s[df_4s['Close'] > df_4s['Open']]) if not df_4s.empty else 24
+    k4 = len(df_4s[df_4s['Close'] < df_4s['Open']]) if not df_4s.empty else 24
+    
+    y2 = len(df_2s[df_2s['Close'] > df_2s['Open']]) if not df_2s.empty else 60
+    k2 = len(df_2s[df_2s['Close'] < df_2s['Open']]) if not df_2s.empty else 60
+    
+    y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
+    k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
+    
+    # (Yeşil, Kırmızı, Max Puan, DataFrame, Hiyerarşik Çarpan [16s en yüksek, 1s en düşük])
     dilimler = [
-        (y16, k16, 14.0),
-        (y8, k8, 26.0),
-        (y4, k4, 40.0),
-        (y2, k2, 50.0),
-        (y1, k1, 70.0)
+        (y16, k16, 14.0, df_16s, 2.0),
+        (y8, k8, 26.0, df_8s, 1.5),
+        (y4, k4, 40.0, df_4s, 1.0),
+        (y2, k2, 50.0, df_2s, 0.7),
+        (y1, k1, 70.0, df_1s, 0.4)
     ]
     
     toplam_long_puan = 0.0
     toplam_short_puan = 0.0
     zaman_katkilari = {}
-    
     zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
-    for idx, (y, k, max_puan) in enumerate(dilimler):
-        sl, ss, net_katki, y_adet, k_adet = hesapla_zaman_dilimi_puan_200(y, k, max_puan)
-        toplam_long_puan += sl
-        toplam_short_puan += ss
+    
+    for idx, (y, k, max_puan, df_zaman, carpan) in enumerate(dilimler):
+        toplam = y + k
+        if toplam > 0:
+            sl = (y / toplam) * max_puan
+            ss = (k / toplam) * max_puan
+        else:
+            sl, ss = max_puan / 2.0, max_puan / 2.0
+            
+        # Hiyerarşik RSI Momentum / Mıknatıs Etkisini Puanlara Yedirme
+        rsi_lb, rsi_sb = rsi_momentum_katkisi_hesapla(df_zaman, carpan)
+        sl += rsi_lb
+        ss += rsi_sb
+        
+        toplam_long_puan += max(0.0, sl)
+        toplam_short_puan += max(0.0, ss)
         
         zaman_katkilari[zaman_isimleri[idx]] = {
-            "sl": sl, "ss": ss, "y_adet": y_adet, "k_adet": k_adet
+            "sl": max(0.0, sl), "ss": max(0.0, ss), "y_adet": y, "k_adet": k
         }
         
     nihai_long = round(toplam_long_puan, 2)
@@ -614,7 +639,7 @@ if t_puan_val >= 130.0:
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
         m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p><p><b>Long Oranı:</b> %{t_yuzde:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
-        gmail_bildirim_gonder(f"🚨 Total Market Alarmı: {total_sermaye_durumu}!", m_icerik)
+        gmail_bildirim_gonder(f"🚨 Top 5 Market Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 total_puan_val = total_ham_veri["nihai_puan"]
 total_yon_val = total_ham_veri["aktif_yon"]
@@ -628,13 +653,9 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # LED Renk Kuralı: >= 102.5 ve Long -> 🟢, >= 102.5 ve Short -> 🔴, < 102.5 -> 🟡
-    def led_rengini_belirle(puan, yon):
-        if puan < 102.5: return "🟡"
-        return "🟢" if yon == "Long" else "🔴"
-
-    c_led = led_rengini_belirle(nihai_puan, aktif_yon)
-    t_led = led_rengini_belirle(total_puan_val, total_yon_val)
+    # LED Renk Kuralı: C (Coin) için 102.5 eşiği, D (Dominans/Total) için eşiksiz doğrudan Long/Short
+    c_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
+    d_led = "🟢" if total_yon_val == "Long" else "🔴"
     
     yesil_led_sayisi = round((y_yuzde / 100.0) * 10.0)
     yesil_led_sayisi = max(0, min(10, yesil_led_sayisi))
@@ -657,12 +678,6 @@ for data in coin_ham_veriler:
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    # C (Coin) için eşikli kural
-    c_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
-    
-    # D (Dominans) için eşiksiz doğrudan Long/Short kuralı
-    d_led = "🟢" if total_yon_val == "Long" else "🔴"
-    
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{d_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
     if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
@@ -839,8 +854,6 @@ with col_orta_grafik:
         fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
         
         min_zaman = t_df['timestamp'].min()
-        # 1. GÜNCELLEME: X eksenini, sağ taraftaki endeks bloğuna yanaşacak kadar genişletiyoruz.
-        # t_df.iloc[-1]['timestamp']'in üzerine 2 saatlik (pd.Timedelta(hours=2)) görünmez bir boşluk ekliyoruz.
         max_zaman_grafik = t_df['timestamp'].max() + pd.Timedelta(hours=2)
         
         alt_sinir = min_f - (fiyat_fark * 0.05)
@@ -848,21 +861,12 @@ with col_orta_grafik:
         
         fig_total = make_subplots(specs=[[{"secondary_y": True}]])
         
-        # 2. GÜNCELLEME: Arka plan renk dolgularını sağa kadar uzatmak için koordinatları güncelliyoruz.
         for b_alt, b_ust, renk in [(0.0, 0.236, 'rgba(128, 0, 32, 0.16)'), (0.236, 0.382, 'rgba(180, 80, 0, 0.14)'), (0.382, 0.5, 'rgba(255, 255, 0, 0.18)'), (0.5, 0.618, 'rgba(255, 255, 0, 0.18)'), (0.618, 0.786, 'rgba(100, 180, 50, 0.15)'), (0.786, 1.0, 'rgba(0, 100, 0, 0.18)')]:
-            # X koordinatları: Önce normal veriler (soldan sağa), sonra sağ kenara kadar uzayan ek veriler (sağdan sola).
             x_coords = list(t_df['timestamp']) + [max_zaman_grafik, max_zaman_grafik] + list(t_df['timestamp'][::-1])
-            # Y koordinatları: Üst sınır ( soldan sağa ve sağa uzayan) + Alt sınır (sağa uzayan ve sağdan sola)
             y_coords = [fib_levels[b_ust]] * len(t_df) + [fib_levels[b_ust], fib_levels[b_alt]] + [fib_levels[b_alt]] * len(t_df)
             
             fig_total.add_trace(go.Scatter(
-                x=x_coords,
-                y=y_coords,
-                fill='toself',
-                fillcolor=renk,
-                line=dict(color='rgba(255,255,255,0)'),
-                showlegend=False,
-                hoverinfo='skip'
+                x=x_coords, y=y_coords, fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
             ), secondary_y=False)
 
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
@@ -874,11 +878,9 @@ with col_orta_grafik:
 
         fig_total.update_layout(
             template="plotly_white", 
-            # 3. GÜNCELLEME: Sağ kenar boşluğunu (margin r) daraltarak grafiğin maksimum genişlemesini sağlıyoruz.
             margin=dict(t=10, b=30, l=5, r=70), 
             height=380, 
             xaxis=dict(
-                # 4. GÜNCELLEME: X ekseni aralığını, oluşturduğumuz yeni sağ sınıra (max_zaman_grafik) kadar ayarlıyoruz.
                 range=[min_zaman, max_zaman_grafik], 
                 dtick=7200000, 
                 tickformat="%H:%M",

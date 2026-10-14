@@ -199,12 +199,11 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- YENİ SİMETRİK MATRİS PUANLAMA KURGUSU (EMA, RSI & FIBONACCI DESTEKLİ) ---
+# --- YENİ GÜNCELLENMİŞ MATRİS PUANLAMA KURGUSU (%10, %15, %50, %15, %10 = 200 Puan) ---
 def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
         
-    # EMA Hesaplama (Trend İstikrarı için)
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     anlik_fiyat = float(df['Close'].iloc[-1])
     anlik_ema = float(df['EMA20'].iloc[-1])
@@ -212,7 +211,6 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     ema_bonus_long = (max_puan * 0.05) if anlik_fiyat > anlik_ema else 0.0
     ema_bonus_short = (max_puan * 0.05) if anlik_fiyat < anlik_ema else 0.0
     
-    # RSI Momentum
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -236,7 +234,6 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
         long_bonus += max_puan * 0.03
         short_bonus -= max_puan * 0.01
         
-    # Fibonacci Mıknatıs Seviyeleri (0.50 ve 0.618)
     max_f = float(df['High'].max())
     min_f = float(df['Low'].min())
     fiyat_fark = max_f - min_f
@@ -277,12 +274,12 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # Yeni Simetrik Puan Dağılımı (%10 - %20 - %40 - %20 - %10 = Toplam 200 Puan)
+    # Yeni Matris Dağılımı: 16S (%10=20p), 8S (%15=30p), 4S (%50=100p), 2S (%15=30p), 1S (%10=20p) = Toplam 200 Puan
     dilimler = [
         (y16, k16, 64,  20.0, df_16s),  # 16 Saat (%10): 20 Puan
-        (y8,  k8,  96,  40.0, df_8s),   # 8 Saat (%20): 40 Puan
-        (y4,  k4,  48,  80.0, df_4s),   # 4 Saat (%40): 80 Puan (Ana Merkez)
-        (y2,  k2, 120,  40.0, df_2s),   # 2 Saat (%20): 40 Puan
+        (y8,  k8,  96,  30.0, df_8s),   # 8 Saat (%15): 30 Puan
+        (y4,  k4,  48, 100.0, df_4s),   # 4 Saat (%50): 100 Puan (Ana Merkez)
+        (y2,  k2, 120,  30.0, df_2s),   # 2 Saat (%15): 30 Puan
         (y1,  k1,  60,  20.0, df_1s)    # 1 Saat (%10): 20 Puan
     ]
     

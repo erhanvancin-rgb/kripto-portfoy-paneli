@@ -199,7 +199,7 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- 100 PUANLIK MATRİS VE ÖLÜ BÖLGE (48-52) KİNETİĞİ ---
+# --- 100 PUANLIK MATRİS VE 3 İNDİKATÖR (RSI, FİB, EMA) KİNETİĞİ ---
 def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
@@ -274,7 +274,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # 100 Puanlık Yeni Matris Dağılımı: 16S (%8=8p), 8S (%17=17p), 4S (%50=50p), 2S (%17=17p), 1S (%8=8p) = Toplam 100 Puan
+    # 100 Puanlık Matris Dağılımı: 16S (%8=8p), 8S (%17=17p), 4S (%50=50p), 2S (%17=17p), 1S (%8=8p) = Toplam 100 Puan
     dilimler = [
         (y16, k16, 64,  8.0, df_16s),   # 16 Saat (%8): 8 Puan
         (y8,  k8,  96, 17.0, df_8s),    # 8 Saat (%17): 17 Puan
@@ -309,9 +309,10 @@ def kurgusal_matris_hesapla(coin_symbol):
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
     
-    # --- ÖLÜ BÖLGE FİLTRESİ (48 - 52 ARALIĞI) ---
-    if 48.0 <= nihai_long <= 52.0 or 48.0 <= nihai_short <= 52.0 or abs(nihai_long - nihai_short) < 4.0:
-        nihai_puan = 50.0
+    # --- ÖLÜ BÖLGE FİLTRESİ (PUAN FARKI < 4.0 İSE NÖTR) ---
+    puan_farki = abs(nihai_long - nihai_short)
+    if puan_farki < 4.0:
+        nihai_puan = round(max(nihai_long, nihai_short), 2)
         aktif_yon = "Nötr"
     elif nihai_long >= nihai_short:
         nihai_puan = nihai_long
@@ -480,7 +481,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 52.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr, Ölü Bölge (48-52) veya Ters Akıntı konumunda işlem açılamaz!"
+    if matris_puan < 52.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr, Ölü Bölge veya Ters Akıntı konumunda işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -617,7 +618,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puanlık & Ölü Bölgeli Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puanlık Düzeltilmiş Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -688,7 +689,7 @@ for data in coin_ham_veriler:
     is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0)
     is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0)
     
-    if c_yonu == "Nötr" or nihai_puan == 50.0:
+    if aktif_yon == "Nötr":
         trend = "⭐ ⏳ Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
         yon_html = '<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐ Nötr (Beklemede)</div>'
@@ -721,7 +722,7 @@ for data in coin_ham_veriler:
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
         ham_agirlik = 3.0
 
-    is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or nihai_puan == 50.0)
+    is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr")
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_atr_metrics(trend)
     
     gecici_islenen_liste.append({
@@ -887,7 +888,7 @@ with col_sol_panel:
             if not secilen_coin or coin_listesi == []:
                 st.error("⚠️ Geçerli bir coin seçmelisiniz!")
             elif coin_verisii is not None and coin_verisii['Notr']:
-                st.error("⚠️ Nötr, Ölü Bölge (48-52) veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
+                st.error("⚠️ Nötr, Ölü Bölge veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
             elif coin_verisii is not None:
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 

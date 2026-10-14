@@ -114,12 +114,10 @@ def gmail_bildirim_gonder(konu, icerik_html):
 # --- BİNANCE API ENTEGRASYONU (ENGELSİZ) ---
 def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
-        try:
-            r = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
-            if r.status_code == 200:
-                val = float(r.json()['data']['total_market_cap']['usd'])
-                if val > 0: return val
-        except: pass
+        df_btc = kline_cek_binance('BTC/USDT', '15m', 2)
+        if not df_btc.empty:
+            current_btc = float(df_btc['Close'].iloc[-1])
+            return current_btc * 33200.0 
         return baz_fiyatlar['TOTAL']
 
     sym = coin_symbol.replace('/', '')
@@ -202,7 +200,7 @@ def kline_cek_detayli_binance_ozel(coin_symbol, bar_saniye, toplam_bar):
 
 def hesapla_zaman_dilimi_puan_200(y, k, max_puan):
     toplam = y + k
-    if toplam <= 0: return 0.0, 0.0, 50.0, 0.0, 0, 0
+    if toplam <= 0: return 0.0, 0.0, 0.0, 0, 0
     
     s_long = (y / toplam) * max_puan
     s_short = (k / toplam) * max_puan
@@ -606,10 +604,14 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    c_durum_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
-    t_durum_led = "🟢" if (total_puan_val >= 102.5 and total_yon_val == "Long") else ("🔴" if (total_puan_val >= 102.5 and total_yon_val == "Short") else "🟡")
+    # LED Renk Kuralı: >= 102.5 ve Long -> 🟢, >= 102.5 ve Short -> 🔴, < 102.5 -> 🟡
+    def led_rengini_belirle(puan, yon):
+        if puan < 102.5: return "🟡"
+        return "🟢" if yon == "Long" else "🔴"
+
+    c_led = led_rengini_belirle(nihai_puan, aktif_yon)
+    t_led = led_rengini_belirle(total_puan_val, total_yon_val)
     
-    # LED Dağılımı: 10 LED üzerinden puan oranına göre
     yesil_led_sayisi = round((y_yuzde / 100.0) * 10.0)
     yesil_led_sayisi = max(0, min(10, yesil_led_sayisi))
     kirmizi_led_sayisi = 10 - yesil_led_sayisi
@@ -631,7 +633,7 @@ for data in coin_ham_veriler:
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_durum_led}{t_durum_led}</div><div style="font-size: 10px; font-weight: 500;">C:{c_durum_led} | T:{t_durum_led}</div></div>'
+    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{t_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
     if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
@@ -944,7 +946,7 @@ if not df_gecmis.empty:
         anlik_fiyat_sozluk[islem_id] = anl_f
         
         if giris_fiyat > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giriş_fiyat - kar_al_f) / giris_fiyat)), 2) if 'Long' in yon else round(miktar * KALDIRAC * ((giris_fiyat - kar_al_f) / giris_fiyat), 2)
+            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - kar_al_f) / giris_fiyat)), 2)
             olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - stop_f) / giris_fiyat)), 2)
         else: hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 

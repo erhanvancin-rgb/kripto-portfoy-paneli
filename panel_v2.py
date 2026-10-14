@@ -89,7 +89,7 @@ logo_urls = {
     'XRP/USDT': 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/xrp.png',
     'TOTAL': 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdt.png'
 }
-baz_fiyatlar = {'BTC/USDT': 84805.0, 'ETH/USDT': 2690.0, 'BNB/USDT': 786.2, 'SOL/USDT': 119.9, 'XRP/USDT': 1.489, 'TOTAL': 2.77e12}
+baz_fiyatlar = {'BTC/USDT': 83750.0, 'ETH/USDT': 2511.0, 'BNB/USDT': 745.0, 'SOL/USDT': 107.6, 'XRP/USDT': 1.373, 'TOTAL': 2.77e12}
 
 def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
@@ -111,90 +111,76 @@ def gmail_bildirim_gonder(konu, icerik_html):
     except Exception as e:
         return False, str(e)
 
-def fiyat_cek_coinbase(coin_symbol):
+# --- BİNANCE API ENTEGRASYONU (ENGELSİZ) ---
+def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
         try:
-            url = "https://api.coingecko.com/api/v3/global"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                val = float(resp.json().get('data', {}).get('total_market_cap', {}).get('usd', 0))
+            r = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
+            if r.status_code == 200:
+                val = float(r.json()['data']['total_market_cap']['usd'])
                 if val > 0: return val
         except: pass
         return baz_fiyatlar['TOTAL']
 
-    cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
-    cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-    
-    try:
-        url = f"https://api.coinbase.com/v2/prices/{cb_sym}/spot"
-        resp = requests.get(url, headers=headers, timeout=15.0)
-        if resp.status_code == 200:
-            val = float(resp.json().get('data', {}).get('amount', 0))
-            if val > 0: return val
-    except: pass
+    sym = coin_symbol.replace('/', '')
+    # data-api engelsizdir. Yedek olarak normal api eklenmiştir.
+    endpoints = [
+        f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
+        f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
+    ]
+    for ep in endpoints:
+        try:
+            r = requests.get(ep, timeout=3)
+            if r.status_code == 200:
+                val = float(r.json()['price'])
+                if val > 0: return val
+        except: continue
     
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-@st.cache_data(ttl=30)
-def load_15min_market_data(coin_symbol: str):
-    limit = 64  # 16 saatlik kurgu için 15dk x 64 bar = 960 dk (16 saat)
-    if coin_symbol == 'TOTAL':
+def kline_cek_binance(coin_symbol, interval, limit):
+    sym = coin_symbol.replace('/', '')
+    endpoints = [
+        f"https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}"
+    ]
+    for ep in endpoints:
         try:
-            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                prices = r.json().get('prices', [])
-                if len(prices) > 0:
-                    df_t = pd.DataFrame(prices, columns=['timestamp_ms', 'price'])
-                    df_t['timestamp'] = pd.to_datetime(df_t['timestamp_ms'], unit='ms').dt.tz_localize('UTC').dt.tz_convert(TR_TZ)
-                    anlik_total = fiyat_cek_coinbase('TOTAL')
-                    ilk_fiyat = df_t['price'].iloc[0]
-                    if ilk_fiyat > 0:
-                        carpan = anlik_total / ilk_fiyat
-                        df_t['Close'] = df_t['price'] * carpan
-                    else:
-                        df_t['Close'] = anlik_total
-                    
-                    df_t['Open'] = df_t['Close'].shift(1).fillna(df_t['Close'].iloc[0])
-                    df_t['High'] = df_t[['Open', 'Close']].max(axis=1) * 1.0001
-                    df_t['Low'] = df_t[['Open', 'Close']].min(axis=1) * 0.9999
-                    df_t = df_t[(df_t['Close'] > 0) & (df_t['Open'] > 0)].dropna()
-                    res_df = df_t[['timestamp', 'Open', 'High', 'Low', 'Close']].tail(limit).reset_index(drop=True)
-                    if len(res_df) > 1 and res_df['Close'].nunique() > 1:
-                        return res_df
-        except: pass
-
-    if coin_symbol != 'TOTAL':
-        cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
-        cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-        try:
-            url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity=900"
-            r = requests.get(url, headers=headers, timeout=15.0)
+            r = requests.get(ep, timeout=5)
             if r.status_code == 200:
                 data = r.json()
-                if isinstance(data, list) and len(data) > 0:
-                    df = pd.DataFrame(data, columns=['timestamp', 'Low', 'High', 'Open', 'Close', 'Volume'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_convert(TR_TZ)
-                    for col in ['Open', 'High', 'Low', 'Close']:
-                        df[col] = df[col].astype(float)
-                    df = df[(df['Close'] > 0) & (df['Open'] > 0)]
-                    df = df.sort_values('timestamp').tail(limit).reset_index(drop=True)
-                    if not df.empty and df['Close'].nunique() > 1: return df
-        except: pass
+                df = pd.DataFrame(data, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close_Time', 'QAV', 'Num_Trades', 'Taker_BBAV', 'Taker_BQAV', 'Ignore'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True).dt.tz_convert(TR_TZ)
+                for col in ['Open', 'High', 'Low', 'Close']:
+                    df[col] = df[col].astype(float)
+                return df[['timestamp', 'Open', 'High', 'Low', 'Close']]
+        except: continue
+    return pd.DataFrame()
+
+@st.cache_data(ttl=30)
+def load_15min_market_data(coin_symbol: str):
+    limit = 64
+    if coin_symbol == 'TOTAL':
+        # Y-Ekseni Düzeltmesi: Total Market yapısını Bitcoin'in %sel hareketiyle birebir oranla
+        anlik_total = fiyat_cek_binance('TOTAL')
+        df_btc = kline_cek_binance('BTC/USDT', '15m', limit)
+        if not df_btc.empty:
+            current_btc = float(df_btc['Close'].iloc[-1])
+            if current_btc > 0:
+                carpan = anlik_total / current_btc
+                df_btc['Open'] = df_btc['Open'] * carpan
+                df_btc['High'] = df_btc['High'] * carpan
+                df_btc['Low'] = df_btc['Low'] * carpan
+                df_btc['Close'] = df_btc['Close'] * carpan
+                return df_btc
+                
+    if coin_symbol != 'TOTAL':
+        df = kline_cek_binance(coin_symbol, '15m', limit)
+        if not df.empty: return df
     
-    # Güvenli gerçekçi dalgalanma (düz çizgi kalmaması için minik simülasyon)
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='15min')
     base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
-    
-    np.random.seed(42) # Sabit seed ile zıplama önlenir ama düz çizgi olmaz
-    carpanlar = np.linspace(0.999, 1.001, limit) + np.random.normal(0, 0.0002, limit)
-    close_p = base_p * carpanlar
-    open_p = close_p * 0.9995
-    high_p = close_p * 1.0005
-    low_p = close_p * 0.9990
-    return pd.DataFrame({'timestamp': dates, 'Open': open_p, 'High': high_p, 'Low': low_p, 'Close': close_p})
+    return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p]*limit, 'Low': [base_p]*limit, 'Close': [base_p]*limit})
 
 def calculate_coin_atr_metrics(df, skor):
     stop_pct = 0.70
@@ -203,37 +189,19 @@ def calculate_coin_atr_metrics(df, skor):
     hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
-def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
-    if coin_symbol == 'TOTAL':
-        df_m = load_15min_market_data('TOTAL')
-        yesil, kirmizi = 0, 0
-        if not df_m.empty:
-            alt_df = df_m.tail(toplam_bar)
-            for _, row in alt_df.iterrows():
-                if row['Close'] > row['Open']: yesil += 1
-                elif row['Close'] < row['Open']: kirmizi += 1
-            if (yesil + kirmizi) > 0: return yesil, kirmizi
-        return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
-
-    cb_map = {'BTC/USDT': 'BTC-USD', 'ETH/USDT': 'ETH-USD', 'BNB/USDT': 'BNB-USD', 'SOL/USDT': 'SOL-USD', 'XRP/USDT': 'XRP-USD'}
-    cb_sym = cb_map.get(coin_symbol, 'BTC-USD')
-    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-    try:
-        url = f"https://api.exchange.coinbase.com/products/{cb_sym}/candles?granularity={bar_saniye}"
-        r = requests.get(url, headers=headers, timeout=15.0)
-        if r.status_code == 200:
-            data = r.json()
-            if isinstance(data, list) and len(data) > 0:
-                yesil, kirmizi = 0, 0
-                for bar in data[:toplam_bar]:
-                    o, c = float(bar[3]), float(bar[4])
-                    if c > o: yesil += 1
-                    elif c < o: kirmizi += 1
-                if (yesil + kirmizi) > 0:
-                    return yesil, kirmizi
-    except: pass
+def kline_cek_detayli_binance_ozel(coin_symbol, bar_saniye, toplam_bar):
+    if coin_symbol == 'TOTAL': coin_symbol = 'BTC/USDT'  # TOTAL yönü BTC dominanslı alınır
     
-    return int(toplam_bar * 0.55), int(toplam_bar * 0.45)
+    intervals = {900: '15m', 300: '5m', 60: '1m'}
+    interval = intervals.get(bar_saniye, '5m')
+    
+    df = kline_cek_binance(coin_symbol, interval, toplam_bar)
+    if not df.empty:
+        yesil = len(df[df['Close'] > df['Open']])
+        kirmizi = len(df[df['Close'] < df['Open']])
+        if (yesil + kirmizi) > 0: return yesil, kirmizi
+        
+    return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
 def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
     toplam = y + k
@@ -258,13 +226,13 @@ def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
     return s_long, s_short, r_y, net_puan_katkisi, (y - k)
 
 def kurgusal_matris_hesapla(coin_symbol):
-    anlik_fiyat = fiyat_cek_coinbase(coin_symbol)
+    anlik_fiyat = fiyat_cek_binance(coin_symbol)
     
-    y16, k16 = kline_cek_detayli_cb_ozel(coin_symbol, 900, 64)
-    y8, k8 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 96)
-    y4, k4 = kline_cek_detayli_cb_ozel(coin_symbol, 300, 48)
-    y2, k2 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 120)
-    y1, k1 = kline_cek_detayli_cb_ozel(coin_symbol, 60, 60)
+    y16, k16 = kline_cek_detayli_binance_ozel(coin_symbol, 900, 64)
+    y8, k8 = kline_cek_detayli_binance_ozel(coin_symbol, 300, 96)
+    y4, k4 = kline_cek_detayli_binance_ozel(coin_symbol, 300, 48)
+    y2, k2 = kline_cek_detayli_binance_ozel(coin_symbol, 60, 120)
+    y1, k1 = kline_cek_detayli_binance_ozel(coin_symbol, 60, 60)
     
     dilimler = [
         (y16, k16, 14.0, 64),
@@ -445,7 +413,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             m_M = float(rw['Islem_Miktari'])
             y_Y = rw['Yon']
             if not ortak_fiyat_havuzu:
-                anl_F = fiyat_cek_coinbase(c_SYM)
+                anl_F = fiyat_cek_binance(c_SYM)
             else:
                 anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
             f_y = ((anl_F - g_F) / g_F) if 'Long' in y_Y else ((g_F - anl_F) / g_F)
@@ -543,7 +511,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
             if ortak_fiyat_havuzu is not None and coin in ortak_fiyat_havuzu:
                 anl_f = ortak_fiyat_havuzu[coin]
             else:
-                anl_f = fiyat_cek_coinbase(coin)
+                anl_f = fiyat_cek_binance(coin)
             
             islem_kapatilacak = False
             hedefe_ulasti = False
@@ -611,7 +579,7 @@ ortak_fiyat_havuzu = {}
 
 for sembol in tum_takip_edilenler:
     anlik_fiyat, nihai_puan, aktif_yon, y_yuzde, zaman_katkilari = kurgusal_matris_hesapla(sembol)
-    if sembol == 'TOTAL': anlik_fiyat = fiyat_cek_coinbase('TOTAL')
+    if sembol == 'TOTAL': anlik_fiyat = fiyat_cek_binance('TOTAL')
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
     
     df_market = load_15min_market_data(sembol)
@@ -684,13 +652,14 @@ for data in coin_ham_veriler:
     sepet_orani = min(100.0, max(0.0, sepet_orani))
     
     islenen_veriler.append({
+        "Sira_Anahtar": list(logo_urls.keys()).index(sembol),
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), "Yon": yon_html, "Teyit_Sunumu": detay_matris_html, 
         "Dom_Sunumu": dom_html, "Matris_Puan_Sunumu": puan_html, "Gunluk_Oran": f"<span>{gunluk_oran:+,.2f}%</span>",
         "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak), "Skor": nihai_puan, "Sepet_Orani": sepet_orani,
         "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
-# Logo ve satır senkronizasyonunu korumak için sembol adına göre sabitleme (Sıralama hatasını önler)
+# Puan sırasına göre dizerken logo uyumunu bozmaz, çünkü listeye sembol anahtarını da ekledik.
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
@@ -829,10 +798,15 @@ with col_orta_grafik:
         delta = t_df['Close'].diff()
         rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         t_df['RSI'] = (100 - (100 / (1 + rs))).fillna(50)
-        min_f, max_f = t_df['Close'].min(), t_df['Close'].max()
-        if min_f == max_f:
-            min_f *= 0.999
-            max_f *= 1.001
+        
+        min_f = float(t_df['Close'].min())
+        max_f = float(t_df['Close'].max())
+        
+        # Tam düz çizgi olmasını (sıkışmayı) önler
+        if max_f - min_f < (max_f * 0.0001): 
+            min_f = min_f * 0.999
+            max_f = max_f * 1.001
+            
         fiyat_fark = max_f - min_f
         t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
         
@@ -849,11 +823,12 @@ with col_orta_grafik:
 
         for oran, val in fib_levels.items():
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
+            # Sağ etiket sıkışmasını önleyen margin ayarı aşağıdadır
             fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>  <b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
         fig_total.update_layout(
             template="plotly_white", 
-            margin=dict(t=10, b=30, l=5, r=120), 
+            margin=dict(t=10, b=30, l=5, r=140), 
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman], 

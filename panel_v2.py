@@ -274,13 +274,12 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # 100 Puanlık Matris Dağılımı: 16S (%8=8p), 8S (%17=17p), 4S (%50=50p), 2S (%17=17p), 1S (%8=8p) = Toplam 100 Puan
     dilimler = [
-        (y16, k16, 64,  8.0, df_16s),   # 16 Saat (%8): 8 Puan
-        (y8,  k8,  96, 17.0, df_8s),    # 8 Saat (%17): 17 Puan
-        (y4,  k4,  48, 50.0, df_4s),    # 4 Saat (%50): 50 Puan (Ana Merkez)
-        (y2,  k2, 120, 17.0, df_2s),    # 2 Saat (%17): 17 Puan
-        (y1,  k1,  60,  8.0, df_1s)     # 1 Saat (%8): 8 Puan
+        (y16, k16, 64,  8.0, df_16s),   
+        (y8,  k8,  96, 17.0, df_8s),    
+        (y4,  k4,  48, 50.0, df_4s),    
+        (y2,  k2, 120, 17.0, df_2s),    
+        (y1,  k1,  60,  8.0, df_1s)     
     ]
     
     toplam_long_puan = 0.0
@@ -309,17 +308,16 @@ def kurgusal_matris_hesapla(coin_symbol):
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
     
-    # --- ÖLÜ BÖLGE FİLTRESİ (PUAN FARKI < 4.0 İSE NÖTR) ---
-    puan_farki = abs(nihai_long - nihai_short)
-    if puan_farki < 4.0:
-        nihai_puan = round(max(nihai_long, nihai_short), 2)
-        aktif_yon = "Nötr"
-    elif nihai_long >= nihai_short:
+    # --- KARARLILIK EŞİĞİ (NET GALİBİYET KURALI: 54 PUAN BARAJI) ---
+    if nihai_long >= 54.0:
         nihai_puan = nihai_long
         aktif_yon = "Long"
-    else:
+    elif nihai_short >= 54.0:
         nihai_puan = nihai_short
         aktif_yon = "Short"
+    else:
+        nihai_puan = round(max(nihai_long, nihai_short), 2)
+        aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
@@ -481,7 +479,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 52.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr, Ölü Bölge veya Ters Akıntı konumunda işlem açılamaz!"
+    if matris_puan < 54.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumunda işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -618,7 +616,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puanlık Düzeltilmiş Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Kararlılık Eşiği: 54 Puan)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -674,7 +672,7 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    c_led = "🟢" if (nihai_puan > 52.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan > 52.0 and aktif_yon == "Short") else "🟡")
+    c_led = "🟢" if (nihai_puan >= 54.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 54.0 and aktif_yon == "Short") else "🟡")
     d_led = "🟢" if total_yon_val == "Long" else "🔴"
     
     yesil_led_sayisi = round((y_yuzde / 100.0) * 10.0)
@@ -683,7 +681,7 @@ for data in coin_ham_veriler:
     
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    c_yonu = "Long" if (nihai_puan > 52.0 and aktif_yon == "Long") else ("Short" if (nihai_puan > 52.0 and aktif_yon == "Short") else "Nötr")
+    c_yonu = "Long" if (nihai_puan >= 54.0 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 54.0 and aktif_yon == "Short") else "Nötr")
     d_yonu = total_yon_val
     
     is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0)
@@ -704,7 +702,7 @@ for data in coin_ham_veriler:
         aktif_yon_turu = "Short"
         yon_html = '<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
         ham_agirlik = 4.0
-    elif c_yonu != d_yonu:
+    elif c_yonu != d_yonu and c_yonu != "Nötr":
         trend = "⭐⭐ ⚠️ Ters Akıntı"
         aktif_yon_turu = "Nötr"
         yon_html = '<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold; font-size: 12px;">⭐⭐ ⚠️ Ters Akıntı</div>'
@@ -888,7 +886,7 @@ with col_sol_panel:
             if not secilen_coin or coin_listesi == []:
                 st.error("⚠️ Geçerli bir coin seçmelisiniz!")
             elif coin_verisii is not None and coin_verisii['Notr']:
-                st.error("⚠️ Nötr, Ölü Bölge veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
+                st.error("⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
             elif coin_verisii is not None:
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 

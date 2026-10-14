@@ -123,7 +123,6 @@ def fiyat_cek_binance(coin_symbol):
         return baz_fiyatlar['TOTAL']
 
     sym = coin_symbol.replace('/', '')
-    # data-api engelsizdir. Yedek olarak normal api eklenmiştir.
     endpoints = [
         f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
         f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
@@ -161,7 +160,6 @@ def kline_cek_binance(coin_symbol, interval, limit):
 def load_15min_market_data(coin_symbol: str):
     limit = 64
     if coin_symbol == 'TOTAL':
-        # Y-Ekseni Düzeltmesi: Total Market yapısını Bitcoin'in %sel hareketiyle birebir oranla
         anlik_total = fiyat_cek_binance('TOTAL')
         df_btc = kline_cek_binance('BTC/USDT', '15m', limit)
         if not df_btc.empty:
@@ -190,7 +188,7 @@ def calculate_coin_atr_metrics(df, skor):
     return stop_pct, hedef_carpan
 
 def kline_cek_detayli_binance_ozel(coin_symbol, bar_saniye, toplam_bar):
-    if coin_symbol == 'TOTAL': coin_symbol = 'BTC/USDT'  # TOTAL yönü BTC dominanslı alınır
+    if coin_symbol == 'TOTAL': coin_symbol = 'BTC/USDT'
     
     intervals = {900: '15m', 300: '5m', 60: '1m'}
     interval = intervals.get(bar_saniye, '5m')
@@ -659,7 +657,6 @@ for data in coin_ham_veriler:
         "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": f"1 / {hedef_carpan:.1f}".replace('.', ',')
     })
 
-# Puan sırasına göre dizerken logo uyumunu bozmaz, çünkü listeye sembol anahtarını da ekledik.
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
@@ -802,7 +799,6 @@ with col_orta_grafik:
         min_f = float(t_df['Close'].min())
         max_f = float(t_df['Close'].max())
         
-        # Tam düz çizgi olmasını (sıkışmayı) önler
         if max_f - min_f < (max_f * 0.0001): 
             min_f = min_f * 0.999
             max_f = max_f * 1.001
@@ -812,6 +808,10 @@ with col_orta_grafik:
         
         fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
         min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max()
+        
+        # Basıklığı önlemek için Y ekseni sınırlarını doğru şekilde sadece %5 oranında genişletiyoruz
+        alt_sinir = min_f - (fiyat_fark * 0.05)
+        ust_sinir = max_f + (fiyat_fark * 0.05)
         
         fig_total = make_subplots(specs=[[{"secondary_y": True}]])
         
@@ -823,7 +823,6 @@ with col_orta_grafik:
 
         for oran, val in fib_levels.items():
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-            # Sağ etiket sıkışmasını önleyen margin ayarı aşağıdadır
             fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>  <b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
         fig_total.update_layout(
@@ -836,7 +835,7 @@ with col_orta_grafik:
                 tickformat="%H:%M",
                 tickangle=25
             ), 
-            yaxis=dict(showticklabels=False, range=[min_f * 0.995, max_f * 1.005]), 
+            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir]), 
             xaxis_rangeslider_visible=False, 
             paper_bgcolor='rgba(0,0,0,0)', 
             plot_bgcolor='rgba(0,0,0,0)', 

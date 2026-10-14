@@ -845,29 +845,27 @@ with col_orta_grafik:
         )
         st.plotly_chart(fig_total, use_container_width=True)
 
-with col_sag_endeks:
-    st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)
-    t_y_yuzde = total_ham_veri["y_yuzde"]
-    t_y_gorsel, t_k_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(t_y_yuzde / 10.0))))
-    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
+t_zaman_kat = total_ham_veri["zaman_katkilari"]
     
-    t_zaman_kat = total_ham_veri["zaman_katkilari"]
-    boxes = ""
+    # HTML parçalarını listede topluyoruz (string birleştirme hatasını önler)
+    boxes_listesi = []
     for etk, veri in t_zaman_kat.items():
         sl, ss = veri["sl"], veri["ss"]
         y_ad, k_ad = veri["y_adet"], veri["k_adet"]
         
-        # Hangi tarafın puanı fazlaysa kutu rengini o belirler (Long: Yeşil, Short: Turuncu)
         kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
         
-        boxes += f'''
+        kutucuk_html = f"""
         <div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">
             {etk}<br>
             L: {sl:.2f}p ({y_ad}) | S: {ss:.2f}p ({k_ad})
         </div>
-        '''
-    
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
+        """
+        boxes_listesi.append(kutucuk_html)
+        
+    boxes_birlestirilmis = "".join(boxes_listesi)
+
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 

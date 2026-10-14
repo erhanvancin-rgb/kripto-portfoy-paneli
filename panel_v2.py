@@ -165,10 +165,10 @@ def kline_cek_binance(coin_symbol, interval, limit):
 
 @st.cache_data(ttl=30)
 def load_15min_market_data(coin_symbol: str):
-    limit = 64
+    limit = 192  # 192 adet mum (192 x 5 dk = 960 dk = 16 Saat)
     if coin_symbol == 'TOTAL':
         anlik_total = fiyat_cek_binance('TOTAL')
-        df_btc = kline_cek_binance('BTC/USDT', '15m', limit)
+        df_btc = kline_cek_binance('BTC/USDT', '5m', limit)
         if not df_btc.empty:
             current_btc = float(df_btc['Close'].iloc[-1])
             if current_btc > 0:
@@ -180,10 +180,10 @@ def load_15min_market_data(coin_symbol: str):
                 return df_btc
                 
     if coin_symbol != 'TOTAL':
-        df = kline_cek_binance(coin_symbol, '15m', limit)
+        df = kline_cek_binance(coin_symbol, '5m', limit)
         if not df.empty: return df
     
-    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='15min')
+    dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='5min')
     base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p]*limit, 'Low': [base_p]*limit, 'Close': [base_p]*limit})
 

@@ -182,15 +182,10 @@ def load_15min_market_data(coin_symbol: str):
                     if not df.empty: return df
         except: pass
     
+    # Fallback durumunda rastgele üretim iptal edildi, son baz fiyattan sabit düz veri üretilir
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='15min')
-    base_price = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
-    vol_f = base_price * 0.0005
-    np.random.seed(int(time.time() // 60) + hash(coin_symbol) % 2**32)
-    close_prices = base_price + np.random.normal(0, vol_f, limit).cumsum() / 5
-    open_prices = close_prices + np.random.normal(0, vol_f/4, limit)
-    high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.normal(0, vol_f/3, limit))
-    low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.normal(0, vol_f/3, limit))
-    return pd.DataFrame({'timestamp': dates, 'Open': open_prices, 'High': high_prices, 'Low': low_prices, 'Close': close_prices})
+    base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
+    return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p*1.0001]*limit, 'Low': [base_p*0.9999]*limit, 'Close': [base_p]*limit})
 
 def calculate_coin_atr_metrics(df, skor):
     stop_pct = 0.70
@@ -229,10 +224,7 @@ def kline_cek_detayli_cb_ozel(coin_symbol, bar_saniye, toplam_bar):
                     return yesil, kirmizi
     except: pass
     
-    np.random.seed(int(time.time() // 60) + hash(coin_symbol + str(toplam_bar)) % 2**32)
-    rastgele_yesil = int(toplam_bar * np.random.uniform(0.3, 0.7))
-    rastgele_kirmizi = toplam_bar - rastgele_yesil
-    return rastgele_yesil, rastgele_kirmizi
+    return int(toplam_bar * 0.5), int(toplam_bar * 0.5)
 
 def hesapla_zaman_dilimi_puan_200(y, k, max_puan, tam_onay):
     toplam = y + k
@@ -611,7 +603,7 @@ ortak_fiyat_havuzu = {}
 
 for sembol in tum_takip_edilenler:
     anlik_fiyat, nihai_puan, aktif_yon, y_yuzde, zaman_katkilari = kurgusal_matris_hesapla(sembol)
-    if sembol == 'TOTAL': anlik_fiyat = 2.77e12
+    if sembol == 'TOTAL': anlik_fiyat = fiyat_cek_coinbase('TOTAL')
     ortak_fiyat_havuzu[sembol] = anlik_fiyat 
     
     df_market = load_15min_market_data(sembol)
@@ -845,11 +837,11 @@ with col_orta_grafik:
 
         for oran, val in fib_levels.items():
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-            fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b><br><b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
+            fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>  <b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
         fig_total.update_layout(
             template="plotly_white", 
-            margin=dict(t=10, b=30, l=5, r=85), 
+            margin=dict(t=10, b=30, l=5, r=120), 
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman], 
@@ -874,7 +866,7 @@ with col_sag_endeks:
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes = "".join([f'<div style="background-color: {"#00FF00" if val >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 5px;">{etk}: {val:+,.2f} Puan</div>' for etk, val in t_zaman_kat.items()])
     
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${2.77e12 / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 

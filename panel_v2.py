@@ -199,7 +199,7 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- YENİ GÜNCELLENMİŞ MATRİS PUANLAMA KURGUSU (%10, %15, %50, %15, %10 = 200 Puan) ---
+# --- MATRİS PUANLAMA KURGUSU (%8 - %17 - %50 - %17 - %8 = 200 Puan) ---
 def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
@@ -274,13 +274,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # Yeni Matris Dağılımı: 16S (%10=20p), 8S (%15=30p), 4S (%50=100p), 2S (%15=30p), 1S (%10=20p) = Toplam 200 Puan
+    # Güncellenmiş Matris Dağılımı: 16S (%8=16p), 8S (%17=34p), 4S (%50=100p), 2S (%17=34p), 1S (%8=16p) = Toplam 200 Puan
     dilimler = [
-        (y16, k16, 64,  20.0, df_16s),  # 16 Saat (%10): 20 Puan
-        (y8,  k8,  96,  30.0, df_8s),   # 8 Saat (%15): 30 Puan
+        (y16, k16, 64,  16.0, df_16s),  # 16 Saat (%8): 16 Puan
+        (y8,  k8,  96,  34.0, df_8s),   # 8 Saat (%17): 34 Puan
         (y4,  k4,  48, 100.0, df_4s),   # 4 Saat (%50): 100 Puan (Ana Merkez)
-        (y2,  k2, 120,  30.0, df_2s),   # 2 Saat (%15): 30 Puan
-        (y1,  k1,  60,  20.0, df_1s)    # 1 Saat (%10): 20 Puan
+        (y2,  k2, 120,  34.0, df_2s),   # 2 Saat (%17): 34 Puan
+        (y1,  k1,  60,  16.0, df_1s)    # 1 Saat (%8): 16 Puan
     ]
     
     toplam_long_puan = 0.0

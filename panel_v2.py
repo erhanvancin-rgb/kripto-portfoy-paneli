@@ -114,12 +114,36 @@ def gmail_bildirim_gonder(konu, icerik_html):
 # --- BİNANCE API ENTEGRASYONU (ENGELSİZ) ---
 def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
-        df_btc = kline_cek_binance('BTC/USDT', '15m', 2)
-        if not df_btc.empty:
-            current_btc = float(df_btc['Close'].iloc[-1])
-            return current_btc * 33200.0 
+        try:
+            # Binance'ten ana coinlerin anlık fiyatlarını alıp piyasa büyüklükleriyle harmanlıyoruz
+            btc = fiyat_cek_binance('BTC/USDT')
+            eth = fiyat_cek_binance('ETH/USDT')
+            bnb = fiyat_cek_binance('BNB/USDT')
+            sol = fiyat_cek_binance('SOL/USDT')
+            xrp = fiyat_cek_binance('XRP/USDT')
+            
+            # Yaklaşık dolaşımdaki arz ve dominans katsayıları ile anlık Total Market hesaplama
+            # (BTC ve ilk 5 büyük coin piyasanın yaklaşık %75-80'ini oluşturur)
+            tahmini_total = (btc * 19700000) + (eth * 120000000) + (bnb * 145000000) + (sol * 470000000) + (xrp * 5700000000)
+            if tahmini_total > 0:
+                return float(tahmini_total)
+        except: pass
         return baz_fiyatlar['TOTAL']
 
+    sym = coin_symbol.replace('/', '')
+    endpoints = [
+        f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
+        f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
+    ]
+    for ep in endpoints:
+        try:
+            r = requests.get(ep, timeout=3)
+            if r.status_code == 200:
+                val = float(r.json()['price'])
+                if val > 0: return val
+        except: continue
+    
+    return baz_fiyatlar.get(coin_symbol, 100.0)
     sym = coin_symbol.replace('/', '')
     endpoints = [
         f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",

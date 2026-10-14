@@ -817,7 +817,7 @@ with col_sol_panel:
                     st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Total Market (16 Saatlik Akış - Fibonacci & RSI)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(64).reset_index(drop=True)
     
@@ -893,7 +893,7 @@ with col_orta_grafik:
         st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
-    st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>Top 5 Coin Ortalama Endeksi</h3>", unsafe_allow_html=True)
     t_toplam_puan = t_l_puan + t_s_puan
     t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
     t_yesil_led = round((t_yuzde / 100.0) * 10.0)
@@ -912,7 +912,7 @@ with col_sag_endeks:
         boxes_listesi.append(kutucuk_html)
     boxes_birlestirilmis = "".join(boxes_listesi)
     
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Değer: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 

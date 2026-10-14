@@ -837,7 +837,9 @@ with col_orta_grafik:
         t_df['RSI_Norm'] = min_f + (t_df['RSI'] / 100.0) * fiyat_fark
         
         fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
-        min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max()
+        
+        # Sağ tarafta boşluk bırakmak ve sağdaki bloğa yanaşmasını sağlamak için zaman aralığını genişletiyoruz
+        min_zaman, max_zaman = t_df['timestamp'].min(), t_df['timestamp'].max() + pd.Timedelta(hours=2)
         
         alt_sinir = min_f - (fiyat_fark * 0.05)
         ust_sinir = max_f + (fiyat_fark * 0.05)
@@ -845,18 +847,28 @@ with col_orta_grafik:
         fig_total = make_subplots(specs=[[{"secondary_y": True}]])
         
         for b_alt, b_ust, renk in [(0.0, 0.236, 'rgba(128, 0, 32, 0.16)'), (0.236, 0.382, 'rgba(180, 80, 0, 0.14)'), (0.382, 0.5, 'rgba(255, 255, 0, 0.18)'), (0.5, 0.618, 'rgba(255, 255, 0, 0.18)'), (0.618, 0.786, 'rgba(100, 180, 50, 0.15)'), (0.786, 1.0, 'rgba(0, 100, 0, 0.18)')]:
-            fig_total.add_trace(go.Scatter(x=list(t_df['timestamp']) + list(t_df['timestamp'][::-1]), y=[fib_levels[b_ust]] * len(t_df) + [fib_levels[b_alt]] * len(t_df), fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
+            # Arka plan renk dolgularını sağdaki boşluğa kadar (max_zaman) uzatıyoruz
+            genisletilmis_zamanlar = list(t_df['timestamp']) + [max_zaman, max_zaman] + list(t_df['timestamp'][::-1])
+            genisletilmis_y_ust = [fib_levels[b_ust]] * len(t_df) + [fib_levels[b_ust], fib_levels[b_alt]] + [fib_levels[b_alt]] * len(t_df)
+            genisletilmis_y_alt = [fib_levels[b_alt]] * len(t_df) + [fib_levels[b_alt], fib_levels[b_alt]] + [fib_levels[b_alt]] * len(t_df)
+            
+            fig_total.add_trace(go.Scatter(
+                x=list(t_df['timestamp']) + list(t_df['timestamp'][::-1]), 
+                y=[fib_levels[b_ust]] * len(t_df) + [fib_levels[b_alt]] * len(t_df), 
+                fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+            ), secondary_y=False)
 
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')), secondary_y=False)
 
+        # Fiyat değerleri kaldırıldı, sadece Fibonacci seviye adları bırakıldı
         for oran, val in fib_levels.items():
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-            fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>  <b>{f'${val/1e12:.3f}T' if val > 1e9 else f'{val:.2f}'}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
+            fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
         fig_total.update_layout(
             template="plotly_white", 
-            margin=dict(t=10, b=30, l=5, r=140), 
+            margin=dict(t=10, b=30, l=5, r=70),  # Sağ kenar boşluğu daraltılarak grafiğin sağ bloğa maksimum yanaşması sağlandı
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman], 

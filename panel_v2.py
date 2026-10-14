@@ -950,6 +950,7 @@ with col_orta_grafik:
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman_grafik], 
+                dtick=3600000,  # 1 Saat (3,600,000 milisaniye) aralıklarla etiketleme
                 tickformat="%H:%M",
                 tickangle=25
             ), 

@@ -842,13 +842,13 @@ with col_orta_grafik:
 
 with col_sag_endeks:
     st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)
-    t_toplam_puan = total_ham_veri["l_puan"] + total_ham_veri["s_puan"]
-    t_yuzde = (total_ham_veri["l_puan"] / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
+    t_toplam_puan = t_l_puan + t_s_puan
+    t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
     t_yesil_led = round((t_yuzde / 100.0) * 10.0)
     t_yesil_led = max(0, min(10, t_yesil_led))
     t_kirmizi_led = 10 - t_yesil_led
     
-    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_k_kirmizi_led if "t_kirmizi_led" else "🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes_listesi = []

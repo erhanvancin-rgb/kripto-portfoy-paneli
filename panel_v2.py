@@ -163,9 +163,10 @@ def kline_cek_binance(coin_symbol, interval, limit):
         except: continue
     return pd.DataFrame()
 
+# YENİ KOD (192 adet 5 dakikalık mum = Tam 16 Saat)
 @st.cache_data(ttl=30)
 def load_15min_market_data(coin_symbol: str):
-    limit = 192  # 192 adet mum (192 x 5 dk = 960 dk = 16 Saat)
+    limit = 192  # 192 x 5 dk = 960 dk = 16 Saat
     if coin_symbol == 'TOTAL':
         anlik_total = fiyat_cek_binance('TOTAL')
         df_btc = kline_cek_binance('BTC/USDT', '5m', limit)
@@ -186,6 +187,10 @@ def load_15min_market_data(coin_symbol: str):
     dates = pd.date_range(end=datetime.now(TR_TZ), periods=limit, freq='5min')
     base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p]*limit, 'Low': [base_p]*limit, 'Close': [base_p]*limit})
+
+# Grafik çizim bloğunda ise burayı güncelleyin:
+t_df_ham = total_ham_veri["df_market"]
+t_df = t_df_ham.tail(192).reset_index(drop=True) # 192 mumun tamamı çizilir
 
 def calculate_coin_atr_metrics(trend_kademesi):
     if "Güçlü" in trend_kademesi:

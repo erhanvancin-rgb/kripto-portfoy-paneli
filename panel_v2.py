@@ -845,9 +845,14 @@ with col_orta_grafik:
         )
         st.plotly_chart(fig_total, use_container_width=True)
 
-t_zaman_kat = total_ham_veri["zaman_katkilari"]
+with col_sag_endeks:
+    st.markdown("<h3>Total Market Endeksi</h3>", unsafe_allow_html=True)
+    t_y_yuzde = total_ham_veri["y_yuzde"]
+    t_y_gorsel, t_k_gorsel = max(0, min(10, int(round(t_y_yuzde / 10.0)))), 10 - max(0, min(10, int(round(t_y_yuzde / 10.0))))
+    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_y_gorsel}{"🔴" * t_k_gorsel}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_y_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
-    # HTML parçalarını listede topluyoruz (string birleştirme hatasını önler)
+    t_zaman_kat = total_ham_veri["zaman_katkilari"]
+    
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():
         sl, ss = veri["sl"], veri["ss"]

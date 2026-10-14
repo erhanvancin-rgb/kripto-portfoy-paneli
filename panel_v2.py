@@ -163,10 +163,9 @@ def kline_cek_binance(coin_symbol, interval, limit):
         except: continue
     return pd.DataFrame()
 
-# YENİ KOD (192 adet 5 dakikalık mum = Tam 16 Saat)
 @st.cache_data(ttl=30)
 def load_15min_market_data(coin_symbol: str):
-    limit = 192  # 192 x 5 dk = 960 dk = 16 Saat
+    limit = 192  # 192 adet 5 dakikalık mum = Tam 16 Saat
     if coin_symbol == 'TOTAL':
         anlik_total = fiyat_cek_binance('TOTAL')
         df_btc = kline_cek_binance('BTC/USDT', '5m', limit)
@@ -188,10 +187,6 @@ def load_15min_market_data(coin_symbol: str):
     base_p = baz_fiyatlar.get(coin_symbol, 2.77e12 if coin_symbol == 'TOTAL' else 100.0)
     return pd.DataFrame({'timestamp': dates, 'Open': [base_p]*limit, 'High': [base_p]*limit, 'Low': [base_p]*limit, 'Close': [base_p]*limit})
 
-# Grafik çizim bloğunda ise burayı güncelleyin:
-t_df_ham = total_ham_veri["df_market"]
-t_df = t_df_ham.tail(192).reset_index(drop=True) # 192 mumun tamamı çizilir
-
 def calculate_coin_atr_metrics(trend_kademesi):
     if "Güçlü" in trend_kademesi:
         return 0.7, 3.57, "0,7 / 2,5"
@@ -204,7 +199,7 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- YENİ MATRİS PUANLAMA KURGUSU (RSI & FIBONACCI DESTEKLİ) ---
+# --- MATRİS PUANLAMA KURGUSU (RSI & FIBONACCI DESTEKLİ) ---
 def rsi_momentum_ve_fib_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
@@ -273,13 +268,12 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # İstediğiniz Yeni Zaman Dilimi Puanlama Parametreleri (Toplam 200 Puan)
     dilimler = [
-        (y16, k16, 64, 20.0, df_16s),  # 16 Saat: 64 adet, 20 Puan
-        (y8,  k8,  96, 30.0, df_8s),   # 8 Saat: 96 adet, 30 Puan
-        (y4,  k4,  48, 40.0, df_4s),   # 4 Saat: 48 adet, 40 Puan
-        (y2,  k2, 120, 50.0, df_2s),   # 2 Saat: 120 adet, 50 Puan
-        (y1,  k1,  60, 60.0, df_1s)    # 1 Saat: 60 adet, 60 Puan
+        (y16, k16, 64, 20.0, df_16s),
+        (y8,  k8,  96, 30.0, df_8s),
+        (y4,  k4,  48, 40.0, df_4s),
+        (y2,  k2, 120, 50.0, df_2s),
+        (y1,  k1,  60, 60.0, df_1s)
     ]
     
     toplam_long_puan = 0.0
@@ -597,14 +591,10 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
 def arka_plan_dinleyicisi():
     while True:
         try:
-            # Arka planda tüm coinleri ve Total Market endeksini sürekli tarayıp 5 yıldızlı veya Boğa/Ayı sinyallerinde mail atar
             tum_semboller = coinler + ['TOTAL']
             for s in tum_semboller:
                 _, p_val, a_yon, _, _, _ = kurgusal_matris_hesapla(s)
-                # 5 Yıldızlı veya 130+ güçlü sinyal kontrolü
                 if p_val >= 130.0:
-                    alarm_key = f"arka_alarm_{s}_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
-                    # Basit global state yerine doğrudan bildirim tetiklenebilir
                     pass
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
@@ -666,7 +656,6 @@ if t_puan_val >= 130.0:
 total_puan_val = total_ham_veri["nihai_puan"]
 total_yon_val = total_ham_veri["aktif_yon"]
 
-# --- 1. AŞAMA: TREND KADEMELERİ VE HAM AĞIRLIKLAR ---
 gecici_islenen_liste = []
 for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, l_puan, s_puan, anlik_fiyat = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["l_puan"], data["s_puan"], data["anlik_fiyat"]
@@ -735,7 +724,6 @@ for data in coin_ham_veriler:
         "hedef_carpan": hedef_carpan, "risk_hedef_metin": risk_hedef_metin
     })
 
-# --- 2. AŞAMA: TOPLAM AKTİF AĞIRLIK VE %100 NORMALSİZASYON ---
 toplam_aktif_agirlik = sum([item["ham_agirlik"] for item in gecici_islenen_liste if not item["is_notr"]])
 islenen_veriler = []
 
@@ -754,7 +742,6 @@ for item in gecici_islenen_liste:
     else:
         sepet_orani = 0.0
 
-    # 5 Yıldızlı Güçlü Trend Mail Bildirimi (Yalnızca 5 yıldızlı olunca tetiklenir)
     if "⭐⭐⭐⭐⭐" in trend and not is_notr and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
         gmail_bildirim_gonder(f"🔥 5 Yıldızlı Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada 5 Yıldızlı Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
@@ -913,9 +900,9 @@ with col_sol_panel:
                     st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Top 5 Coin (16 Saat Fibonacci & RSI)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin (16 Saat 5m Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
-    t_df = t_df_ham.tail(64).reset_index(drop=True)
+    t_df = t_df_ham.tail(192).reset_index(drop=True)  # 192 Mum (Tam 16 Saat)
     
     if not t_df.empty:
         delta = t_df['Close'].diff()
@@ -935,7 +922,7 @@ with col_orta_grafik:
         fib_levels = {0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark, 0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark, 0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f}
         
         min_zaman = t_df['timestamp'].min()
-        max_zaman_grafik = t_df['timestamp'].max() + pd.Timedelta(hours=2)
+        max_zaman_grafik = t_df['timestamp'].max() + pd.Timedelta(hours=1)
         
         alt_sinir = min_f - (fiyat_fark * 0.05)
         ust_sinir = max_f + (fiyat_fark * 0.05)
@@ -963,7 +950,6 @@ with col_orta_grafik:
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman_grafik], 
-                dtick=7200000, 
                 tickformat="%H:%M",
                 tickangle=25
             ), 

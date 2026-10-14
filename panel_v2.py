@@ -165,7 +165,7 @@ def kline_cek_binance(coin_symbol, interval, limit):
 
 @st.cache_data(ttl=30)
 def load_15min_market_data(coin_symbol: str):
-    limit = 192  # 192 adet 5 dakikalık mum = Tam 16 Saat (Yüksek Çözünürlüklü Grafik)
+    limit = 192  # 192 adet 5 dakikalık mum = Tam 16 Saat
     if coin_symbol == 'TOTAL':
         anlik_total = fiyat_cek_binance('TOTAL')
         df_btc = kline_cek_binance('BTC/USDT', '5m', limit)
@@ -246,9 +246,9 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
         fib_618 = min_f + (fiyat_fark * 0.618)
         tolerance = fiyat_fark * 0.008
         
-        if fiyat_delta < 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
+        if fiyat_delta < 0 and (abs(anlik_fiyat - fib_618) <= tolerance or abs(anlik_fiyat - fib_050) <= tolerance):
             long_bonus += max_puan * 0.04
-        elif fiyat_delta > 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
+        elif fiyat_delta > 0 and (abs(anlik_fiyat - fib_618) <= tolerance or abs(anlik_fiyat - fib_050) <= tolerance):
             short_bonus += max_puan * 0.04
 
     return long_bonus, short_bonus
@@ -1064,19 +1064,20 @@ with col_sag_sonlandir:
 
 st.markdown("---")
 
+df_gecmisile_goster = islem_gecmisi_getir(sheet_guncelle=False)
 df_gosterilecek = pd.DataFrame()
-if not df_gecmis.empty:
-    df_gosterilecek = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmis.copy()
+if not df_gecmisile_goster.empty:
+    df_gosterilecek = df_gecmisile_goster[~df_gecmisile_goster['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)] if st.session_state['sadece_aktifleri_goster'] else df_gecmisile_goster.copy()
 
 anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
-if not df_gecmis.empty:
-    for _, row in df_gecmis.iterrows():
+if not df_gecmisile_goster.empty:
+    for _, row in df_gecmisile_goster.iterrows():
         islem_id, coin, giris_fiyat, miktar, kar_al_f, stop_f, yon = row['Islem_ID'], row['Coin'], float(row['Giris_Fiyat']), float(row['Islem_Miktari']), float(row['Kar_Al']), float(row['Stop']), row['Yon']
         anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
         anlik_fiyat_sozluk[islem_id] = anl_f
         
         if giris_fiyat > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giriş_fiyat - kar_al_f) / giris_fiyat)), 2)
+            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - kar_al_f) / giris_fiyat)), 2)
             olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - stop_f) / giris_fiyat)), 2)
         else: hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 

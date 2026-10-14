@@ -199,7 +199,7 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- MATRİS PUANLAMA KURGUSU (%8 - %17 - %50 - %17 - %8 = 200 Puan) ---
+# --- 100 PUANLIK MATRİS VE ÖLÜ BÖLGE (48-52) KİNETİĞİ ---
 def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
@@ -274,13 +274,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # Güncellenmiş Matris Dağılımı: 16S (%8=16p), 8S (%17=34p), 4S (%50=100p), 2S (%17=34p), 1S (%8=16p) = Toplam 200 Puan
+    # 100 Puanlık Yeni Matris Dağılımı: 16S (%8=8p), 8S (%17=17p), 4S (%50=50p), 2S (%17=17p), 1S (%8=8p) = Toplam 100 Puan
     dilimler = [
-        (y16, k16, 64,  16.0, df_16s),  # 16 Saat (%8): 16 Puan
-        (y8,  k8,  96,  34.0, df_8s),   # 8 Saat (%17): 34 Puan
-        (y4,  k4,  48, 100.0, df_4s),   # 4 Saat (%50): 100 Puan (Ana Merkez)
-        (y2,  k2, 120,  34.0, df_2s),   # 2 Saat (%17): 34 Puan
-        (y1,  k1,  60,  16.0, df_1s)    # 1 Saat (%8): 16 Puan
+        (y16, k16, 64,  8.0, df_16s),   # 16 Saat (%8): 8 Puan
+        (y8,  k8,  96, 17.0, df_8s),    # 8 Saat (%17): 17 Puan
+        (y4,  k4,  48, 50.0, df_4s),    # 4 Saat (%50): 50 Puan (Ana Merkez)
+        (y2,  k2, 120, 17.0, df_2s),    # 2 Saat (%17): 17 Puan
+        (y1,  k1,  60,  8.0, df_1s)     # 1 Saat (%8): 8 Puan
     ]
     
     toplam_long_puan = 0.0
@@ -309,15 +309,16 @@ def kurgusal_matris_hesapla(coin_symbol):
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
     
-    if nihai_long >= nihai_short:
+    # --- ÖLÜ BÖLGE FİLTRESİ (48 - 52 ARALIĞI) ---
+    if 48.0 <= nihai_long <= 52.0 or 48.0 <= nihai_short <= 52.0 or abs(nihai_long - nihai_short) < 4.0:
+        nihai_puan = 50.0
+        aktif_yon = "Nötr"
+    elif nihai_long >= nihai_short:
         nihai_puan = nihai_long
         aktif_yon = "Long"
     else:
         nihai_puan = nihai_short
         aktif_yon = "Short"
-        
-    if abs(nihai_long - nihai_short) < 0.1:
-        aktif_yon = "Nötr"
         
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
@@ -479,7 +480,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 102.5 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr veya Ters Akıntı konumunda işlem açılamaz!"
+    if matris_puan < 52.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr, Ölü Bölge (48-52) veya Ters Akıntı konumunda işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -601,7 +602,7 @@ def arka_plan_dinleyicisi():
             tum_semboller = coinler + ['TOTAL']
             for s in tum_semboller:
                 _, p_val, a_yon, _, _, _ = kurgusal_matris_hesapla(s)
-                if p_val >= 130.0:
+                if p_val >= 65.0:
                     pass
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
@@ -616,7 +617,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (200 Puanlık Kesin Matris)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (100 Puanlık & Ölü Bölgeli Matris)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -650,14 +651,14 @@ t_puan_val, t_l_puan, t_s_puan = total_ham_veri["nihai_puan"], total_ham_veri["l
 t_toplam_puan = t_l_puan + t_s_puan
 t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
 
-if t_puan_val >= 130.0:
+if t_puan_val >= 65.0:
     if total_ham_veri["aktif_yon"] == "Long": total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 200 (Eşik: 130)</p><p><b>Long Oranı:</b> %{t_yuzde:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Eşik: 65)</p><p><b>Long Oranı:</b> %{t_yuzde:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Top 5 Market Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 total_puan_val = total_ham_veri["nihai_puan"]
@@ -672,7 +673,7 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    c_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
+    c_led = "🟢" if (nihai_puan > 52.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan > 52.0 and aktif_yon == "Short") else "🟡")
     d_led = "🟢" if total_yon_val == "Long" else "🔴"
     
     yesil_led_sayisi = round((y_yuzde / 100.0) * 10.0)
@@ -681,17 +682,17 @@ for data in coin_ham_veriler:
     
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    c_yonu = "Long" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "Nötr")
+    c_yonu = "Long" if (nihai_puan > 52.0 and aktif_yon == "Long") else ("Short" if (nihai_puan > 52.0 and aktif_yon == "Short") else "Nötr")
     d_yonu = total_yon_val
     
     is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0)
     is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0)
     
-    if c_yonu == "Nötr":
+    if c_yonu == "Nötr" or nihai_puan == 50.0:
         trend = "⭐ ⏳ Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
         yon_html = '<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐ Nötr (Beklemede)</div>'
-        ham_agirlik = 0.0
+        ham_agirlik = 1.0
     elif is_dip_tepkisi:
         trend = "⭐⭐⭐⭐ 🎣 Dip Avcısı"
         aktif_yon_turu = "Long"
@@ -706,8 +707,8 @@ for data in coin_ham_veriler:
         trend = "⭐⭐ ⚠️ Ters Akıntı"
         aktif_yon_turu = "Nötr"
         yon_html = '<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold; font-size: 12px;">⭐⭐ ⚠️ Ters Akıntı</div>'
-        ham_agirlik = 0.0
-    elif nihai_puan >= 130.0:
+        ham_agirlik = 2.0
+    elif nihai_puan >= 65.0:
         trend = f"⭐⭐⭐⭐⭐ 🔥 Güçlü {aktif_yon}"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
@@ -718,9 +719,9 @@ for data in coin_ham_veriler:
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 2.0
+        ham_agirlik = 3.0
 
-    is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend)
+    is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or nihai_puan == 50.0)
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_atr_metrics(trend)
     
     gecici_islenen_liste.append({
@@ -751,7 +752,7 @@ for item in gecici_islenen_liste:
 
     if "⭐⭐⭐⭐⭐" in trend and not is_notr and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
-        gmail_bildirim_gonder(f"🔥 5 Yıldızlı Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada 5 Yıldızlı Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
+        gmail_bildirim_gonder(f"🔥 5 Yıldızlı Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada 5 Yıldızlı Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
 
     if aktif_yon_turu == "Long": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - (stop_uzde * hedef_carpan) / 100.0)
@@ -759,8 +760,8 @@ for item in gecici_islenen_liste:
         
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
-    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
-    else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
+    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
+    else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
     
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
@@ -770,10 +771,11 @@ for item in gecici_islenen_liste:
         "Logo": logo_html, "Coin": sembol, "Fiyat": round(anlik_fiyat, basamak), "Yon": item["yon_html"], "Teyit_Sunumu": item["detay_matris_html"], 
         "Dom_Sunumu": dom_html, "Matris_Puan_Sunumu": puan_html, "Gunluk_Oran": f"<span>{item['gunluk_oran']:+,.2f}%</span>",
         "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak), "Skor": nihai_puan, "Sepet_Orani": sepet_orani,
-        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": item["risk_hedef_metin"]
+        "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": item["risk_hedef_metin"], "Ham_Agirlik": item["ham_agirlik"]
     })
 
-# Önce Nötr olanlar en alta (0), aktifler üstte (1) # Sonra ham ağırlığa (yıldız durumuna) göre büyükten küçüğe (-x["ham_agirlik"]) # En son eşitlik durumunda matris puanına göre büyükten küçüğe (-x["Skor"]) sıralanır. islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["ham_agirlik"], -x["Skor"]))
+# Yıldız / Ham ağırlığa ve puana göre sıralama
+islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Ham_Agirlik"], -x["Skor"]))
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler: v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
@@ -885,7 +887,7 @@ with col_sol_panel:
             if not secilen_coin or coin_listesi == []:
                 st.error("⚠️ Geçerli bir coin seçmelisiniz!")
             elif coin_verisii is not None and coin_verisii['Notr']:
-                st.error("⚠️ Nötr veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
+                st.error("⚠️ Nötr, Ölü Bölge (48-52) veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
             elif coin_verisii is not None:
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 
@@ -957,7 +959,7 @@ with col_orta_grafik:
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman_grafik], 
-                dtick=3600000,  # 1'er Saat aralıklarla eksen etiketlemesi
+                dtick=3600000, 
                 tickformat="%H:%M",
                 tickangle=25
             ), 
@@ -989,7 +991,7 @@ with col_sag_endeks:
         boxes_listesi.append(kutucuk_html)
     boxes_birlestirilmis = "".join(boxes_listesi)
     
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 200 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -1112,7 +1114,7 @@ if not df_gosterilecek.empty:
 
         kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: white; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '150.0 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td style='font-weight: bold; color: #495057;'>{str(row.get('Matris_Puan_RH', '50.0 (1 / 2.5)'))}</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
 else:
     portfoy_html += "<tr><td colspan='18' style='text-align: center; color: #6c757d; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
 

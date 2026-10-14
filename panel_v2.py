@@ -601,7 +601,7 @@ def arka_plan_dinleyicisi():
             tum_semboller = coinler + ['TOTAL']
             for s in tum_semboller:
                 _, p_val, a_yon, _, _, _ = kurgusal_matris_hesapla(s)
-                if p_val >= 65.0:
+                if p_val >= 70.0:
                     pass
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
@@ -616,7 +616,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Kararlılık Eşiği: 54 Puan)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Kararlılık Eşiği: 54 - 58 - 70)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -650,14 +650,15 @@ t_puan_val, t_l_puan, t_s_puan = total_ham_veri["nihai_puan"], total_ham_veri["l
 t_toplam_puan = t_l_puan + t_s_puan
 t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
 
-if t_puan_val >= 65.0:
+# Total Market Alarm seviyesini de 65'ten 70'e güncelledik
+if t_puan_val >= 70.0:
     if total_ham_veri["aktif_yon"] == "Long": total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
     else: total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
         
     alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
     if st.session_state.get('total_sermaye_alarm_zaman') != alarm_anahtar:
         st.session_state['total_sermaye_alarm_zaman'] = alarm_anahtar
-        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Eşik: 65)</p><p><b>Long Oranı:</b> %{t_yuzde:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
+        m_icerik = f"<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b> <span style='color: {t_alarm_renk}; font-weight: bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b> {t_puan_val:.1f} / 100 (Eşik: 70)</p><p><b>Long Oranı:</b> %{t_yuzde:.1f}</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
         gmail_bildirim_gonder(f"🚨 Top 5 Market Alarmı: {total_sermaye_durumu}!", m_icerik)
 
 total_puan_val = total_ham_veri["nihai_puan"]
@@ -684,8 +685,9 @@ for data in coin_ham_veriler:
     c_yonu = "Long" if (nihai_puan >= 54.0 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 54.0 and aktif_yon == "Short") else "Nötr")
     d_yonu = total_yon_val
     
-    is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0)
-    is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0)
+    # Kademeli Geçiş Sistemi: Avcı olabilmek için en az 58.0 matris puanına ulaşması ŞARTTIR.
+    is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0 and nihai_puan >= 58.0)
+    is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0 and nihai_puan >= 58.0)
     
     if aktif_yon == "Nötr":
         trend = "⭐ ⏳ Nötr (Beklemede)"
@@ -707,7 +709,7 @@ for data in coin_ham_veriler:
         aktif_yon_turu = "Nötr"
         yon_html = '<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold; font-size: 12px;">⭐⭐ ⚠️ Ters Akıntı</div>'
         ham_agirlik = 2.0
-    elif nihai_puan >= 65.0:
+    elif nihai_puan >= 70.0: # Güçlü trend barajı 65'ten 70'e çıkarıldı
         trend = f"⭐⭐⭐⭐⭐ 🔥 Güçlü {aktif_yon}"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"

@@ -21,8 +21,8 @@ from streamlit_autorefresh import st_autorefresh
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# --- OTOMATİK YENİLEME (60 SANİYE) ---
-st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
+# --- OTOMATİK YENİLEME (120 SANİYE) ---
+st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
 
 # --- CSS STİLLERİ ---
 st.markdown("""
@@ -111,7 +111,8 @@ def gmail_bildirim_gonder(konu, icerik_html):
     except Exception as e:
         return False, str(e)
 
-# --- BİNANCE API ENTEGRASYONU ---
+# --- BİNANCE API ENTEGRASYONU (ÖNBELLEKLENMİŞ) ---
+@st.cache_data(ttl=30)
 def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
         try:
@@ -142,6 +143,7 @@ def fiyat_cek_binance(coin_symbol):
     
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
+@st.cache_data(ttl=30)
 def kline_cek_binance(coin_symbol, interval, limit):
     sym = coin_symbol.replace('/', '')
     endpoints = [
@@ -313,6 +315,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
+@st.cache_resource
 def google_sheets_baglan(sayfa_adi):
     try:
         if "gcp_service_account" in st.secrets:
@@ -324,6 +327,7 @@ def google_sheets_baglan(sayfa_adi):
         return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     except Exception: return None
 
+@st.cache_data(ttl=15)
 def islem_gecmisi_getir(sheet_guncelle=True):
     beklenen_kolonlar = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar", "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
@@ -362,7 +366,9 @@ def dataframe_guncelle_gsheets(df):
             sheet.append_row(list(df.columns))
             for _, row in df.iterrows(): sheet.append_row(list(row.values))
         except: pass
+        st.cache_data.clear()
 
+@st.cache_data(ttl=15)
 def kasa_defteri_getir():
     kolonlar = ["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"]
     sheet = google_sheets_baglan("KasaDefteri")
@@ -397,6 +403,7 @@ def kasa_defteri_guncelle_gsheets(df):
             sheet.append_row(list(df.columns))
             for _, row in df.iterrows(): sheet.append_row(list(row.values))
         except: pass
+        st.cache_data.clear()
 
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     df_kasa = kasa_defteri_getir()
@@ -653,7 +660,7 @@ if t_puan_val >= 130.0:
 total_puan_val = total_ham_veri["nihai_puan"]
 total_yon_val = total_ham_veri["aktif_yon"]
 
-# --- 1. AŞAMA: ÖNCE TÜM COINLERİN TREND KADEMELERİNİ VE HAM AĞIRLIKLARINI BELİRLE ---
+# --- 1. AŞAMA: TREND KADEMELERİ VE HAM AĞIRLIKLAR ---
 gecici_islenen_liste = []
 for data in coin_ham_veriler:
     sembol, nihai_puan, aktif_yon, l_puan, s_puan, anlik_fiyat = data["sembol"], data["nihai_puan"], data["aktif_yon"], data["l_puan"], data["s_puan"], data["anlik_fiyat"]
@@ -687,12 +694,12 @@ for data in coin_ham_veriler:
         trend = "⭐⭐⭐⭐ 🎣 Dip Avcısı"
         aktif_yon_turu = "Long"
         yon_html = '<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Dip Avcısı</div>'
-        ham_agirlik = 4.0  # 4 Yıldızlı Yüksek Ağırlık
+        ham_agirlik = 4.0
     elif is_tepe_donusu:
         trend = "⭐⭐⭐⭐ 🎣 Tepe Avcısı"
         aktif_yon_turu = "Short"
         yon_html = '<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
-        ham_agirlik = 4.0  # 4 Yıldızlı Yüksek Ağırlık
+        ham_agirlik = 4.0
     elif c_yonu != d_yonu:
         trend = "⭐⭐ ⚠️ Ters Akıntı"
         aktif_yon_turu = "Nötr"
@@ -703,13 +710,13 @@ for data in coin_ham_veriler:
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 5.0  # 5 Yıldızlı Maksimum Ağırlık
+        ham_agirlik = 5.0
     else:
         trend = f"⭐⭐⭐ ✅ {aktif_yon} (Onaylı)"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 2.0  # 3 Yıldızlı Standart Temel Ağırlık
+        ham_agirlik = 2.0
 
     is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend)
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_atr_metrics(trend)
@@ -722,7 +729,7 @@ for data in coin_ham_veriler:
         "hedef_carpan": hedef_carpan, "risk_hedef_metin": risk_hedef_metin
     })
 
-# --- 2. AŞAMA: AKTİF COİNLERİN TOPLAM AĞIRLIĞINI BUL VE %100'E EŞİTLE ---
+# --- 2. AŞAMA: TOPLAM AKTİF AĞIRLIK VE %100 NORMALSİZASYON ---
 toplam_aktif_agirlik = sum([item["ham_agirlik"] for item in gecici_islenen_liste if not item["is_notr"]])
 islenen_veriler = []
 
@@ -736,7 +743,6 @@ for item in gecici_islenen_liste:
     is_notr = item["is_notr"]
     trend = item["trend"]
     
-    # %100 Üzerinden İvmesel Oran Dağılımı
     if toplam_aktif_agirlik > 0 and not is_notr:
         sepet_orani = round((item["ham_agirlik"] / toplam_aktif_agirlik) * 100.0, 1)
     else:
@@ -823,7 +829,6 @@ for v in islenen_veriler:
     stopla_str = f"{v['Stopla']:,.4f}&nbsp;$" if v['Basamak'] == 4 else f"{v['Stopla']:,.2f}&nbsp;$"
     val_str = f"%{v['Sepet_Orani']:.1f}" if v['Sepet_Orani'] != int(v['Sepet_Orani']) else f"%{int(v['Sepet_Orani'])}"
     
-    # Doğru Yön Rengi (Long -> Yeşil, Short -> Turuncu/Kırmızı)
     renk_yon = "#00FF00" if v['Aktif_Yon'] == "Long" else "rgb(255, 75, 0)"
     
     if v['Notr']: 

@@ -817,7 +817,7 @@ with col_sol_panel:
                     st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Top 5 Coin Fibonacci & RSI)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin (16 Saat Fibonacci & RSI)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(64).reset_index(drop=True)
     
@@ -893,7 +893,7 @@ with col_orta_grafik:
         st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
-    st.markdown("<h3>Top 5 Coin Ortalama Endeksi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
     t_toplam_puan = t_l_puan + t_s_puan
     t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
     t_yesil_led = round((t_yuzde / 100.0) * 10.0)

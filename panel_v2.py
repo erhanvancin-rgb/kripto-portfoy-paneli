@@ -474,7 +474,7 @@ def kasa_islem_ekle(islem_tipi, miktar, aciklama):
     return True, f"✅ Kasa güncellendi! İşlem Tutarı: {miktar:,.2f} $"
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    if matris_puan < 102.5 or "Nötr" in yon or "Beklemede" in yon: return False, "⚠️ Nötr konumda (102.5 puan altı) işlem açılamaz!"
+    if matris_puan < 102.5 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr veya Ters Akıntı konumunda işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
@@ -671,7 +671,7 @@ for data in coin_ham_veriler:
     
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    # --- 5 YILDIZLI HİYERARŞİK TREND DURUMU ---
+    # --- 5 YILDIZLI HİYERARŞİK TREND DURUMU & DOĞRU YÖN RENKLERİ ---
     c_yonu = "Long" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "Nötr")
     d_yonu = total_yon_val
     
@@ -685,11 +685,11 @@ for data in coin_ham_veriler:
     elif is_dip_tepkisi:
         trend = "⭐⭐⭐⭐ 🎣 Dip Avcısı (L)"
         aktif_yon_turu = "Long"
-        yon_html = '<div style="background-color: #0d6efd; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Dip Avcısı</div>'
+        yon_html = '<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Dip Avcısı</div>'
     elif is_tepe_donusu:
         trend = "⭐⭐⭐⭐ 🎣 Tepe Avcısı (S)"
         aktif_yon_turu = "Short"
-        yon_html = '<div style="background-color: #6f42c1; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
+        yon_html = '<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
     elif c_yonu != d_yonu:
         trend = "⭐⭐ ⚠️ Ters Akıntı"
         aktif_yon_turu = "Nötr"
@@ -843,7 +843,7 @@ with col_sol_panel:
             if not secilen_coin or coin_listesi == []:
                 st.error("⚠️ Geçerli bir coin seçmelisiniz!")
             elif coin_verisii is not None and coin_verisii['Notr']:
-                st.error("⚠️ Nötr coin!")
+                st.error("⚠️ Nötr veya Ters Akıntı konumundaki coinlerde işlem açılamaz!")
             elif coin_verisii is not None:
                 basari, mesaj = yeni_islem_ekle(
                     secilen_coin, 
@@ -937,8 +937,6 @@ with col_sag_endeks:
     
     st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
     
-    t_df_zaman = load_15min_market_data('BTC/USDT') # Örnek referans
-    # Zaman katkilari total ham veriden alınır
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():

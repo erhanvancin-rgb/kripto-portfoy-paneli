@@ -196,7 +196,6 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
         
-    # 1. RSI Momentum ve Mıknatıs Hesaplaması
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -209,7 +208,6 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
     long_bonus = 0.0
     short_bonus = 0.0
     
-    # RSI Uyum Mantığı
     if fiyat_delta > 0 and rsi_delta > 0:
         long_bonus += 1.5 * zaman_agirligi
     elif fiyat_delta < 0 and rsi_delta < 0:
@@ -221,7 +219,6 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
         long_bonus += 2.0 * zaman_agirligi
         short_bonus -= 1.0 * zaman_agirligi
         
-    # 2. Çift Yönlü Fibonacci Destek / Direnç Filtresi
     max_f = float(df['High'].max())
     min_f = float(df['Low'].min())
     anlik_f = float(df['Close'].iloc[-1])
@@ -232,11 +229,8 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
         fib_618 = min_f + (fiyat_fark * 0.618)
         tolerance = fiyat_fark * 0.008
         
-        # Destek Noktası (Düşüşte tepki arama -> Long bonusu)
         if fiyat_delta < 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
             long_bonus += 3.0 * zaman_agirligi
-            
-        # Direnç Noktası (Yükselişte satış baskısı -> Short bonusu)
         elif fiyat_delta > 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
             short_bonus += 3.0 * zaman_agirligi
 
@@ -287,7 +281,6 @@ def kurgusal_matris_hesapla(coin_symbol):
         else:
             sl, ss = max_puan / 2.0, max_puan / 2.0
             
-        # Hiyerarşik RSI Momentum ve Fib Destek/Direnç Katkısı Ekleme
         ek_lb, ek_sb = rsi_momentum_ve_fib_katkisi_hesapla(df_zaman, carpan)
         sl += ek_lb
         ss += ek_sb
@@ -673,13 +666,43 @@ for data in coin_ham_veriler:
     
     detay_matris_html = f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     
-    is_notr = (nihai_puan < 102.5 or aktif_yon == "Nötr")
-    if is_notr: trend, aktif_yon_turu = "Nötr (Beklemede)", "Nötr"
-    else:
+    # --- YENİ HİYERARŞİK 5 YILDIZLI TREND DURUMU Kurgusu ---
+    c_yonu = "Long" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "Nötr")
+    d_yonu = total_yon_val
+    
+    is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0)
+    is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0)
+    
+    if c_yonu == "Nötr":
+        trend = "⭐ ⏳ Nötr (Beklemede)"
+        aktif_yon_turu = "Nötr"
+        yon_html = '<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐ Nötr (Beklemede)</div>'
+    elif is_dip_tepkisi:
+        trend = "⭐⭐⭐⭐ 🎣 Dip Avcısı (L)"
+        aktif_yon_turu = "Long"
+        yon_html = '<div style="background-color: #0d6efd; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Dip Avcısı</div>'
+    elif is_tepe_donusu:
+        trend = "⭐⭐⭐⭐ 🎣 Tepe Avcısı (S)"
+        aktif_yon_turu = "Short"
+        yon_html = '<div style="background-color: #6f42c1; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
+    elif c_yonu != d_yonu:
+        trend = "⭐⭐ ⚠️ Ters Akıntı"
+        aktif_yon_turu = "Nötr"
+        yon_html = '<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold; font-size: 12px;">⭐⭐ ⚠️ Ters Akıntı</div>'
+    elif nihai_puan >= 115.0:
+        trend = f"⭐⭐⭐⭐⭐ 🔥 Güçlü {aktif_yon}"
         aktif_yon_turu = aktif_yon
-        trend = f"Güçlü Trend {aktif_yon_turu}" if nihai_puan >= 130.0 else f"{aktif_yon_turu} (Onaylı)"
-        
-    if nihai_puan >= 130.0 and sembol not in st.session_state['gonderilen_mailler']:
+        renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
+        yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
+    else:
+        trend = f"⭐⭐⭐ ✅ {aktif_yon} (Onaylı)"
+        aktif_yon_turu = aktif_yon
+        renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
+        yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
+
+    is_notr = (aktif_yon_turu == "Nötr")
+    
+    if nihai_puan >= 130.0 and not is_notr and sembol not in st.session_state['gonderilen_mailler']:
         st.session_state['gonderilen_mailler'].add(sembol)
         gmail_bildirim_gonder(f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})", f"<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b> {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 200</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f} $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>")
 
@@ -690,16 +713,11 @@ for data in coin_ham_veriler:
         
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{d_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
-    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
+    if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon})</span></div>'
     else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
     
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
-    
-    if nihai_puan >= 130.0: yon_html = f'<div style="background-color: {"#00FF00" if "Long" in aktif_yon_turu else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">🔥 Güçlü Trend {aktif_yon_turu}</div>'
-    elif "Long" in trend: yon_html = f'<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
-    elif "Short" in trend: yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: white; font-weight: bold;">{trend}</div>'
-    else: yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold;">{trend}</div>'
         
     sepet_orani = 0.0 if is_notr else round(40.0 + 60.0 * (((max(102.5, min(200.0, nihai_puan)) - 102.5) / 97.5) ** 1.1), 1)
     sepet_orani = min(100.0, max(0.0, sepet_orani))
@@ -770,7 +788,7 @@ for v in islenen_veriler:
     val_str = f"%{v['Sepet_Orani']:.1f}" if v['Sepet_Orani'] != int(v['Sepet_Orani']) else f"%{int(v['Sepet_Orani'])}"
     
     if v['Notr']: oran_html = '<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
-    else: oran_html = f'<div style="background-color: {"#00FF00" if "Long" in v["Ham_Yon"] else "rgb(255, 75, 0)"}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>({"Güçlü Trend" if "Güçlü Trend" in v["Ham_Yon"] else "Onaylı"})</div>'
+    else: oran_html = f'<div style="background-color: {"#00FF00" if "Long" in v["Ham_Yon"] else "rgb(255, 75, 0)"}; color: white; padding: 5px; font-weight: bold;">{val_str}<br>({"Güçlü" if "Güçlü" in v["Ham_Yon"] else "Onaylı"})</div>'
 
     table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: rgb(70, 0, 255); background-color: rgba(70, 0, 255, 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td style='background-color: rgba(0,0,0,0.02);'>{v['Matris_Puan_Sunumu']}</td><td>{v['Gunluk_Oran']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #d63384;'>{v['Risk_Hedef_Metin']}</td></tr>"
 table_html += "</tbody></table>"

@@ -165,7 +165,7 @@ def kline_cek_binance(coin_symbol, interval, limit):
 
 @st.cache_data(ttl=30)
 def load_15min_market_data(coin_symbol: str):
-    limit = 192  # 192 adet 5 dakikalık mum = Tam 16 Saat
+    limit = 192  # 192 adet 5 dakikalık mum = Tam 16 Saat (Yüksek Çözünürlüklü Grafik)
     if coin_symbol == 'TOTAL':
         anlik_total = fiyat_cek_binance('TOTAL')
         df_btc = kline_cek_binance('BTC/USDT', '5m', limit)
@@ -199,11 +199,20 @@ def calculate_coin_atr_metrics(trend_kademesi):
     else:
         return 1.0, 1.5, "Nötr"
 
-# --- MATRİS PUANLAMA KURGUSU (RSI & FIBONACCI DESTEKLİ) ---
-def rsi_momentum_ve_fib_katkisi_hesapla(df, max_puan):
+# --- YENİ SİMETRİK MATRİS PUANLAMA KURGUSU (EMA, RSI & FIBONACCI DESTEKLİ) ---
+def rsi_momentum_fib_ve_ema_katkisi_hesapla(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
         
+    # EMA Hesaplama (Trend İstikrarı için)
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    anlik_fiyat = float(df['Close'].iloc[-1])
+    anlik_ema = float(df['EMA20'].iloc[-1])
+    
+    ema_bonus_long = (max_puan * 0.05) if anlik_fiyat > anlik_ema else 0.0
+    ema_bonus_short = (max_puan * 0.05) if anlik_fiyat < anlik_ema else 0.0
+    
+    # RSI Momentum
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -213,8 +222,8 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, max_puan):
     fiyat_delta = float(df['Close'].iloc[-1] - df['Close'].iloc[-3])
     rsi_delta = float(rsi_serisi.iloc[-1] - rsi_serisi.iloc[-3]) if len(rsi_serisi) >= 3 else 0.0
     
-    long_bonus = 0.0
-    short_bonus = 0.0
+    long_bonus = ema_bonus_long
+    short_bonus = ema_bonus_short
     
     if fiyat_delta > 0 and rsi_delta > 0:
         long_bonus += max_puan * 0.02
@@ -227,9 +236,9 @@ def rsi_momentum_ve_fib_katkisi_hesapla(df, max_puan):
         long_bonus += max_puan * 0.03
         short_bonus -= max_puan * 0.01
         
+    # Fibonacci Mıknatıs Seviyeleri (0.50 ve 0.618)
     max_f = float(df['High'].max())
     min_f = float(df['Low'].min())
-    anlik_f = float(df['Close'].iloc[-1])
     fiyat_fark = max_f - min_f
     
     if fiyat_fark > 0:
@@ -268,12 +277,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
+    # Yeni Simetrik Puan Dağılımı (%10 - %20 - %40 - %20 - %10 = Toplam 200 Puan)
     dilimler = [
-        (y16, k16, 64, 20.0, df_16s),
-        (y8,  k8,  96, 30.0, df_8s),
-        (y4,  k4,  48, 40.0, df_4s),
-        (y2,  k2, 120, 50.0, df_2s),
-        (y1,  k1,  60, 60.0, df_1s)
+        (y16, k16, 64,  20.0, df_16s),  # 16 Saat (%10): 20 Puan
+        (y8,  k8,  96,  40.0, df_8s),   # 8 Saat (%20): 40 Puan
+        (y4,  k4,  48,  80.0, df_4s),   # 4 Saat (%40): 80 Puan (Ana Merkez)
+        (y2,  k2, 120,  40.0, df_2s),   # 2 Saat (%20): 40 Puan
+        (y1,  k1,  60,  20.0, df_1s)    # 1 Saat (%10): 20 Puan
     ]
     
     toplam_long_puan = 0.0
@@ -288,7 +298,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         else:
             sl, ss = max_puan / 2.0, max_puan / 2.0
             
-        ek_lb, ek_sb = rsi_momentum_ve_fib_katkisi_hesapla(df_zaman, max_puan)
+        ek_lb, ek_sb = rsi_momentum_fib_ve_ema_katkisi_hesapla(df_zaman, max_puan)
         sl = min(max_puan, max(0.0, sl + ek_lb))
         ss = min(max_puan, max(0.0, ss + ek_sb))
         
@@ -950,7 +960,7 @@ with col_orta_grafik:
             height=380, 
             xaxis=dict(
                 range=[min_zaman, max_zaman_grafik], 
-                dtick=3600000,  # 1 Saat (3,600,000 milisaniye) aralıklarla etiketleme
+                dtick=3600000,  # 1'er Saat aralıklarla eksen etiketlemesi
                 tickformat="%H:%M",
                 tickangle=25
             ), 
@@ -1066,7 +1076,7 @@ if not df_gecmis.empty:
         anlik_fiyat_sozluk[islem_id] = anl_f
         
         if giris_fiyat > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - kar_al_f) / giris_fiyat)), 2)
+            hedef_kar_sozluk[islem_id] = round(miktar * KALDIRAC * (((kar_al_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giriş_fiyat - kar_al_f) / giris_fiyat)), 2)
             olasi_stop_sozluk[islem_id] = round(miktar * KALDIRAC * (((stop_f - giris_fiyat) / giris_fiyat) if 'Long' in yon else ((giris_fiyat - stop_f) / giris_fiyat)), 2)
         else: hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
 

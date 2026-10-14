@@ -111,7 +111,7 @@ def gmail_bildirim_gonder(konu, icerik_html):
     except Exception as e:
         return False, str(e)
 
-# --- BİNANCE API ENTEGRASYONU (ENGELSİZ) ---
+# --- BİNANCE API ENTEGRASYONU ---
 def fiyat_cek_binance(coin_symbol):
     if coin_symbol == 'TOTAL':
         try:
@@ -191,48 +191,60 @@ def calculate_coin_atr_metrics(df, skor):
     hedef_carpan = round(1.7 + (4.0 - 1.7) * (t ** 1.2), 1)
     return stop_pct, hedef_carpan
 
-# --- HİYERARŞİK RSI MOMENTUM & MIKNATIS ETKİSİ ---
-def rsi_momentum_katkisi_hesapla(df, zaman_agirligi):
-    if df.empty or len(df) < 15:
+# --- HİYERARŞİK RSI MOMENTUM & FIBONACCI DESTEK/DİRENÇ FİLTRESİ ---
+def rsi_momentum_ve_fib_katkisi_hesapla(df, zaman_agirligi):
+    if df.empty or len(df) < 20:
         return 0.0, 0.0
         
+    # 1. RSI Momentum ve Mıknatıs Hesaplaması
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     rsi_serisi = 100 - (100 / (1 + rs))
     
-    if len(rsi_serisi) < 3:
-        return 0.0, 0.0
-        
     fiyat_delta = float(df['Close'].iloc[-1] - df['Close'].iloc[-3])
-    rsi_delta = float(rsi_serisi.iloc[-1] - rsi_serisi.iloc[-3])
+    rsi_delta = float(rsi_serisi.iloc[-1] - rsi_serisi.iloc[-3]) if len(rsi_serisi) >= 3 else 0.0
     
     long_bonus = 0.0
     short_bonus = 0.0
     
-    # Sağlıklı Uyum (Fiyat ve RSI aynı yönde)
+    # RSI Uyum Mantığı
     if fiyat_delta > 0 and rsi_delta > 0:
         long_bonus += 1.5 * zaman_agirligi
     elif fiyat_delta < 0 and rsi_delta < 0:
         short_bonus += 1.5 * zaman_agirligi
-        
-    # Negatif Uyumsuzluk / Mıknatıs Baskısı (Fiyat çıkarken RSI iniyor -> Fiyatı aşağı çeker)
     elif fiyat_delta > 0 and rsi_delta < 0:
         short_bonus += 2.0 * zaman_agirligi
         long_bonus -= 1.0 * zaman_agirligi
-        
-    # Pozitif Uyumsuzluk (Fiyat inerken RSI çıkıyor -> Fiyatı yukarı çeker)
     elif fiyat_delta < 0 and rsi_delta > 0:
         long_bonus += 2.0 * zaman_agirligi
         short_bonus -= 1.0 * zaman_agirligi
         
+    # 2. Çift Yönlü Fibonacci Destek / Direnç Filtresi
+    max_f = float(df['High'].max())
+    min_f = float(df['Low'].min())
+    anlik_f = float(df['Close'].iloc[-1])
+    fiyat_fark = max_f - min_f
+    
+    if fiyat_fark > 0:
+        fib_050 = min_f + (fiyat_fark * 0.5)
+        fib_618 = min_f + (fiyat_fark * 0.618)
+        tolerance = fiyat_fark * 0.008
+        
+        # Destek Noktası (Düşüşte tepki arama -> Long bonusu)
+        if fiyat_delta < 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
+            long_bonus += 3.0 * zaman_agirligi
+            
+        # Direnç Noktası (Yükselişte satış baskısı -> Short bonusu)
+        elif fiyat_delta > 0 and (abs(anlik_f - fib_618) <= tolerance or abs(anlik_f - fib_050) <= tolerance):
+            short_bonus += 3.0 * zaman_agirligi
+
     return long_bonus, short_bonus
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     
-    # Zaman dilimleri için özel mum verileri
     df_16s = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '15m', 64)
     df_8s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '5m', 96)
     df_4s  = kline_cek_binance(coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT', '5m', 48)
@@ -254,7 +266,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # (Yeşil, Kırmızı, Max Puan, DataFrame, Hiyerarşik Çarpan [16s en yüksek, 1s en düşük])
     dilimler = [
         (y16, k16, 14.0, df_16s, 2.0),
         (y8, k8, 26.0, df_8s, 1.5),
@@ -276,10 +287,10 @@ def kurgusal_matris_hesapla(coin_symbol):
         else:
             sl, ss = max_puan / 2.0, max_puan / 2.0
             
-        # Hiyerarşik RSI Momentum / Mıknatıs Etkisini Puanlara Yedirme
-        rsi_lb, rsi_sb = rsi_momentum_katkisi_hesapla(df_zaman, carpan)
-        sl += rsi_lb
-        ss += rsi_sb
+        # Hiyerarşik RSI Momentum ve Fib Destek/Direnç Katkısı Ekleme
+        ek_lb, ek_sb = rsi_momentum_ve_fib_katkisi_hesapla(df_zaman, carpan)
+        sl += ek_lb
+        ss += ek_sb
         
         toplam_long_puan += max(0.0, sl)
         toplam_short_puan += max(0.0, ss)
@@ -653,7 +664,6 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
     
-    # LED Renk Kuralı: C (Coin) için 102.5 eşiği, D (Dominans/Total) için eşiksiz doğrudan Long/Short
     c_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
     d_led = "🟢" if total_yon_val == "Long" else "🔴"
     

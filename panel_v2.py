@@ -773,7 +773,7 @@ for item in gecici_islenen_liste:
         "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": item["risk_hedef_metin"]
     })
 
-islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Skor"]))
+# Önce Nötr olanlar en alta (0), aktifler üstte (1) # Sonra ham ağırlığa (yıldız durumuna) göre büyükten küçüğe (-x["ham_agirlik"]) # En son eşitlik durumunda matris puanına göre büyükten küçüğe (-x["Skor"]) sıralanır. islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["ham_agirlik"], -x["Skor"]))
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 
 for v in islenen_veriler: v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"

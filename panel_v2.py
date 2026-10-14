@@ -633,7 +633,13 @@ for data in coin_ham_veriler:
     elif aktif_yon_turu == "Short": stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_uzde / 100.0)
     else: stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_uzde / 100.0)
         
-    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{t_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
+    # C (Coin) için eşikli kural
+    c_led = "🟢" if (nihai_puan >= 102.5 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 102.5 and aktif_yon == "Short") else "🟡")
+    
+    # D (Dominans) için eşiksiz doğrudan Long/Short kuralı
+    d_led = "🟢" if total_yon_val == "Long" else "🔴"
+    
+    dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{c_led}{d_led}</div><div style="font-size: 10px; font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
     
     if is_notr: puan_html = f'<div style="font-weight: bold; color: #6c757d;">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else: puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 200<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'

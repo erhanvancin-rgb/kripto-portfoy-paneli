@@ -779,8 +779,8 @@ def yeni_islem_ekle(
         f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen:"
         f" {islem_miktari:.2f} $",
     )
-  if islem_miktari < 10:
-    return False, "İşlem miktarı 10 $'dan küçük olamaz!"
+  if islem_miktari <= 0:
+  return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
 
   suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 

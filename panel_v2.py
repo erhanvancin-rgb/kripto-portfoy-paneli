@@ -1751,13 +1751,13 @@ with col_orta_grafik:
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
 
     for b_alt, b_ust, renk in [
-        (0.0, 0.236, "rgba(128, 0, 32, 0.16)"),
-        (0.236, 0.382, "rgba(180, 80, 0, 0.14)"),
-        (0.382, 0.5, "rgba(255, 255, 0, 0.18)"),
-        (0.5, 0.618, "rgba(255, 255, 0, 0.18)"),
-        (0.618, 0.786, "rgba(100, 180, 50, 0.15)"),
-        (0.786, 1.0, "rgba(0, 100, 0, 0.18)"),
-    ]:
+    (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),  # Koyu Bordo / Kırmızı (Derin Ayı)
+    (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),  # Kırmızı-Turuncu Geçiş
+    (0.382, 0.5, "rgba(255, 200, 0, 0.35)"),  # Alt Sarı (Nötr Bölge)
+    (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),  # Üst Sarı (Nötr Bölge)
+    (0.618, 0.786, "rgba(40, 180, 80, 0.32)"),  # Açık Yeşil Geçiş Bölgesi
+    (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),  # Canlı Yeşil (Boğa Bölgesi)
+]:
       x_coords = (
           list(t_df["timestamp"])
           + [max_zaman_grafik, max_zaman_grafik]

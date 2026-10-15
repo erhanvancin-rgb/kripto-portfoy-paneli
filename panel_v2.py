@@ -1678,23 +1678,19 @@ with col_orta_grafik:
     )
 
     for oran, val in fib_levels.items():
-      renk_cizgi = (
-          "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-      )
-      fig_total.add_hline(
-          y=val,
-          line_dash="dash",
-          line_color=renk_cizgi,
-          line_width=1,
-          annotation_text=f"<b>Fib {oran}</b>",
-          annotation_position="right",
-          annotation_font_size=10,
-          annotation_font_color="#000000",
-      )
+  renk_cizgi = (
+      "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
+  )
+  fig_total.add_hline(
+      y=val,
+      line_dash="dash",
+      line_color=renk_cizgi,
+      line_width=1,
+  )
 
     fig_total.update_layout(
         template="plotly_dark",
-        margin=dict(t=15, b=25, l=10, r=60),
+        margin=dict(t=15, b=25, l=10, r=15),
         height=340,
         xaxis=dict(
             range=[min_zaman, max_zaman_grafik],

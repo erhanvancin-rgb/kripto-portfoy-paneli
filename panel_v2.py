@@ -635,15 +635,6 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.markdown("""
-<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:8px 0 18px;border-bottom:1px solid #253247;margin-bottom:22px;">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#326ff0,#20d6a1);display:flex;align-items:center;justify-content:center;font-size:25px;box-shadow:0 8px 25px #326ff033;">₿</div>
-    <div><div style="font-size:25px;font-weight:800;letter-spacing:-.7px;color:#f4f7ff;">NEXUS <span style="color:#6f9dff;">CRYPTO</span></div><div style="font-size:12px;color:#91a0b8;letter-spacing:1.4px;text-transform:uppercase;">Akıllı Piyasa ve Portföy Terminali</div></div>
-  </div>
-  <div style="padding:9px 13px;border:1px solid #25473f;border-radius:999px;background:#10251f;color:#20d6a1;font-size:12px;font-weight:700;">● CANLI PİYASA <span style="color:#91a0b8;font-weight:500;">&nbsp;·&nbsp; 120 sn otomatik yenileme</span></div>
-</div>
-""", unsafe_allow_html=True)
 st.title("Piyasa Genel Bakış")
 st.caption("Fibonacci ağırlıklı sinyal matrisi · Risk yönetimi · Portföy takibi")
 elli_islem_arsiv_kontrol()
@@ -959,7 +950,6 @@ with col_orta_grafik:
             
             fig_total.add_trace(go.Scatter(x=x_coords, y=y_coords, fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
 
-        # Plotly grafik çizgileri ve zemin rengi güncellemeleri
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#5b8cff', width=2.5)), secondary_y=False)
         fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF9900', width=1.5, dash='solid')), secondary_y=False)
 
@@ -967,11 +957,12 @@ with col_orta_grafik:
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
             fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
+        # Grafik Kenar Boşlukları (Margin) ve Zemin Rengi (#2d3748) Düzenlemesi
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=10, b=30, l=5, r=70), height=380, 
+            template="plotly_dark", margin=dict(t=20, b=40, l=15, r=70), height=420, 
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=25, gridcolor='rgba(255,255,255,0.05)'), 
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], gridcolor='rgba(255,255,255,0.05)'), 
-            xaxis_rangeslider_visible=False, paper_bgcolor='#1e293b', plot_bgcolor='#1e293b', 
+            xaxis_rangeslider_visible=False, paper_bgcolor='#2d3748', plot_bgcolor='#2d3748', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8"))
         )
         st.plotly_chart(fig_total, use_container_width=True)
@@ -1003,11 +994,11 @@ st.markdown("---")
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist() if not df_gecmis.empty and 'Durum' in df_gecmis.columns else []
 
-# 3'lü Bloğun Genişlik Ayarları (Aynı Büyüklük: 1.3 ve 1.3)
-col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.4, 1.3, 1.3], gap='medium')
+# 3'lü Bloğun Genişlik Ayarları [2.5, 1, 1] Olarak Güncellendi
+col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.5, 1, 1], gap='medium')
 
 with col_sol_analiz:
-    st.markdown("<h3>📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)
     kapananlar_df = pd.DataFrame() if df_gecmis.empty or 'Durum' not in df_gecmis.columns else df_gecmis[df_gecmis['Durum'].astype(str).str.contains('Kapandi|Kar|Zarar', case=False, na=False)]
     
     if not kapananlar_df.empty:
@@ -1025,21 +1016,30 @@ with col_sol_analiz:
         
         sub_p1, sub_p2, sub_p3 = st.columns([1.35, 1.35, 1.35], gap='medium')
         with sub_p1:
-            fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.45, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
-            # Pasta grafik width değeri kaldırıldı, padding düzenlendi
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e8eef8', size=15), margin=dict(t=10, b=10, l=10, r=10), height=280, showlegend=False)
-            fig.update_traces(textfont_size=15, textinfo='percent')
+            fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.55, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
+            # Margin tamamen sıfırlandı
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e8eef8', size=14), margin=dict(t=0, b=0, l=0, r=0), height=200, showlegend=False)
+            fig.update_traces(textfont_size=14, textinfo='percent')
             st.plotly_chart(fig, use_container_width=True, config={'responsive': True, 'displayModeBar': False})
         with sub_p2:
             st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #212529;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>', unsafe_allow_html=True)
         with sub_p3:
-            st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">💰 Para Değerleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kâr:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: #00FF00;">+{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 6px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Zarar:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: rgb(255, 75, 0);">-{toplam_kayip_dolar:,.2f} $</p><hr style="margin: 6px 0px;"><p style="margin: 0px; font-size: 13px; color: #495057;">Net Fark:</p><p style="margin: 0px; font-size: 16px; font-weight: bold; color: {"#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"};">{net_fark_dolar:+,.2f} $</p>', unsafe_allow_html=True)
+            net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
+            # Alt alta tek tek satırlar
+            st.markdown(f'''
+            <div style="display: flex; flex-direction: column; justify-content: center; height: 100%; padding-top: 15px;">
+                <div style="font-size: 14px; font-weight: bold; color: #00FF00; margin-bottom: 8px;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</div>
+                <div style="font-size: 14px; font-weight: bold; color: rgb(255, 75, 0); margin-bottom: 8px;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</div>
+                <div style="font-size: 15px; font-weight: bold; color: {net_renk}; margin-top: 4px; border-top: 1px solid #30415b; padding-top: 8px;">Net Fark: {net_fark_dolar:+,.2f} $</div>
+            </div>
+            ''', unsafe_allow_html=True)
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
 with col_orta_durum:
     st.markdown("<h3>👁️ İşlem Sunumu</h3>", unsafe_allow_html=True)
-    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+    # Alttan yekpare durması için ayırıcı boşluk eklendi
+    st.markdown('<div style="height: 60px;"></div>', unsafe_allow_html=True)
     if st.button("Aktif İşlemler", use_container_width=True): 
         st.session_state['sadece_aktifleri_goster'] = True
         st.rerun()
@@ -1048,13 +1048,14 @@ with col_orta_durum:
         st.rerun()
     
     if st.session_state['sadece_aktifleri_goster']: 
-        st.info("ℹ️ Sadece Aktif pozisyonlar gösteriliyor.")
+        st.info("ℹ️ Sadece Aktifler.")
     else:
-        st.info("ℹ️ Tüm pozisyonlar gösteriliyor.")
+        st.info("ℹ️ Tüm işlemler.")
 
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Sonlandır</h3>", unsafe_allow_html=True)
-    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+    # Alttan yekpare durması için ayırıcı boşluk eklendi
+    st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     with st.form(key="pozisyon_kapat_form"):
         kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id")
         onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")

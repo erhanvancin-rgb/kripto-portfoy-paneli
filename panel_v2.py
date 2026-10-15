@@ -53,15 +53,14 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-testid="stExpander"] { background:#101827; border:1px solid var(--border); border-radius:12px; }
 [data-testid="stAlert"] { border-radius:12px; }
 .table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
-.table-container .custom-table { min-width:1800px; }
 [data-testid="stHorizontalBlock"] { align-items:stretch; }
 [data-testid="stPlotlyChart"] { min-width:0; }
 @media (min-width: 1200px) { .block-container { max-width:100%; padding-left:1.5rem; padding-right:1.5rem; } }
 .custom-table { width:100%; border-collapse:separate; border-spacing:0; background:#0e1726; }
-.custom-table th { background:#19263a; text-align:center; padding:12px 9px; border-bottom:1px solid #30415b; color:#aebdd2 !important; font-weight:700; font-size:12px; line-height:1.35; white-space:nowrap; }
-.custom-table td { background:#101a2a; text-align:center; padding:11px 9px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:12px; }
+.custom-table th { background:#19263a; text-align:center; padding:10px 5px; border-bottom:1px solid #30415b; color:#aebdd2 !important; font-weight:700; font-size:11px; line-height:1.35; white-space:nowrap; }
+.custom-table td { background:#101a2a; text-align:center; padding:9px 5px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:11px; }
 .custom-table tr:hover td { background:#17243a; }
-.custom-table td img { width:24px; height:24px; object-fit:contain; vertical-align:middle; }
+.custom-table td img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
 [data-testid="stPlotlyChart"] { background:#101827; border:1px solid var(--border); border-radius:14px; padding:8px; }
 [data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
 [data-testid="stCaptionContainer"] { color:var(--muted) !important; }
@@ -91,7 +90,6 @@ logo_urls = {
 baz_fiyatlar = {'BTC/USDT': 83750.0, 'ETH/USDT': 2511.0, 'BNB/USDT': 745.0, 'SOL/USDT': 107.6, 'XRP/USDT': 1.373, 'TOTAL': 2.77e12}
 
 def gmail_bildirim_gonder(konu, icerik_html):
-    # Kimlik bilgilerini kodda tutmayın. Streamlit secrets veya ortam değişkeni kullanın.
     gonderici_mail = os.getenv("GMAIL_SENDER", "")
     uygulama_sifresi = os.getenv("GMAIL_APP_PASSWORD", "")
     alici_mail = os.getenv("GMAIL_RECIPIENT", gonderici_mail)
@@ -272,7 +270,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # FİBONACCİ AĞIRLIKLARI KORUNARAK, MERKEZ NOKTASI (NÖTR) TEKRAR 50'YE ÇEKİLDİ
     dilimler = [
         (y16, k16, 64,   6.37, df_16s),   
         (y8,  k8,  96,  12.73, df_8s),    
@@ -498,7 +495,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    # AYNI COINE ÇİFT İŞLEM YASAĞI (COOLDOWN) EKLENDİ
     df = islem_gecmisi_getir()
     if not df.empty and 'Durum' in df.columns:
         acik_islemler = df[~df['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]
@@ -963,19 +959,20 @@ with col_orta_grafik:
             
             fig_total.add_trace(go.Scatter(x=x_coords, y=y_coords, fill='toself', fillcolor=renk, line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'), secondary_y=False)
 
-        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='rgb(70, 0, 255)', width=2)), secondary_y=False)
-        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF8000', width=1.5, dash='solid')), secondary_y=False)
+        # Plotly grafik çizgileri ve zemin rengi güncellemeleri
+        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['Close'], mode='lines', name='Total Market', line=dict(color='#5b8cff', width=2.5)), secondary_y=False)
+        fig_total.add_trace(go.Scatter(x=t_df['timestamp'], y=t_df['RSI_Norm'], mode='lines', name='RSI (0-1)', line=dict(color='#FF9900', width=1.5, dash='solid')), secondary_y=False)
 
         for oran, val in fib_levels.items():
             renk_cizgi = "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
             fig_total.add_hline(y=val, line_dash="dash", line_color=renk_cizgi, line_width=1, annotation_text=f"<b>Fib {oran}</b>", annotation_position="right", annotation_font_size=10, annotation_font_color="#000000")
 
         fig_total.update_layout(
-            template="plotly_white", margin=dict(t=10, b=30, l=5, r=70), height=380, 
-            xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=25), 
-            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir]), 
-            xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            template="plotly_dark", margin=dict(t=10, b=30, l=5, r=70), height=380, 
+            xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=25, gridcolor='rgba(255,255,255,0.05)'), 
+            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], gridcolor='rgba(255,255,255,0.05)'), 
+            xaxis_rangeslider_visible=False, paper_bgcolor='#1e293b', plot_bgcolor='#1e293b', 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8"))
         )
         st.plotly_chart(fig_total, use_container_width=True)
 
@@ -1006,7 +1003,8 @@ st.markdown("---")
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist() if not df_gecmis.empty and 'Durum' in df_gecmis.columns else []
 
-col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.6, 1.15, 1.45], gap='large')
+# 3'lü Bloğun Genişlik Ayarları (Aynı Büyüklük: 1.3 ve 1.3)
+col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.4, 1.3, 1.3], gap='medium')
 
 with col_sol_analiz:
     st.markdown("<h3>📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi</h3>", unsafe_allow_html=True)
@@ -1028,7 +1026,8 @@ with col_sol_analiz:
         sub_p1, sub_p2, sub_p3 = st.columns([1.35, 1.35, 1.35], gap='medium')
         with sub_p1:
             fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.45, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e8eef8', size=15), margin=dict(t=12, b=12, l=12, r=12), height=300, width=360, showlegend=False)
+            # Pasta grafik width değeri kaldırıldı, padding düzenlendi
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e8eef8', size=15), margin=dict(t=10, b=10, l=10, r=10), height=280, showlegend=False)
             fig.update_traces(textfont_size=15, textinfo='percent')
             st.plotly_chart(fig, use_container_width=True, config={'responsive': True, 'displayModeBar': False})
         with sub_p2:
@@ -1039,7 +1038,8 @@ with col_sol_analiz:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
 with col_orta_durum:
-    st.markdown("<h3>İşlem Sunumu</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>👁️ İşlem Sunumu</h3>", unsafe_allow_html=True)
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
     if st.button("Aktif İşlemler", use_container_width=True): 
         st.session_state['sadece_aktifleri_goster'] = True
         st.rerun()
@@ -1054,6 +1054,7 @@ with col_orta_durum:
 
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Sonlandır</h3>", unsafe_allow_html=True)
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
     with st.form(key="pozisyon_kapat_form"):
         kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id")
         onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")

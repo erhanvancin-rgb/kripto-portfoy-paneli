@@ -757,6 +757,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
   )
 
 
+# --- DÜZELTİLMİŞ YENİ İŞLEM EKLEME VE AĞIRLIKLI ORTALAMA (DCA) SİSTEMİ ---
 def yeni_islem_ekle(
     coin,
     yon,
@@ -769,72 +770,155 @@ def yeni_islem_ekle(
     risk_hedef_metin,
 ):
   df = islem_gecmisi_getir()
-  if not df.empty and "Durum" in df.columns:
-    acik_islemler = df[
-        ~df["Durum"]
-        .astype(str)
-        .str.contains("kapandi|kar|zarar", case=False, na=False)
-    ]
-    if not acik_islemler.empty and coin in acik_islemler["Coin"].values:
-      return False, f"⚠️ {coin} için halihazırda açık bir pozisyonunuz var!"
 
-  if (
-      matris_puan < 54.0
-      or "Nötr" in yon
-      or "Beklemede" in yon
-      or "Ters Akıntı" in yon
-  ):
+  # Bakiye kontrolü (%100 kasa kullanımına izin vermek için > kontrolü)
+  _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
+  if round(islem_miktari, 2) > round(mevcut_bakiye, 2):
     return (
         False,
-        "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumunda işlem açılamaz!",
+        f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen:"
+        f" {islem_miktari:.2f} $",
     )
-  _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
-  if islem_miktari >= mevcut_bakiye:
-    return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
   if islem_miktari < 10:
     return False, "İşlem miktarı 10 $'dan küçük olamaz!"
 
-  yeni_id = (
-      1
-      if df.empty
-      else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
-  )
   suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
-  if "Long" in yon:
-    beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
-    olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
-  else:
-    beklenen_kar = islem_miktari * KALDIRAC * ((giris_fiyat - kar_al) / giris_fiyat)
-    olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
+  # Açık pozisyon kontrolü
+  acik_islem_idx = None
+  if not df.empty and "Durum" in df.columns:
+    acik_mask = ~df["Durum"].astype(str).str.contains(
+        "kapandi|kar|zarar", case=False, na=False
+    )
+    acik_df = df[acik_mask]
+    if not acik_df.empty and coin in acik_df["Coin"].values:
+      acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
 
-  matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
-  toplam_kasa, _, _, _ = bakiye_durumunu_getir()
-  yeni_kayit = pd.DataFrame([{
-      "Islem_ID": yeni_id,
-      "Acilis_Zamani": suan_tr,
-      "Coin": coin,
-      "Yon": yon,
-      "Zaman_Dilimi": zaman_dilimi,
-      "Giris_Fiyat": giris_fiyat,
-      "Islem_Miktari": round(islem_miktari, 2),
-      "Stop": stop,
-      "Kar_Al": kar_al,
-      "Beklenen_Kar": round(beklenen_kar, 2),
-      "Matris_Puan_RH": matris_rh_metin,
-      "Olasi_Stop": round(olasi_stop, 2),
-      "Durum": "Acik",
-      "Net_Kar_Zarar": 0.0,
-      "Guncel_Kasa": round(toplam_kasa, 2),
-      "Kapanis_Zamani": "-",
-      "Kapanis_Fiyati": 0.0,
-  }])
-  df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(
-      subset=["Islem_ID"], keep="last"
-  )
-  dataframe_guncelle_gsheets(df)
-  elli_islem_arsiv_kontrol()
-  return True, f"✅ {coin} emri başarıyla verildi!"
+  if acik_islem_idx is not None:
+    # --- MEVCUT POZİSYONA EKLEME (AĞIRLIKLI ORTALAMA / DCA MODU) ---
+    eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
+    eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
+    eski_yon = str(df.loc[acik_islem_idx, "Yon"])
+
+    yeni_toplam_miktar = eski_miktar + islem_miktari
+    yeni_agirlikli_ortalama = (
+        (eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)
+    ) / yeni_toplam_miktar
+
+    # Anlık sinyale göre TP/SL mesafe oranlarını hesaplama
+    if eski_giris > 0:
+      stop_oran = abs(stop - giris_fiyat) / giris_fiyat
+      kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
+    else:
+      stop_oran, kar_al_oran = 0.01, 0.02
+
+    if "Long" in eski_yon:
+      yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_oran)
+      yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + kar_al_oran)
+      beklenen_kar = (
+          yeni_toplam_miktar
+          * KALDIRAC
+          * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
+      )
+      olasi_stop = (
+          yeni_toplam_miktar
+          * KALDIRAC
+          * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
+      )
+    else:
+      yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_oran)
+      yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - kar_al_oran)
+      beklenen_kar = (
+          yeni_toplam_miktar
+          * KALDIRAC
+          * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
+      )
+      olasi_stop = (
+          yeni_toplam_miktar
+          * KALDIRAC
+          * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
+      )
+
+    basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
+    matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
+    toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+
+    df.at[acik_islem_idx, "Giris_Fiyat"] = round(
+        yeni_agirlikli_ortalama, basamak
+    )
+    df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
+    df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
+    df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
+    df.at[acik_islem_idx, "Acilis_Zamani"] = (
+        suan_tr  # Ağırlıklı ortalamanın oluştuğu zaman
+    )
+    df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
+    df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
+    df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
+    df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa, 2)
+
+    dataframe_guncelle_gsheets(df)
+    elli_islem_arsiv_kontrol()
+    return (
+        True,
+        f"🔄 {coin} pozisyonuna ekleme yapıldı! Yeni Ort. Maliyet:"
+        f" {yeni_agirlikli_ortalama:,.{basamak}f} $",
+    )
+
+  else:
+    # --- SIFIRDAN YENİ İŞLEM AÇMA ---
+    if (
+        matris_puan < 54.0
+        or "Nötr" in yon
+        or "Beklemede" in yon
+        or "Ters Akıntı" in yon
+    ):
+      return (
+          False,
+          "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumunda yeni işlem açılamaz!",
+      )
+
+    yeni_id = (
+        1
+        if df.empty
+        else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
+    )
+
+    if "Long" in yon:
+      beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
+      olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
+    else:
+      beklenen_kar = islem_miktari * KALDIRAC * ((giris_fiyat - kar_al) / giris_fiyat)
+      olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
+
+    basamak = 4 if giris_fiyat < 10 else 2
+    matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
+    toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+    yeni_kayit = pd.DataFrame([{
+        "Islem_ID": yeni_id,
+        "Acilis_Zamani": suan_tr,
+        "Coin": coin,
+        "Yon": yon,
+        "Zaman_Dilimi": zaman_dilimi,
+        "Giris_Fiyat": round(giris_fiyat, basamak),
+        "Islem_Miktari": round(islem_miktari, 2),
+        "Stop": round(stop, basamak),
+        "Kar_Al": round(kar_al, basamak),
+        "Beklenen_Kar": round(beklenen_kar, 2),
+        "Matris_Puan_RH": matris_rh_metin,
+        "Olasi_Stop": round(olasi_stop, 2),
+        "Durum": "Acik",
+        "Net_Kar_Zarar": 0.0,
+        "Guncel_Kasa": round(toplam_kasa, 2),
+        "Kapanis_Zamani": "-",
+        "Kapanis_Fiyati": 0.0,
+    }])
+    df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(
+        subset=["Islem_ID"], keep="last"
+    )
+    dataframe_guncelle_gsheets(df)
+    elli_islem_arsiv_kontrol()
+    return True, f"✅ {coin} emri başarıyla verildi!"
 
 
 def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
@@ -1492,15 +1576,11 @@ st.markdown(
 
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 
+# --- DÜZELTİLMİŞ İŞLEM VE EKLEME PANELİ ---
 with col_sol_panel:
   st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
   df_gosterge = pd.DataFrame(islenen_veriler)
-  df_islem_yapilabilir = df_gosterge[df_gosterge["Notr"] == False]
-  coin_listesi = (
-      df_islem_yapilabilir["Coin"].tolist()
-      if not df_islem_yapilabilir.empty
-      else []
-  )
+  coin_listesi = df_gosterge["Coin"].tolist() if not df_gosterge.empty else []
 
   secilen_coin = st.selectbox("Coin Seç:", coin_listesi) if coin_listesi else None
   if not coin_listesi:
@@ -1524,42 +1604,64 @@ with col_sol_panel:
         coin_verisii["Risk_Hedef_Metin"],
     )
 
+  # Seçilen coin için halihazırda açık pozisyon var mı kontrolü
+  df_gecmis_temp = islem_gecmisi_getir(sheet_guncelle=False)
+  acik_pozisyon_var = False
+  if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
+    acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains(
+        "kapandi|kar|zarar", case=False, na=False
+    )
+    if secilen_coin in df_gecmis_temp[acik_mask]["Coin"].values:
+      acik_pozisyon_var = True
+
   onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
-  st.markdown(
-      f"""
+  if acik_pozisyon_var:
+    st.markdown(
+        """
+        <div style="background:linear-gradient(145deg,#1f2b3e,#162234); color:#e8eef8; border:1px solid #3b82f6; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;">
+            <div style="font-weight:750; color:#60a5fa; margin-bottom:4px;">🔄 Açık Pozisyona Ekleme Modu</div>
+            <div style="color:#dce6f5;">Bu coin için açık bir pozisyonunuz var. Girilen tutar ağırlıklı ortalama ile maliyete eklenecektir.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+  else:
+    st.markdown(
+        f"""
         <div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;">
             <div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi</div>
             <div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div>
             <div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div>
         </div>
     """,
-      unsafe_allow_html=True,
-  )
+        unsafe_allow_html=True,
+    )
 
   with st.form(key="manuel_islem_formu"):
+    var_tutar = (
+        float(onerilen_tutar_hesap)
+        if not acik_pozisyon_var
+        else min(100.0, float(mevcut_bakiye))
+    )
     manuel_girilen_tutar = st.number_input(
         "Tutar ($ Giriniz):",
         min_value=0.0,
         max_value=999999.0,
-        value=float(onerilen_tutar_hesap),
+        value=float(var_tutar),
         step=10.0,
     )
     st.markdown(
         f"🟢 **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True
     )
     submit_islem = st.form_submit_button(
-        "🚀 İşlemi Başlat", use_container_width=True
+        "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
+        use_container_width=True,
     )
 
     if submit_islem:
       if not secilen_coin or coin_listesi == []:
         st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-      elif coin_verisii is not None and coin_verisii["Notr"]:
-        st.error(
-            "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumundaki coinlerde işlem"
-            " açılamaz!"
-        )
       elif coin_verisii is not None:
         basari, mesaj = yeni_islem_ekle(
             secilen_coin,
@@ -1689,7 +1791,7 @@ with col_orta_grafik:
 
     fig_total.update_layout(
         template="plotly_dark",
-        margin=dict(t=15, b=25, l=10, r=-0),
+        margin=dict(t=15, b=25, l=10, r=0),
         height=340,
         xaxis=dict(
             range=[min_zaman, max_zaman_grafik],

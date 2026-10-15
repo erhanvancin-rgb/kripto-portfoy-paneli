@@ -1689,7 +1689,7 @@ with col_orta_grafik:
 
     fig_total.update_layout(
         template="plotly_dark",
-        margin=dict(t=15, b=25, l=10, r=-10),
+        margin=dict(t=15, b=25, l=10, r=-0),
         height=340,
         xaxis=dict(
             range=[min_zaman, max_zaman_grafik],

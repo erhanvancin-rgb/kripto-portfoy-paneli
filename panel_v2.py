@@ -24,50 +24,45 @@ st.set_page_config(page_title="Pro Kripto Canlı Akış ve Paneli", page_icon="�
 # --- OTOMATİK YENİLEME (120 SANİYE) ---
 st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
 
-# --- CSS STİLLERİ ---
+# --- PREMIUM DARK TRADING TERMINAL TASARIMI ---
 st.markdown("""
-    <style>
-    .main, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-        background-color: #f8f9fa !important;
-        color: #212529 !important;
-    }
-    div[data-testid="stVerticalBlock"], div[data-testid="stHorizontalBlock"], .para-blogu {
-        background-color: #ffffff !important;
-        color: #212529 !important;
-    }
-    
-    .metric-container {
-        background-color: #e9ecef !important;
-        border: 1px solid #ced4da !important;
-        padding: 15px !important;
-        border-radius: 8px !important;
-    }
-
-    h1, h2, h3, h4, h5, h6, p, label, div, table, th, td {
-        color: #212529 !important;
-    }
-    
-    h3, .stMarkdown h3 {
-        font-size: 22px !important;
-    }
-    
-    .stButton > button, div.stFormSubmitButton > button {
-        background-color: #e9ecef !important;
-        color: #212529 !important;
-        border: 1px solid #ced4da !important;
-        font-weight: bold !important;
-    }
-    .stButton > button:hover, div.stFormSubmitButton > button:hover {
-        background-color: rgb(70, 0, 255) !important;
-        color: #ffffff !important;
-    }
-
-    .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; }
-    .custom-table { width: 100%; border-collapse: collapse; background-color: #ffffff; }
-    .custom-table th { background-color: #e9ecef; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: bold; color: #212529; font-size: 13px; line-height: 1.2; }
-    .custom-table td { background-color: #ffffff; text-align: center; padding: 6px 4px; border: 1px solid #dee2e6; font-weight: 600; vertical-align: middle; color: #212529; white-space: nowrap; font-size: 13px; }
-    .custom-table td img { width: 22px; height: 22px; object-fit: contain; }
-    </style>
+<style>
+:root { --bg:#080d18; --panel:#101827; --panel2:#151f31; --border:#253247; --text:#e8eef8; --muted:#91a0b8; --green:#20d6a1; --red:#ff647c; --blue:#5b8cff; }
+html, body, [class*="css"], .stApp { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background:var(--bg) !important; color:var(--text) !important; }
+[data-testid="stHeader"] { background:rgba(8,13,24,.88) !important; }
+[data-testid="stMain"] { background:radial-gradient(ellipse at 15% 0%, rgba(48,86,160,.14), transparent 42%), var(--bg) !important; }
+.block-container { max-width: 1600px; padding-top:1.4rem; padding-bottom:3rem; }
+[data-testid="stVerticalBlockBorderWrapper"] { background:transparent; }
+[data-testid="stMetric"], .metric-container { background:linear-gradient(145deg,#141f31,#0f1726) !important; border:1px solid var(--border) !important; border-radius:16px !important; padding:17px 19px !important; box-shadow:0 8px 28px rgba(0,0,0,.16); }
+.metric-container { min-height:104px; }
+.metric-container p { color:var(--muted) !important; font-size:12px !important; letter-spacing:.35px; }
+.metric-container h1 { color:var(--text) !important; font-size:25px !important; font-weight:750 !important; }
+h1 { color:#f4f7ff !important; font-size:clamp(1.7rem,2.3vw,2.45rem) !important; font-weight:800 !important; letter-spacing:-.7px; }
+h2,h3,h4 { color:#e8eef8 !important; font-weight:700 !important; letter-spacing:-.25px; }
+p, label, [data-testid="stMarkdownContainer"] { color:var(--text); }
+small, .muted { color:var(--muted) !important; }
+hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
+[data-testid="stTabs"] [data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid var(--border); }
+[data-testid="stTabs"] button[role="tab"] { background:#111b2b; border:1px solid var(--border); border-radius:10px 10px 0 0; color:var(--muted); padding:10px 16px; }
+[data-testid="stTabs"] button[aria-selected="true"] { background:#1a2b45; color:#fff; border-color:#4269a9; }
+.stButton > button, div.stFormSubmitButton > button, [data-testid="stDownloadButton"] button { background:linear-gradient(135deg,#3977f6,#5b8cff) !important; color:white !important; border:1px solid #4f83f5 !important; border-radius:10px !important; font-weight:700 !important; min-height:42px; transition:all .18s ease; }
+.stButton > button:hover, div.stFormSubmitButton > button:hover { filter:brightness(1.12); border-color:#91b2ff !important; transform:translateY(-1px); }
+[data-baseweb="input"] > div, [data-baseweb="select"] > div, [data-testid="stNumberInput"] input, [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { background:#0d1523 !important; color:var(--text) !important; border-color:#2a3951 !important; border-radius:9px !important; }
+[data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+[data-testid="stExpander"] { background:#101827; border:1px solid var(--border); border-radius:12px; }
+[data-testid="stAlert"] { border-radius:12px; }
+.table-container { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
+.custom-table { width:100%; border-collapse:separate; border-spacing:0; background:#0e1726; }
+.custom-table th { background:#19263a; text-align:center; padding:12px 9px; border-bottom:1px solid #30415b; color:#aebdd2 !important; font-weight:700; font-size:12px; line-height:1.35; white-space:nowrap; }
+.custom-table td { background:#101a2a; text-align:center; padding:11px 9px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:12px; }
+.custom-table tr:hover td { background:#17243a; }
+.custom-table td img { width:24px; height:24px; object-fit:contain; vertical-align:middle; }
+[data-testid="stPlotlyChart"] { background:#101827; border:1px solid var(--border); border-radius:14px; padding:8px; }
+[data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
+[data-testid="stCaptionContainer"] { color:var(--muted) !important; }
+@media (max-width: 768px) { .block-container { padding:1rem .7rem 2rem; } .metric-container { padding:12px !important; } .metric-container h1 { font-size:20px !important; } }
+</style>
 """, unsafe_allow_html=True)
 
 # --- SABİTLER ---
@@ -92,9 +87,12 @@ logo_urls = {
 baz_fiyatlar = {'BTC/USDT': 83750.0, 'ETH/USDT': 2511.0, 'BNB/USDT': 745.0, 'SOL/USDT': 107.6, 'XRP/USDT': 1.373, 'TOTAL': 2.77e12}
 
 def gmail_bildirim_gonder(konu, icerik_html):
-    gonderici_mail = "erhanvancin@gmail.com"
-    uygulama_sifresi = "jkef zgaf zwtg qyom"
-    alici_mail = "erhanvancin@gmail.com"
+    # Kimlik bilgilerini kodda tutmayın. Streamlit secrets veya ortam değişkeni kullanın.
+    gonderici_mail = os.getenv("GMAIL_SENDER", "")
+    uygulama_sifresi = os.getenv("GMAIL_APP_PASSWORD", "")
+    alici_mail = os.getenv("GMAIL_RECIPIENT", gonderici_mail)
+    if not gonderici_mail or not uygulama_sifresi or not alici_mail:
+        return False, "E-posta ayarları eksik. GMAIL_SENDER, GMAIL_APP_PASSWORD ve GMAIL_RECIPIENT tanımlayın."
     
     try:
         msg = MIMEMultipart()
@@ -637,7 +635,17 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Fibonacci Ağırlıklı 50 Merkezli Filtre)")
+st.markdown("""
+<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:8px 0 18px;border-bottom:1px solid #253247;margin-bottom:22px;">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#326ff0,#20d6a1);display:flex;align-items:center;justify-content:center;font-size:25px;box-shadow:0 8px 25px #326ff033;">₿</div>
+    <div><div style="font-size:25px;font-weight:800;letter-spacing:-.7px;color:#f4f7ff;">NEXUS <span style="color:#6f9dff;">CRYPTO</span></div><div style="font-size:12px;color:#91a0b8;letter-spacing:1.4px;text-transform:uppercase;">Akıllı Piyasa ve Portföy Terminali</div></div>
+  </div>
+  <div style="padding:9px 13px;border:1px solid #25473f;border-radius:999px;background:#10251f;color:#20d6a1;font-size:12px;font-weight:700;">● CANLI PİYASA <span style="color:#91a0b8;font-weight:500;">&nbsp;·&nbsp; 120 sn otomatik yenileme</span></div>
+</div>
+""", unsafe_allow_html=True)
+st.title("Piyasa Genel Bakış")
+st.caption("Fibonacci ağırlıklı sinyal matrisi · Risk yönetimi · Portföy takibi")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False

@@ -807,42 +807,50 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu
 
 for v in islenen_veriler: v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6 = st.columns([2, 2, 2, 2, 1.5, 1.2])
+col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns([2, 2, 2, 2, 1.55], gap="medium")
 with col_ust1: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">📊 Aktif Yatırım</p><h1 style="color: rgb(70, 0, 255); margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust2: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">🟢 Boştaki Nakit</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust3: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">💎 Efektif Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
 with col_ust4: st.markdown(f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">💰 Toplam Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>', unsafe_allow_html=True)
-with col_ust5:
-    st.markdown('<div class="metric-container" style="padding: 11px !important;"><p style="margin: 0px; font-size: 13px; font-weight: bold;">👍 Kasa Sermaye</p>', unsafe_allow_html=True)
-    if st.button("🗂️ Yatır / Çek", use_container_width=True): st.session_state['kasa_islem_acik'] = not st.session_state['kasa_islem_acik']; st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-with col_ust6:
-    st.write("")
-    st.write("")
-    if st.button("🔄 Yenile", use_container_width=True): st.rerun()
+with col_kasa_buton:
+    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+    if st.button("💵 Kasaya Para Ekle", use_container_width=True, key="kasaya_para_ekle"):
+        st.session_state['kasa_islem_turu'] = "Para Yatır"
+        st.session_state['kasa_islem_acik'] = True
+        st.rerun()
+    if st.button("💸 Kasadan Para Çek", use_container_width=True, key="kasadan_para_cek"):
+        st.session_state['kasa_islem_turu'] = "Para Çek"
+        st.session_state['kasa_islem_acik'] = True
+        st.rerun()
 
 if st.session_state['kasa_islem_acik']:
-    with st.container():
-        st.markdown(f'<div style="background-color: #ffffff; padding: 20px; border: 2px solid rgb(70, 0, 255); border-radius: 10px; margin-bottom: 20px;"><h4 style="margin-top: 0px; color: rgb(70, 0, 255);">👍 Kasa Sermaye Yönetimi</h4>', unsafe_allow_html=True)
-        col_sec1, col_sec2 = st.columns(2)
-        with col_sec1:
-            if st.button("🟢 Para Yatır", use_container_width=True): st.session_state['kasa_islem_turu'] = "Para Yatır"; st.rerun()
-        with col_sec2:
-            if st.button("🔴 Para Çek", use_container_width=True): st.session_state['kasa_islem_turu'] = "Para Çek"; st.rerun()
-        
-        col_k1, col_k2 = st.columns([1, 2])
-        with col_k1: kasa_tutar = st.number_input("Tutar ($):", min_value=1.0, value=100.0, step=10.0, key="k_tutar")
-        with col_k2: kasa_aciklama = st.text_input("Açıklama:", value="Ekstra sermaye", key="k_acik")
-        
-        col_islem1, col_islem2 = st.columns([1, 4])
-        with col_islem1:
-            if st.button("💾 Onayla", use_container_width=True):
-                basarili, mesaj = kasa_islem_ekle("Para_Yatir" if st.session_state['kasa_islem_turu'] == "Para Yatır" else "Para_Cek", kasa_tutar, kasa_aciklama)
-                if basarili: st.success(mesaj); st.session_state['kasa_islem_acik'] = False; time.sleep(1); st.rerun()
-                else: st.error(mesaj)
-        with col_islem2:
-            if st.button("❌ Kapat", use_container_width=True): st.session_state['kasa_islem_acik'] = False; st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+    islem_yatir = st.session_state.get('kasa_islem_turu', 'Para Yatır') == "Para Yatır"
+    baslik = "Kasaya Para Ekle" if islem_yatir else "Kasadan Para Çek"
+    st.markdown(f"""<div style="background:linear-gradient(145deg,#121e30,#0e1726); padding:18px 20px 10px; border:1px solid #344765; border-left:4px solid #5b8cff; border-radius:14px; margin:16px 0 12px;">
+      <div style="font-size:21px; font-weight:800; color:#f0f5ff; margin-bottom:4px;">💰 {baslik}</div>
+      <div style="font-size:13px; color:#aab9d0;">Tutarı ve açıklamayı girin, ardından işlemi onaylayın.</div>
+    </div>""", unsafe_allow_html=True)
+    col_k1, col_k2, col_onay, col_kapat = st.columns([1.05, 2.2, 1, 1], gap="medium")
+    with col_k1:
+        kasa_tutar = st.number_input("Tutar ($)", min_value=1.0, value=100.0, step=10.0, key="k_tutar")
+    with col_k2:
+        kasa_aciklama = st.text_input("Açıklama", value="Ekstra sermaye" if islem_yatir else "Kasa çekimi", key="k_acik")
+    with col_onay:
+        st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+        if st.button("💾 Onayla", use_container_width=True, key="kasa_onayla"):
+            basarili, mesaj = kasa_islem_ekle("Para_Yatir" if islem_yatir else "Para_Cek", kasa_tutar, kasa_aciklama)
+            if basarili:
+                st.success(mesaj)
+                st.session_state['kasa_islem_acik'] = False
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(mesaj)
+    with col_kapat:
+        st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+        if st.button("✖ Kapat", use_container_width=True, key="kasa_kapat"):
+            st.session_state['kasa_islem_acik'] = False
+            st.rerun()
 
 st.markdown("---")
 

@@ -270,7 +270,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
-    # FİBONACCİ ALTIN ORAN DEĞERLERİ İLE (NÖTR=0 PUAN) KURGUSU
+    # FİBONACCİ AĞIRLIKLARI KORUNARAK, MERKEZ NOKTASI (NÖTR) TEKRAR 50'YE ÇEKİLDİ
     dilimler = [
         (y16, k16, 64,   6.37, df_16s),   
         (y8,  k8,  96,  12.73, df_8s),    
@@ -285,17 +285,23 @@ def kurgusal_matris_hesapla(coin_symbol):
     zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
     
     for idx, (y, k, toplam_led, max_puan, df_zaman) in enumerate(dilimler):
-        yari_led = toplam_led / 2.0
-        
-        # SIFIR BAZLI (ZERO-BASED) LED PUANLAMA MANTIĞI:
-        # Puan sadece %50 (yari_led) geçildiğinde orantılı olarak verilir.
-        sl = ((y - yari_led) / yari_led) * max_puan if y > yari_led else 0.0
-        ss = ((k - yari_led) / yari_led) * max_puan if k > yari_led else 0.0
+        if toplam_led > 0:
+            sl = (y / toplam_led) * max_puan
+            ss = (k / toplam_led) * max_puan
+        else:
+            sl, ss = max_puan / 2.0, max_puan / 2.0
             
         ek_lb, ek_sb = rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df_zaman, max_puan)
         
-        sl_yeni = min(sl + ek_lb, max_puan)
-        ss_yeni = min(ss + ek_sb, max_puan)
+        sl_gecici = sl + ek_lb
+        ss_gecici = ss + ek_sb
+        
+        grup_toplam = sl_gecici + ss_gecici
+        if grup_toplam > 0 and grup_toplam > max_puan:
+            sl_yeni = (sl_gecici / grup_toplam) * max_puan
+            ss_yeni = (ss_gecici / grup_toplam) * max_puan
+        else:
+            sl_yeni, ss_yeni = sl_gecici, ss_gecici
             
         toplam_long_puan += sl_yeni
         toplam_short_puan += ss_yeni
@@ -631,7 +637,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Sıfır Bazlı Fibonacci Filtresi)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Fibonacci Ağırlıklı 50 Merkezli Filtre)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False

@@ -262,17 +262,42 @@ def load_15min_market_data(coin_symbol: str):
   })
 
 
-def calculate_coin_atr_metrics(trend_kademesi):
-  if "Güçlü" in trend_kademesi:
-    return 0.7, 3.57, "0,7 / 2,5"
-  elif "Avcısı" in trend_kademesi:
-    return 0.8, 2.87, "0,8 / 2,3"
-  elif "Onaylı" in trend_kademesi:
-    return 1.0, 1.8, "1 / 1,8"
-  elif "Ters Akıntı" in trend_kademesi:
-    return 0.8, 1.62, "0,8 / 1,3"
+def calculate_coin_metrics_by_score(matris_puani):
+  # 54 altı için varsayılan nötr değerler
+  if matris_puani < 54.0:
+    stop_uzde = 1.0
+    hedef_uzde = 1.5
+    risk_hedef_metin = "Nötr"
+  elif 54.0 <= matris_puani <= 60.0:
+    # 54 -> 60 Aralığı (Stop: 1.2 -> 1.0 | Hedef: 1.5 -> 1.8)
+    oran = (matris_puani - 54.0) / (60.0 - 54.0)
+    stop_uzde = 1.2 - (1.2 - 1.0) * oran
+    hedef_uzde = 1.5 + (1.8 - 1.5) * oran
+  elif 60.0 < matris_puani <= 65.0:
+    # 60 -> 65 Aralığı (Stop: 0.9 -> 0.8 | Hedef: 1.9 -> 2.2)
+    oran = (matris_puani - 60.0) / (65.0 - 60.0)
+    stop_uzde = 0.9 - (0.9 - 0.8) * oran
+    hedef_uzde = 1.9 + (2.2 - 1.9) * oran
+  elif 65.0 < matris_puani <= 75.0:
+    # 65 -> 75 Aralığı (Stop: 0.8 -> 0.7 | Hedef: 2.3 -> 2.8)
+    oran = (matris_puani - 65.0) / (75.0 - 65.0)
+    stop_uzde = 0.8 - (0.8 - 0.7) * oran
+    hedef_uzde = 2.3 + (2.8 - 2.3) * oran
   else:
-    return 1.0, 1.5, "Nötr"
+    # 75 -> 100 Aralığı (Stop: 0.7 sabit | Hedef: 3.0 -> 4.0)
+    p = min(matris_puani, 100.0)
+    oran = (p - 75.0) / (100.0 - 75.0)
+    stop_uzde = 0.7
+    hedef_uzde = 3.0 + (4.0 - 3.0) * oran
+
+  hedef_carpan = hedef_uzde / stop_uzde
+
+  if matris_puani >= 54.0:
+    str_stop = f'{stop_uzde:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
+    str_hedef = f'{hedef_uzde:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
+    risk_hedef_metin = f'{str_stop} / {str_hedef}'
+
+  return stop_uzde, hedef_carpan, risk_hedef_metin
 
 
 # --- 3 İNDİKATÖR (EMA, RSI, FIB) LOGARİTMİK BONUS SİSTEMİ ---
@@ -1300,7 +1325,7 @@ for data in coin_ham_veriler:
   is_notr = (
       aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr"
   )
-  stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_atr_metrics(trend)
+  stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(     nihai_puan )
 
   gecici_islenen_liste.append({
       "sembol": sembol,

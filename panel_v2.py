@@ -194,18 +194,15 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
     anlik_fiyat = float(df['Close'].iloc[-1])
     anlik_ema = float(df['EMA20'].iloc[-1])
     
-    # 1. EMA LOGARİTMİK BONUSU
-    # Fiyatın EMA'ya olan uzaklığını yüzde olarak buluyoruz.
+    # EMA LOGARİTMİK BONUSU
     fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
-    # log1p (doğal logaritma) ile ani zıplamayı kavisli olarak eziyoruz. 
-    # fark_yuzde 1.5% olduğunda log_carpan maksimum 1.0 olacak şekilde normalize ettik.
     ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
     max_ema_bonus = max_puan * 0.04
     
     ema_bonus_long = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
     ema_bonus_short = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
     
-    # 2. RSI LOGARİTMİK BONUSU
+    # RSI LOGARİTMİK BONUSU
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -214,14 +211,13 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
     
     fark_rsi = abs(rsi_anlik - 50.0)
-    # RSI 50'den 70'e veya 30'a (20 puan fark) gidene kadar ivmesi yavaşlayan logaritmik artış.
     rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
     max_rsi_bonus = max_puan * 0.03
     
     rsi_bonus_long = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
     rsi_bonus_short = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
     
-    # 3. FİBONACCI LOGARİTMİK BONUSU
+    # FİBONACCI LOGARİTMİK BONUSU
     max_f = float(df['High'].max())
     min_f = float(df['Low'].min())
     fiyat_fark = max_f - min_f
@@ -236,9 +232,7 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
         min_mesafe = min(mesafe_050, mesafe_618)
         
         if min_mesafe < 0.05:
-            # 0.05 menziline girdiğinde altın orana yaklaştıkça artan ters mantık
             yaklasim = (0.05 - min_mesafe) / 0.05 
-            # logaritmik olarak kavisli artış (yaklaştıkça hızla artıp zirvede kilitlenir)
             fib_log_carpan = np.log1p(yaklasim * 10) / np.log1p(10)
             max_fib_bonus = max_puan * 0.03
             
@@ -255,12 +249,11 @@ def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     sembol_istek = coin_symbol if coin_symbol != 'TOTAL' else 'BTC/USDT'
     
-    # KULLANICININ ORİJİNAL VE KUSURSUZ MATRİS MANTIK DİZİLİMİ:
-    df_16s = kline_cek_binance(sembol_istek, '15m', 64)   # 16 S (64 led)
-    df_8s  = kline_cek_binance(sembol_istek, '5m', 96)    # 8 S (96 led)
-    df_4s  = kline_cek_binance(sembol_istek, '5m', 48)    # 4 S (48 led)
-    df_2s  = kline_cek_binance(sembol_istek, '1m', 120)   # 2 S (120 led)
-    df_1s  = kline_cek_binance(sembol_istek, '1m', 60)    # 1 S (60 led)
+    df_16s = kline_cek_binance(sembol_istek, '15m', 64)
+    df_8s  = kline_cek_binance(sembol_istek, '5m', 96)
+    df_4s  = kline_cek_binance(sembol_istek, '5m', 48)
+    df_2s  = kline_cek_binance(sembol_istek, '1m', 120)
+    df_1s  = kline_cek_binance(sembol_istek, '1m', 60)
     
     y16 = len(df_16s[df_16s['Close'] > df_16s['Open']]) if not df_16s.empty else 32
     k16 = len(df_16s[df_16s['Close'] < df_16s['Open']]) if not df_16s.empty else 32
@@ -277,12 +270,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     y1 = len(df_1s[df_1s['Close'] > df_1s['Open']]) if not df_1s.empty else 30
     k1 = len(df_1s[df_1s['Close'] < df_1s['Open']]) if not df_1s.empty else 30
     
+    # FİBONACCİ ALTIN ORAN DEĞERLERİ İLE (NÖTR=0 PUAN) KURGUSU
     dilimler = [
-        (y16, k16, 64,  8.0, df_16s),   
-        (y8,  k8,  96, 17.0, df_8s),    
-        (y4,  k4,  48, 50.0, df_4s),    
-        (y2,  k2, 120, 17.0, df_2s),    
-        (y1,  k1,  60,  8.0, df_1s)     
+        (y16, k16, 64,   6.37, df_16s),   
+        (y8,  k8,  96,  12.73, df_8s),    
+        (y4,  k4,  48,  50.0,  df_4s),    
+        (y2,  k2, 120,  20.6,  df_2s),    
+        (y1,  k1,  60,  10.3,  df_1s)     
     ]
     
     toplam_long_puan = 0.0
@@ -291,25 +285,17 @@ def kurgusal_matris_hesapla(coin_symbol):
     zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
     
     for idx, (y, k, toplam_led, max_puan, df_zaman) in enumerate(dilimler):
-        if toplam_led > 0:
-            sl = (y / toplam_led) * max_puan
-            ss = (k / toplam_led) * max_puan
-        else:
-            sl, ss = max_puan / 2.0, max_puan / 2.0
+        yari_led = toplam_led / 2.0
+        
+        # SIFIR BAZLI (ZERO-BASED) LED PUANLAMA MANTIĞI:
+        # Puan sadece %50 (yari_led) geçildiğinde orantılı olarak verilir.
+        sl = ((y - yari_led) / yari_led) * max_puan if y > yari_led else 0.0
+        ss = ((k - yari_led) / yari_led) * max_puan if k > yari_led else 0.0
             
-        # Tam 3 İndikatör (Logaritmik Ölçekli Filtre)
         ek_lb, ek_sb = rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df_zaman, max_puan)
         
-        sl_gecici = sl + ek_lb
-        ss_gecici = ss + ek_sb
-        
-        # Otokontrol: Logaritmik eklentiler olsa dahi toplam bloğun sınırını (Örn: 50.0) aşmasına izin verilmez.
-        grup_toplam = sl_gecici + ss_gecici
-        if grup_toplam > 0 and grup_toplam > max_puan:
-            sl_yeni = (sl_gecici / grup_toplam) * max_puan
-            ss_yeni = (ss_gecici / grup_toplam) * max_puan
-        else:
-            sl_yeni, ss_yeni = sl_gecici, ss_gecici
+        sl_yeni = min(sl + ek_lb, max_puan)
+        ss_yeni = min(ss + ek_sb, max_puan)
             
         toplam_long_puan += sl_yeni
         toplam_short_puan += ss_yeni
@@ -321,7 +307,6 @@ def kurgusal_matris_hesapla(coin_symbol):
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
     
-    # Yeni ve Mantıklı 54-58-70 Eşikleri
     if nihai_long >= 54.0:
         nihai_puan = nihai_long
         aktif_yon = "Long"
@@ -424,6 +409,19 @@ def kasa_defteri_guncelle_gsheets(df):
         except: pass
         st.cache_data.clear()
 
+def kasa_islem_ekle(islem_turu, tutar, aciklama):
+    df_kasa = kasa_defteri_getir()
+    yeni_id = 1 if df_kasa.empty else int(pd.to_numeric(df_kasa['Islem_ID'], errors='coerce').max() or 0) + 1
+    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    
+    islem_carpan = 1.0 if islem_turu == "Para_Yatir" else -1.0
+    net_tutar = float(tutar) * islem_carpan
+    
+    yeni_kayit = pd.DataFrame([{"Islem_ID": yeni_id, "Zaman": suan_tr, "Islem_Turu": islem_turu, "Tutar": round(net_tutar, 2), "Aciklama": aciklama}])
+    df_kasa = pd.concat([df_kasa, yeni_kayit], ignore_index=True).drop_duplicates(subset=['Islem_ID'], keep='last')
+    kasa_defteri_guncelle_gsheets(df_kasa)
+    return True, f"Kasa işlemi başarılı: {islem_turu} -> {net_tutar:.2f} $"
+
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     df_kasa = kasa_defteri_getir()
     yeni_id = 1 if df_kasa.empty else int(pd.to_numeric(df_kasa['Islem_ID'], errors='coerce').max() or 0) + 1
@@ -492,12 +490,18 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami)
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
+    # AYNI COINE ÇİFT İŞLEM YASAĞI (COOLDOWN) EKLENDİ
+    df = islem_gecmisi_getir()
+    if not df.empty and 'Durum' in df.columns:
+        acik_islemler = df[~df['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]
+        if not acik_islemler.empty and coin in acik_islemler['Coin'].values:
+            return False, f"⚠️ {coin} için halihazırda açık bir pozisyonunuz var!"
+
     if matris_puan < 54.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon: return False, "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumunda işlem açılamaz!"
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if islem_miktari >= mevcut_bakiye: return False, f"Bakiye yetersiz! Gereken: {islem_miktari:.2f} $"
     if islem_miktari < 10: return False, "İşlem miktarı 10 $'dan küçük olamaz!"
     
-    df = islem_gecmisi_getir()
     yeni_id = 1 if df.empty else int(pd.to_numeric(df['Islem_ID'], errors='coerce').max() or 0) + 1
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     
@@ -627,7 +631,7 @@ def botu_baslat_bir_kez():
 
 arka_plan_thread = botu_baslat_bir_kez()
 
-st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Logaritmik 3'lü Filtre)")
+st.title("⚡ Pro Kripto & Canlı Piyasa Paneli (Sıfır Bazlı Fibonacci Filtresi)")
 elli_islem_arsiv_kontrol()
 
 if 'kasa_islem_acik' not in st.session_state: st.session_state['kasa_islem_acik'] = False
@@ -784,7 +788,6 @@ for item in gecici_islenen_liste:
         "Basamak": basamak, "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu, "Risk_Hedef_Metin": item["risk_hedef_metin"], "Ham_Agirlik": item["ham_agirlik"]
     })
 
-# Yıldız / Ham ağırlığa ve puana göre sıralama
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Ham_Agirlik"], -x["Skor"]))
 toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = bakiye_durumunu_getir(ortak_fiyat_havuzu)
 

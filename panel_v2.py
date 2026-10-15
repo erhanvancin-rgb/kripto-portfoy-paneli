@@ -52,7 +52,11 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
 [data-testid="stExpander"] { background:#101827; border:1px solid var(--border); border-radius:12px; }
 [data-testid="stAlert"] { border-radius:12px; }
-.table-container { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
+.table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
+.table-container .custom-table { min-width:1800px; }
+[data-testid="stHorizontalBlock"] { align-items:stretch; }
+[data-testid="stPlotlyChart"] { min-width:0; }
+@media (min-width: 1200px) { .block-container { max-width:100%; padding-left:1.5rem; padding-right:1.5rem; } }
 .custom-table { width:100%; border-collapse:separate; border-spacing:0; background:#0e1726; }
 .custom-table th { background:#19263a; text-align:center; padding:12px 9px; border-bottom:1px solid #30415b; color:#aebdd2 !important; font-weight:700; font-size:12px; line-height:1.35; white-space:nowrap; }
 .custom-table td { background:#101a2a; text-align:center; padding:11px 9px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:12px; }
@@ -897,10 +901,10 @@ with col_sol_panel:
     onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
     st.markdown(f"""
-        <div style="background-color: #e9ecef; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
-            <b>💡 Matris Önerisi:</b><br>
-            • Oran: <b>%{onerilen_oran_val:.1f}</b><br>
-            • Tutar: <b>{onerilen_tutar_hesap:,.2f} $</b>
+        <div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;">
+            <div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi</div>
+            <div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div>
+            <div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1002,7 +1006,7 @@ st.markdown("---")
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 acik_islem_listesi = df_gecmis[~df_gecmis['Durum'].astype(str).str.contains('kapandi|kar|zarar', case=False, na=False)]['Islem_ID'].tolist() if not df_gecmis.empty and 'Durum' in df_gecmis.columns else []
 
-col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.9, 0.9, 1.3])
+col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.6, 1.15, 1.45], gap='large')
 
 with col_sol_analiz:
     st.markdown("<h3>📊 Kapanan İşlemler Pasta Grafik & Para Akışı Analizi</h3>", unsafe_allow_html=True)
@@ -1021,12 +1025,12 @@ with col_sol_analiz:
         kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
         zarar_yuzde = (zararli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
         
-        sub_p1, sub_p2, sub_p3 = st.columns([1.1, 1.45, 1.45])
+        sub_p1, sub_p2, sub_p3 = st.columns([1.35, 1.35, 1.35], gap='medium')
         with sub_p1:
             fig = px.pie(pd.DataFrame({'Durum': ['Kârlı', 'Zararlı'], 'Adet': [karli_sayisi, zararli_sayisi]}), names='Durum', values='Adet', hole=0.45, color='Durum', color_discrete_map={'Kârlı': '#00FF00', 'Zararlı': 'rgb(255, 75, 0)'})
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#212529', size=15), margin=dict(t=0, b=0, l=0, r=0), height=210, showlegend=False)
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e8eef8', size=15), margin=dict(t=12, b=12, l=12, r=12), height=300, width=360, showlegend=False)
             fig.update_traces(textfont_size=15, textinfo='percent')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={'responsive': True, 'displayModeBar': False})
         with sub_p2:
             st.markdown(f'<div style="font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #212529;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>', unsafe_allow_html=True)
         with sub_p3:

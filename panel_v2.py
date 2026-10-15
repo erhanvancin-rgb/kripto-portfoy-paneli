@@ -1347,38 +1347,35 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = (
 for v in islenen_veriler:
   v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
+# --- DÜZELTİLEN METRİK KARTLARI ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
 )
+
 with col_ust1:
   st.markdown(
-      '<div class="metric-container"><p style="margin: 0px; font-size: 14px;'
-      " font-weight: bold;">📊 Aktif Yatırım</p><h1 style="color: rgb(70, 0,"
-      ' 255); margin: 5px 0px 0px 0px; font-size:'
-      f' 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>',
+      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128202; Aktif Yatırım</p><h1 style="color: rgb(70, 0, 255); margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>',
       unsafe_allow_html=True,
   )
+
 with col_ust2:
   st.markdown(
-      '<div class="metric-container"><p style="margin: 0px; font-size: 14px;'
-      ' font-weight: bold;">🟢 Boştaki Nakit</p><h1 style="margin: 5px 0px 0px'
-      f' 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>',
+      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128994; Boştaki Nakit</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>',
       unsafe_allow_html=True,
   )
+
 with col_ust3:
   st.markdown(
-      '<div class="metric-container"><p style="margin: 0px; font-size: 14px;'
-      ' font-weight: bold;">💎 Efektif Kasa</p><h1 style="margin: 5px 0px 0px'
-      f' 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>',
+      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128142; Efektif Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>',
       unsafe_allow_html=True,
   )
+
 with col_ust4:
   st.markdown(
-      '<div class="metric-container"><p style="margin: 0px; font-size: 14px;'
-      ' font-weight: bold;">💰 Toplam Kasa</p><h1 style="margin: 5px 0px 0px 0px;'
-      f' font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>',
+      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128176; Toplam Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>',
       unsafe_allow_html=True,
   )
+
 with col_kasa_buton:
   st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
   if st.button(
@@ -1699,7 +1696,6 @@ with col_orta_grafik:
           annotation_font_color="#000000",
       )
 
-    # Height 340 yapıldı (Kutu içindeki dikey scrollbar kaybolması için)
     fig_total.update_layout(
         template="plotly_dark",
         margin=dict(t=15, b=25, l=10, r=60),
@@ -1844,7 +1840,6 @@ with col_sol_analiz:
           color="Durum",
           color_discrete_map={"Kârlı": "#00FF00", "Zararlı": "rgb(255, 75, 0)"},
       )
-      # Margin t=15, b=15, l=15, r=15 ile kesilme kesin olarak engellendi
       fig.update_layout(
           paper_bgcolor="rgba(0,0,0,0)",
           plot_bgcolor="rgba(0,0,0,0)",

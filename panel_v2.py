@@ -262,29 +262,25 @@ def load_15min_market_data(coin_symbol: str):
   })
 
 
+# --- DİNAMİK FORMÜLLÜ RİSK / HEDEF MASAÜSTÜ HESAPLAMA ---
 def calculate_coin_metrics_by_score(matris_puani):
-  # 54 altı için varsayılan nötr değerler
   if matris_puani < 54.0:
     stop_uzde = 1.0
     hedef_uzde = 1.5
     risk_hedef_metin = "Nötr"
   elif 54.0 <= matris_puani <= 60.0:
-    # 54 -> 60 Aralığı (Stop: 1.2 -> 1.0 | Hedef: 1.5 -> 1.8)
     oran = (matris_puani - 54.0) / (60.0 - 54.0)
     stop_uzde = 1.2 - (1.2 - 1.0) * oran
     hedef_uzde = 1.5 + (1.8 - 1.5) * oran
   elif 60.0 < matris_puani <= 65.0:
-    # 60 -> 65 Aralığı (Stop: 0.9 -> 0.8 | Hedef: 1.9 -> 2.2)
     oran = (matris_puani - 60.0) / (65.0 - 60.0)
     stop_uzde = 0.9 - (0.9 - 0.8) * oran
     hedef_uzde = 1.9 + (2.2 - 1.9) * oran
   elif 65.0 < matris_puani <= 75.0:
-    # 65 -> 75 Aralığı (Stop: 0.8 -> 0.7 | Hedef: 2.3 -> 2.8)
     oran = (matris_puani - 65.0) / (75.0 - 65.0)
     stop_uzde = 0.8 - (0.8 - 0.7) * oran
     hedef_uzde = 2.3 + (2.8 - 2.3) * oran
   else:
-    # 75 -> 100 Aralığı (Stop: 0.7 sabit | Hedef: 3.0 -> 4.0)
     p = min(matris_puani, 100.0)
     oran = (p - 75.0) / (100.0 - 75.0)
     stop_uzde = 0.7
@@ -293,9 +289,9 @@ def calculate_coin_metrics_by_score(matris_puani):
   hedef_carpan = hedef_uzde / stop_uzde
 
   if matris_puani >= 54.0:
-    str_stop = f'{stop_uzde:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
-    str_hedef = f'{hedef_uzde:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
-    risk_hedef_metin = f'{str_stop} / {str_hedef}'
+    str_stop = f"{stop_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    risk_hedef_metin = f"{str_stop} / {str_hedef}"
 
   return stop_uzde, hedef_carpan, risk_hedef_metin
 
@@ -782,7 +778,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
   )
 
 
-# --- DÜZELTİLMİŞ YENİ İŞLEM EKLEME VE AĞIRLIKLI ORTALAMA (DCA) SİSTEMİ ---
+# --- YENİ İŞLEM EKLEME VE AĞIRLIKLI ORTALAMA (DCA) SİSTEMİ ---
 def yeni_islem_ekle(
     coin,
     yon,
@@ -805,7 +801,7 @@ def yeni_islem_ekle(
         f" {islem_miktari:.2f} $",
     )
   if islem_miktari <= 0:
-      return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
+    return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
 
   suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
@@ -830,7 +826,6 @@ def yeni_islem_ekle(
         (eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)
     ) / yeni_toplam_miktar
 
-    # Anlık sinyale göre TP/SL mesafe oranlarını hesaplama
     if eski_giris > 0:
       stop_oran = abs(stop - giris_fiyat) / giris_fiyat
       kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
@@ -1288,7 +1283,7 @@ for data in coin_ham_veriler:
     aktif_yon_turu = "Short"
     yon_html = (
         '<div style="background-color: rgb(255, 75, 0); padding: 6px;'
-        " border-radius: 6px; color: white; font-weight: bold; font-size:"
+        " border-radius: 6px; color: #000000; font-weight: bold; font-size:"
         ' 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
     )
     ham_agirlik = 4.0
@@ -1307,7 +1302,7 @@ for data in coin_ham_veriler:
     renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
     yon_html = (
         f'<div style="background-color: {renk_bg}; padding: 6px;'
-        " border-radius: 6px; color: white; font-weight: bold; font-size:"
+        " border-radius: 6px; color: #000000; font-weight: bold; font-size:"
         f' 12px;">{trend}</div>'
     )
     ham_agirlik = 5.0
@@ -1317,7 +1312,7 @@ for data in coin_ham_veriler:
     renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
     yon_html = (
         f'<div style="background-color: {renk_bg}; padding: 6px;'
-        " border-radius: 6px; color: white; font-weight: bold; font-size:"
+        " border-radius: 6px; color: #000000; font-weight: bold; font-size:"
         f' 12px;">{trend}</div>'
     )
     ham_agirlik = 3.0
@@ -1325,7 +1320,11 @@ for data in coin_ham_veriler:
   is_notr = (
       aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr"
   )
-  stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(     nihai_puan )
+
+  # Dinamik Puan Bazlı Risk / Hedef Hesaplama
+  stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(
+      nihai_puan
+  )
 
   gecici_islenen_liste.append({
       "sembol": sembol,
@@ -1581,8 +1580,8 @@ for v in islenen_veriler:
     )
   else:
     oran_html = (
-        f'<div style="background-color: {renk_yon}; color: white; padding: 5px;'
-        f' font-weight: bold;">{val_str}<br>({v["Akt_Etiket"] if "Akt_Etiket" in v else v["Aktif_Yon"]})</div>'
+        f'<div style="background-color: {renk_yon}; color: #000000; padding:'
+        f' 5px; font-weight: bold;">{val_str}<br>({v["Akt_Etiket"] if "Akt_Etiket" in v else v["Aktif_Yon"]})</div>'
     )
 
   table_html += (
@@ -1750,14 +1749,15 @@ with col_orta_grafik:
 
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
 
+    # CANLI / PARLAK ARKA PLAN BANT RENKLERİ VE OPASİTELERİ
     for b_alt, b_ust, renk in [
-    (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),  # Koyu Bordo / Kırmızı (Derin Ayı)
-    (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),  # Kırmızı-Turuncu Geçiş
-    (0.382, 0.5, "rgba(255, 200, 0, 0.35)"),  # Alt Sarı (Nötr Bölge)
-    (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),  # Üst Sarı (Nötr Bölge)
-    (0.618, 0.786, "rgba(40, 180, 80, 0.32)"),  # Açık Yeşil Geçiş Bölgesi
-    (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),  # Canlı Yeşil (Boğa Bölgesi)
-]:
+        (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),
+        (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
+        (0.382, 0.5, "rgba(255, 200, 0, 0.35)"),
+        (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
+        (0.618, 0.786, "rgba(40, 180, 80, 0.32)"),
+        (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
+    ]:
       x_coords = (
           list(t_df["timestamp"])
           + [max_zaman_grafik, max_zaman_grafik]
@@ -2127,6 +2127,7 @@ if not df_gecmisile_goster.empty:
     else:
       anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
+# GÜNCELLENMİŞ SÜTUN SIRALAMASINA SAHİP PORTFÖY TABLOSU
 portfoy_html = """
 <table class="custom-table"><thead class="custom-table-header"><tr>
  <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
@@ -2155,12 +2156,13 @@ if not df_gosterilecek.empty:
     yon_h = (
         '<div style="background-color:'
         f' {"#00FF00" if "Long" in row["Yon"] else "rgb(255, 75, 0)"}; padding:'
-        f' 6px; border-radius: 6px; color: white; font-weight: bold;">{row["Yon"]}</div>'
+        ' 6px; border-radius: 6px; color: #000000; font-weight:'
+        f' bold;">{row["Yon"]}</div>'
     )
     anlik_fiyat_h = (
         '<div style="background-color:'
         f' {"#00FF00" if float(row["Anlik_Fiyat_Deger"] or 0) > float(row["Giris_Fiyat"]) else "rgb(255, 75, 0)"};'
-        " color: white; padding: 5px; font-weight:"
+        " color: #000000; padding: 5px; font-weight:"
         f' bold;">{float(row["Anlik_Fiyat_Deger"] or 0):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
     )
 
@@ -2178,8 +2180,8 @@ if not df_gosterilecek.empty:
       is_kar = float(row["Net_Kar_Zarar"]) >= 0
       k_stil = "#00FF00" if is_kar else "rgb(255, 75, 0)"
       kapanis_fiyat_h = (
-          f'<div style="background-color: {k_stil}; color: white; padding: 5px;'
-          ' font-weight:'
+          f'<div style="background-color: {k_stil}; color: #000000; padding:'
+          ' 5px; font-weight:'
           f' bold;">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
       )
       durum_h = (
@@ -2191,7 +2193,7 @@ if not df_gosterilecek.empty:
     kz_h = (
         '<div style="background-color:'
         f' {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"};'
-        " color: white; padding: 5px; font-weight: bold; white-space:"
+        " color: #000000; padding: 5px; font-weight: bold; white-space:"
         f' nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
     )
 

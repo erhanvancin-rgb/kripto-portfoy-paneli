@@ -61,7 +61,6 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-testid="stAlert"] { border-radius:12px; }
 .table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
 [data-testid="stHorizontalBlock"] { align-items:stretch; }
-/* GRAFİK DIŞ KUTUSUNU KALDIRMA DÜZELTMESİ */
 [data-testid="stPlotlyChart"] { min-width:0; background:transparent !important; border:none !important; border-radius:0px !important; padding:0px !important; box-shadow:none !important; }
 @media (min-width: 1200px) { .block-container { max-width:100%; padding-left:1.5rem; padding-right:1.5rem; } }
 .custom-table { width:100%; border-collapse:separate; border-spacing:0; background:#0e1726; }
@@ -1678,22 +1677,15 @@ with col_orta_grafik:
     )
 
     for oran, val in fib_levels.items():
-            renk_cizgi = (
-                "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
-            )
-            fig_total.add_hline(
-                y=val,
-                line_dash="dash",
-                line_color=renk_cizgi,
-                line_width=1,
-            )
-
-        fig_total.update_layout(
-            template="plotly_dark",
-            margin=dict(t=15, b=25, l=10, r=15),
-            height=340,
-            # ...
-        )
+      renk_cizgi = (
+          "#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020")
+      )
+      fig_total.add_hline(
+          y=val,
+          line_dash="dash",
+          line_color=renk_cizgi,
+          line_width=1,
+      )
 
     fig_total.update_layout(
         template="plotly_dark",
@@ -1856,7 +1848,6 @@ with col_sol_analiz:
           config={"responsive": True, "displayModeBar": False},
       )
 
-    # TAM YAPILANDIRILMIŞ VE AÇIK TEMAYA UYGUN SUB_P2 (TIRNAK HATASI DÜZELTİLDİ)
     with sub_p2:
       st.markdown(
           f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div>

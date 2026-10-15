@@ -61,14 +61,14 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-testid="stAlert"] { border-radius:12px; }
 .table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
 [data-testid="stHorizontalBlock"] { align-items:stretch; }
-[data-testid="stPlotlyChart"] { min-width:0; overflow:hidden; }
+/* GRAFİK DIŞ KUTUSUNU KALDIRMA DÜZELTMESİ */
+[data-testid="stPlotlyChart"] { min-width:0; background:transparent !important; border:none !important; border-radius:0px !important; padding:0px !important; box-shadow:none !important; }
 @media (min-width: 1200px) { .block-container { max-width:100%; padding-left:1.5rem; padding-right:1.5rem; } }
 .custom-table { width:100%; border-collapse:separate; border-spacing:0; background:#0e1726; }
 .custom-table th { background:#19263a; text-align:center; padding:10px 5px; border-bottom:1px solid #30415b; color:#aebdd2 !important; font-weight:700; font-size:11px; line-height:1.35; white-space:nowrap; }
 .custom-table td { background:#101a2a; text-align:center; padding:9px 5px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:11px; }
 .custom-table tr:hover td { background:#17243a; }
 .custom-table td img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
-[data-testid="stPlotlyChart"] { background:#101827; border:1px solid var(--border); border-radius:14px; padding:4px; }
 [data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
 [data-testid="stCaptionContainer"] { color:var(--muted) !important; }
 @media (max-width: 768px) { .block-container { padding:1rem .7rem 2rem; } .metric-container { padding:12px !important; } .metric-container h1 { font-size:20px !important; } }
@@ -285,7 +285,6 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
   anlik_fiyat = float(df["Close"].iloc[-1])
   anlik_ema = float(df["EMA20"].iloc[-1])
 
-  # EMA LOGARİTMİK BONUSU
   fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
   ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
   max_ema_bonus = max_puan * 0.04
@@ -297,7 +296,6 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
       max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
   )
 
-  # RSI LOGARİTMİK BONUSU
   delta = df["Close"].diff()
   gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
   loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -314,7 +312,6 @@ def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
   rsi_bonus_long = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
   rsi_bonus_short = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
 
-  # FİBONACCI LOGARİTMİK BONUSU
   max_f = float(df["High"].max())
   min_f = float(df["Low"].min())
   fiyat_fark = max_f - min_f
@@ -1347,32 +1344,31 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = (
 for v in islenen_veriler:
   v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-# --- DÜZELTİLEN METRİK KARTLARI ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
 )
 
 with col_ust1:
   st.markdown(
-      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128202; Aktif Yatırım</p><h1 style="color: rgb(70, 0, 255); margin: 5px 0px 0px 0px; font-size: 24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>',
+      f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128202; Aktif Yatırım</p><h1 style="color:rgb(70,0,255); margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
       unsafe_allow_html=True,
   )
 
 with col_ust2:
   st.markdown(
-      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128994; Boştaki Nakit</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{mevcut_bakiye:,.2f} $</h1></div>',
+      f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128994; Boştaki Nakit</p><h1 style="margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1></div>""",
       unsafe_allow_html=True,
   )
 
 with col_ust3:
   st.markdown(
-      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128142; Efektif Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{efektif_kasa:,.2f} $</h1></div>',
+      f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128142; Efektif Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
       unsafe_allow_html=True,
   )
 
 with col_ust4:
   st.markdown(
-      f'<div class="metric-container"><p style="margin: 0px; font-size: 14px; font-weight: bold;">&#128176; Toplam Kasa</p><h1 style="margin: 5px 0px 0px 0px; font-size: 24px;">{toplam_kasa:,.2f} $</h1></div>',
+      f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128176; Toplam Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1></div>""",
       unsafe_allow_html=True,
   )
 
@@ -1713,8 +1709,8 @@ with col_orta_grafik:
             gridcolor="rgba(255,255,255,0.05)",
         ),
         xaxis_rangeslider_visible=False,
-        paper_bgcolor="#2d3748",
-        plot_bgcolor="#2d3748",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -1844,7 +1840,7 @@ with col_sol_analiz:
           paper_bgcolor="rgba(0,0,0,0)",
           plot_bgcolor="rgba(0,0,0,0)",
           font=dict(color="#e8eef8", size=13),
-          margin=dict(t=15, b=15, l=15, r=15),
+          margin=dict(t=10, b=10, l=10, r=10),
           height=210,
           showlegend=False,
       )
@@ -1856,30 +1852,26 @@ with col_sol_analiz:
           use_container_width=True,
           config={"responsive": True, "displayModeBar": False},
       )
+
+    # TAM YAPILANDIRILMIŞ VE AÇIK TEMAYA UYGUN SUB_P2 (TIRNAK HATASI DÜZELTİLDİ)
     with sub_p2:
       st.markdown(
-          '<div style="font-size: 15px; font-weight: bold; color: #212529;'
-          ' margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin:'
-          " 4px 0px 0px 0px; font-size: 13px; color: #495057;">Toplam"
-          ' Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight:'
-          f' bold; color: #212529;">{toplam_kapanan} Adet</p><p style="margin:'
-          ' 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight:'
-          f' bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p'
-          ' style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75,'
-          f' 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi}'
-          f" (%{zarar_yuzde:.1f})</p>",
+          f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div>
+            <p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p>
+            <p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p>
+            <p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p>
+            <p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>""",
           unsafe_allow_html=True,
       )
+
     with sub_p3:
       net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
       st.markdown(
-          f"""
-            <div style="display: flex; flex-direction: column; justify-content: center; height: 100%; padding-top: 15px;">
+          f"""<div style="display: flex; flex-direction: column; justify-content: center; height: 100%; padding-top: 15px;">
                 <div style="font-size: 14px; font-weight: bold; color: #00FF00; margin-bottom: 8px;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</div>
                 <div style="font-size: 14px; font-weight: bold; color: rgb(255, 75, 0); margin-bottom: 8px;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</div>
                 <div style="font-size: 15px; font-weight: bold; color: {net_renk}; margin-top: 4px; border-top: 1px solid #30415b; padding-top: 8px;">Net Fark: {net_fark_dolar:+,.2f} $</div>
-            </div>
-            """,
+            </div>""",
           unsafe_allow_html=True,
       )
   else:

@@ -780,7 +780,7 @@ def yeni_islem_ekle(
         f" {islem_miktari:.2f} $",
     )
   if islem_miktari <= 0:
-  return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
+      return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
 
   suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 

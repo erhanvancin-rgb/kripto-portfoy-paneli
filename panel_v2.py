@@ -2102,7 +2102,7 @@ with col_orta_durum:
 
 # --- KISMI KAPAMA VE İŞLEM SONLANDIRMA PANELİ ---
 with col_sag_sonlandir:
-    st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🛑 İşlemi Kapat / Kısmi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     with st.form(key="pozisyon_kapat_form"):
         kapatilacak_id = st.selectbox(

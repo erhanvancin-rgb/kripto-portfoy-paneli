@@ -2202,13 +2202,12 @@ if not df_gosterilecek.empty:
             )
         else:
             is_kar = float(row["Net_Kar_Zarar"]) >= 0
-            # Yeşil veya turuncu/kırmızı arkaplanda yazı rengi siyah yapıldı
             k_stil = "#00FF00" if is_kar else "rgb(255, 75, 0)"
             kapanis_fiyat_h = (
-                f'<div style="background-color: {k_stil}; color: #000000; padding: 5px; font-weight: bold;">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
+                f'<div style="background-color: {k_stil}; color: #000000 !important; padding: 5px; font-weight: bold;">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
             )
             durum_h = (
-                f'<div style="background-color: {k_stil}; color: #000000; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+                f'<div style="background-color: {k_stil}; color: #000000 !important; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
             )
             durum_h = (
                 f'<div style="background-color: {k_stil}; color: white; padding: 4px;'

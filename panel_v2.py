@@ -1437,13 +1437,39 @@ col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
 aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">📊 Aktif Yatırım</p><h1 style="color:{aktif_renk}; margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
+        f"""<div class="metric-container">
+            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">📊 Aktif Yatırım</p>
+            <h1 style="color:{aktif_renk} !important; margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1>
+        </div>""",
         unsafe_allow_html=True,
     )
 
 with col_ust2:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">🟢 Boştaki Nakit</p><h1 style="margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1></div>""",
+        f"""<div class="metric-container">
+            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">🟢 Boştaki Nakit</p>
+            <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+# Efektif Kasa rengi (Kârda ise yeşil, zararda ise kırmızı)
+efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
+with col_ust3:
+    st.markdown(
+        f"""<div class="metric-container">
+            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💎 Efektif Kasa</p>
+            <h1 style="color:{efektif_renk} !important; margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+with col_ust4:
+    st.markdown(
+        f"""<div class="metric-container">
+            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💱 Toplam Kasa</p>
+            <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1>
+        </div>""",
         unsafe_allow_html=True,
     )
 

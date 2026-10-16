@@ -261,34 +261,22 @@ def load_15min_market_data(coin_symbol: str):
 
 
 def calculate_coin_metrics_by_score(matris_puani):
-    if matris_puani < 54.0:
-        stop_uzde = 1.0
-        hedef_uzde = 1.5
-        risk_hedef_metin = "Nötr"
-    elif 54.0 <= matris_puani <= 60.0:
-        oran = (matris_puani - 54.0) / (60.0 - 54.0)
-        stop_uzde = 1.2 - (1.2 - 1.0) * oran
-        hedef_uzde = 1.5 + (1.8 - 1.5) * oran
-    elif 60.0 < matris_puani <= 65.0:
-        oran = (matris_puani - 60.0) / (65.0 - 60.0)
-        stop_uzde = 0.9 - (0.9 - 0.8) * oran
-        hedef_uzde = 1.9 + (2.2 - 1.9) * oran
-    elif 65.0 < matris_puani <= 75.0:
-        oran = (matris_puani - 65.0) / (75.0 - 65.0)
-        stop_uzde = 0.8 - (0.8 - 0.7) * oran
-        hedef_uzde = 2.3 + (2.8 - 2.3) * oran
-    else:
-        p = min(matris_puani, 100.0)
-        oran = (p - 75.0) / (100.0 - 75.0)
-        stop_uzde = 0.7
-        hedef_uzde = 3.0 + (4.0 - 3.0) * oran
+    """
+    LOGARİTMİK GEÇİŞLİ REHBER KÂRLILIK VE HEDEF ÇARPANI (REWARD/RISK) MATRİSİ:
+    - 54.0 puanda 1.40'tan başlar, 100.0 puanda 3.00 ile biter (Logaritmik eğri).
+    """
+    p = max(54.0, min(matris_puani, 100.0))
+    # Logaritmik interpolasyon eğrisi (54 -> 1.40, 100 -> 3.00)
+    log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
+    hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
 
+    # Symmetrical stop-loss adjustment
+    stop_uzde = max(0.65, 1.15 - (p - 54.0) * (0.50 / 46.0))
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
 
-    if matris_puani >= 54.0:
-        str_stop = f"{stop_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-        str_hedef = f"{hedef_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-        risk_hedef_metin = f"{str_stop} / {str_hedef}"
+    str_stop = f"{stop_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    risk_hedef_metin = f"{str_stop} / {str_hedef}"
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
@@ -950,7 +938,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
             
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
-            # DÜZELTME: Kısmi kapanan kısım artık doğru şekilde "Kısmi Kapandı" olarak işaretleniyor ve aktif görünmeyecek
             durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
             
             toplam_kasa, _, _, _ = bakiye_durumunu_getir()
@@ -996,19 +983,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 f"Kısmi K/Z: #{islem_id} {row['Coin']} ({kapatilacak_miktar}$ kapatıldı)",
             )
             elli_islem_arsiv_kontrol()
-
-            mail_icerik = (
-                f"<h3>Kısmi İşlem Kapatıldı</h3>"
-                f"<p><b>İşlem ID:</b> #{islem_id}</p>"
-                f"<p><b>Coin:</b> {row['Coin']}</p>"
-                f"<p><b>Yön:</b> {row['Yon']}</p>"
-                f"<p><b>Kapatılan Miktar:</b> {kapatilacak_miktar:,.2f} $</p>"
-                f"<p><b>Realize Edilen K/Z:</b> {kismi_kar:+,.2f} $</p>"
-                f"<p><b>Güncel Kasa:</b> {toplam_kasa + kismi_kar:,.2f} $</p>"
-            )
-            gmail_bildirim_gonder(f"🔔 Kısmi Kapatma Raporu: #{islem_id} {row['Coin']}", mail_icerik)
-
-            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $. Kalan Pozisyon: {kalan_miktar} $"
+            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $"
 
         else:
             fark_yuzde = (
@@ -1033,20 +1008,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})",
             )
             elli_islem_arsiv_kontrol()
-
-            mail_icerik = (
-                f"<h3>İşlem Tamamen Kapatıldı</h3>"
-                f"<p><b>İşlem ID:</b> #{islem_id}</p>"
-                f"<p><b>Coin:</b> {row['Coin']}</p>"
-                f"<p><b>Yön:</b> {row['Yon']}</p>"
-                f"<p><b>Durum:</b> {durum_metni}</p>"
-                f"<p><b>Net Kâr/Zarar:</b> {net_kar:+,.2f} $</p>"
-                f"<p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
-            )
-            gmail_bildirim_gonder(
-                f"🔔 Kapatma Raporu: #{islem_id} {row['Coin']} ({durum_metni})",
-                mail_icerik,
-            )
             return True, f"İşlem tamamen kapatıldı. K/Z: {net_kar:.2f} $"
 
     except Exception as e:
@@ -1137,18 +1098,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 )
                 degisiklik_oldu = True
 
-                mail_icerik = (
-                    "<h3>İşlem Hedefe Ulaştı ve Otomatik Kapatıldı</h3><p><b>Kapanış"
-                    f" Türü:</b> {islem_turu_etiket}</p><p><b>İşlem ID:</b>"
-                    f" #{islem_id}</p><p><b>Coin:</b> {coin}</p><p><b>Yön:</b>"
-                    f" {yon}</p><p><b>Net Kâr/Zarar:</b> {net_kar:+,.2f}"
-                    f" $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
-                )
-                gmail_bildirim_gonder(
-                    f"🔔 Otomatik İşlem Raporu: #{islem_id} {coin} ({'Kâr' if hedefe_ulasti else 'Zarar'})",
-                    mail_icerik,
-                )
-
     if degisiklik_oldu:
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
@@ -1178,7 +1127,7 @@ def botu_baslat_bir_kez():
 arka_plan_thread = botu_baslat_bir_kez()
 
 st.title("Piyasa Genel Bakış")
-st.caption("Fibonacci ağırlıklı sinyal matrisi · Risk yönetimi · Portföy takibi")
+st.caption("Fibonacci ağırlıklı sinyal matrisi · Logaritmik Karlılık ve Risk Modeli · Portföy Takibi")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1187,10 +1136,6 @@ if "kasa_islem_turu" not in st.session_state:
     st.session_state["kasa_islem_turu"] = "Para Yatır"
 if "sadece_aktifleri_goster" not in st.session_state:
     st.session_state["sadece_aktifleri_goster"] = False
-if "gonderilen_mailler" not in st.session_state:
-    st.session_state["gonderilen_mailler"] = set()
-if "total_sermaye_alarm" not in st.session_state:
-    st.session_state["total_sermaye_alarm"] = None
 if "kapama_paneli_acik" not in st.session_state:
     st.session_state["kapama_paneli_acik"] = False
 
@@ -1246,27 +1191,6 @@ t_puan_val, t_l_puan, t_s_puan = (
 )
 t_toplam_puan = t_l_puan + t_s_puan
 t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
-
-if t_puan_val >= 70.0:
-    if total_ham_veri["aktif_yon"] == "Long":
-        total_sermaye_durumu, t_alarm_renk = "Boğa Vuruşu", "#00FF00"
-    else:
-        total_sermaye_durumu, t_alarm_renk = "Ayı Pençesi", "rgb(255, 75, 0)"
-
-    alarm_anahtar = f"total_mail_{datetime.now(TR_TZ).strftime('%Y%m%d_%H')}"
-    if st.session_state.get("total_sermaye_alarm_zaman") != alarm_anahtar:
-        st.session_state["total_sermaye_alarm_zaman"] = alarm_anahtar
-        m_icerik = (
-            "<h3>Piyasada Güçlü Sermaye Hareketi Tespit Edildi!</h3><p><b>Durum:</b>"
-            f" <span style='color: {t_alarm_renk}; font-weight:"
-            f" bold;'>{total_sermaye_durumu}</span></p><p><b>Matris Puanı:</b>"
-            f" {t_puan_val:.1f} / 100 (Eşik: 70)</p><p><b>Long Oranı:</b>"
-            f" %{t_yuzde:.1f}</p><p><b>Zaman:</b>"
-            f" {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
-        )
-        gmail_bildirim_gonder(
-            f"🚨 Top 5 Market Alarmı: {total_sermaye_durumu}!", m_icerik
-        )
 
 total_puan_val = total_ham_veri["nihai_puan"]
 total_yon_val = total_ham_veri["aktif_yon"]
@@ -1327,12 +1251,7 @@ for data in coin_ham_veriler:
 
     def get_6_stage_stars(puan, kategori_tipi):
         if kategori_tipi == "Notr":
-            if puan < 45.0:
-                return "🥈"
-            elif puan < 50.0:
-                return "🥈🥈"
-            else:
-                return "🥈🥈🥈"
+            return "🥈" if puan < 48.0 else "🥈🥈"
         elif kategori_tipi == "Ters_Akinti" or kategori_tipi == "Onayli":
             if puan < 56.66:
                 return "🥈"
@@ -1347,31 +1266,9 @@ for data in coin_ham_veriler:
             else:
                 return "🥇🥇🥇"
         elif kategori_tipi == "Avci":
-            if puan < 63.0:
-                return "🥈"
-            elif puan < 68.0:
-                return "🥈🥈"
-            elif puan < 73.0:
-                return "🥈🥈🥈"
-            elif puan < 78.0:
-                return "🥇🥈🥈"
-            elif puan < 84.0:
-                return "🥇🥇🥈"
-            else:
-                return "🥇🥇🥇"
+            return "🥇🥈🥈" if puan < 70.0 else "🥇🥇🥇"
         elif kategori_tipi == "Guclu":
-            if puan < 75.0:
-                return "🥈"
-            elif puan < 80.0:
-                return "🥈🥈"
-            elif puan < 86.0:
-                return "🥈🥈🥈"
-            elif puan < 92.0:
-                return "🥇🥈🥈"
-            elif puan < 97.0:
-                return "🥇🥇🥈"
-            else:
-                return "🥇🥇🥇"
+            return "🥇🥇🥇"
         return "🥈"
 
     if aktif_yon == "Nötr":
@@ -1463,20 +1360,6 @@ for item in gecici_islenen_liste:
         )
     else:
         sepet_orani = 0.0
-
-    if (
-        "Güçlü Trend" in trend
-        and not is_notr
-        and sembol not in st.session_state["gonderilen_mailler"]
-    ):
-        st.session_state["gonderilen_mailler"].add(sembol)
-        gmail_bildirim_gonder(
-            f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})",
-            "<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b>"
-            f" {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b>"
-            f" {nihai_puan:.1f} / 100</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f}"
-            f" $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>",
-        )
 
     if aktif_yon_turu == "Long":
         stop_fiyat, hedef_fiyat = anlik_fiyat * (
@@ -1676,7 +1559,7 @@ for v in islenen_veriler:
     else:
         oran_html = (
             f'<div style="background-color: {renk_yon}; color: #000000; padding:'
-            f' 5px; font-weight: bold;">{val_str}<br>({v["Akt_Etiket"] if "Akt_Etiket" in v else v["Aktif_Yon"]})</div>'
+            f' 5px; font-weight: bold;">{val_str}<br>({v["Aktif_Yon"]})</div>'
         )
 
     table_html += (
@@ -1707,7 +1590,7 @@ with col_sol_panel:
     onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = (
         0.0,
         0.0,
-        "1,20 / 1,50",
+        "1,00 / 1,40",
         None,
     )
     if secilen_coin:
@@ -1747,7 +1630,7 @@ with col_sol_panel:
         st.markdown(
             f"""
         <div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;">
-            <div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi</div>
+            <div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Logaritmik Karlılık)</div>
             <div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div>
             <div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div>
         </div>
@@ -1798,7 +1681,7 @@ with col_sol_panel:
                     manuel_girilen_tutar,
                     coin_verisii["Stopla"],
                     coin_verisii["Kar_Al"],
-                    "Matris Kurgusu",
+                    "Matris_Kurgusu",
                     anlik_matris_puani,
                     anlik_risk_hedef_metin,
                 )
@@ -2116,7 +1999,6 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- YANLIŞLIKLA KAPATMAYI ÖNLEYEN OTOMATİK KİLİTLİ KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2225,29 +2107,9 @@ if not df_gecmisile_goster.empty:
         anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
         anlik_fiyat_sozluk[islem_id] = anl_f
 
-        if giris_fiyat > 0 and kar_al_f > 0 and stop_f > 0:
-            hedef_kar_sozluk[islem_id] = round(
-                miktar
-                * KALDIRAC
-                * (
-                    ((kar_al_f - giris_fiyat) / giris_fiyat)
-                    if "Long" in yon
-                    else ((giris_fiyat - kar_al_f) / giris_fiyat)
-                ),
-                2,
-            )
-            olasi_stop_sozluk[islem_id] = round(
-                miktar
-                * KALDIRAC
-                * (
-                    ((stop_f - giris_fiyat) / giris_fiyat)
-                    if "Long" in yon
-                    else ((giris_fiyat - stop_f) / giris_fiyat)
-                ),
-                2,
-            )
-        else:
-            hedef_kar_sozluk[islem_id], olasi_stop_sozluk[islem_id] = 0.0, 0.0
+        # E-Tablo ile birebir senkronizasyon (Beklenen ve Kapanan kârlar tabloda ne yazıyorsa o baz alınır)
+        hedef_kar_sozluk[islem_id] = float(row["Beklenen_Kar"])
+        olasi_stop_sozluk[islem_id] = float(row["Olasi_Stop"])
 
         if not (
             "kapandi" in str(row["Durum"]).lower()
@@ -2334,13 +2196,13 @@ if not df_gosterilecek.empty:
             f' nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
         )
 
-        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (1,20 / 1,50)'))
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (1,00 / 1,40)'))
         islem_miktari_val = float(row['Islem_Miktari'])
 
         portfoy_html += (
             f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
             " style='font-weight: bold; color:"
-            f" #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+            f' #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
         )
 else:
     portfoy_html += (

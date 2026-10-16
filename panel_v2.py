@@ -1378,13 +1378,13 @@ for item in gecici_islenen_liste:
         '<div style="text-align: center;"><div style="font-size: 16px;'
         ' margin-bottom: 2px; letter-spacing:'
         f' 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px;'
-        ' font-weight: bold; color: #495057;">C &nbsp;&nbsp; D</div></div>'
+        ' font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
     )
 
     if is_notr:
         puan_html = (
             '<div style="font-weight: bold; color:'
-            f' #6c757d;">{nihai_puan:.1f} / 100<br><span style="font-size:'
+            f' #91a0b8;">{nihai_puan:.1f} / 100<br><span style="font-size:'
             f' 10px;">({aktif_yon_turu})</span></div>'
         )
     else:
@@ -1429,15 +1429,15 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz =
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
+# --- TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
 )
 
-# Aktif Yatırım rengi (Açık K/Z durumuna göre yeşil veya kırmızı)
 aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
     st.markdown(
-        f"""<div class="metric-container">
+        f"""<div class="metric-container" style="color: #e8eef8 !important;">
             <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">📊 Aktif Yatırım</p>
             <h1 style="color:{aktif_renk} !important; margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1>
         </div>""",
@@ -1446,18 +1446,17 @@ with col_ust1:
 
 with col_ust2:
     st.markdown(
-        f"""<div class="metric-container">
+        f"""<div class="metric-container" style="color: #e8eef8 !important;">
             <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">🟢 Boştaki Nakit</p>
             <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1>
         </div>""",
         unsafe_allow_html=True,
     )
 
-# Efektif Kasa rengi (Kârda ise yeşil, zararda ise kırmızı)
 efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
 with col_ust3:
     st.markdown(
-        f"""<div class="metric-container">
+        f"""<div class="metric-container" style="color: #e8eef8 !important;">
             <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💎 Efektif Kasa</p>
             <h1 style="color:{efektif_renk} !important; margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1>
         </div>""",
@@ -1466,24 +1465,10 @@ with col_ust3:
 
 with col_ust4:
     st.markdown(
-        f"""<div class="metric-container">
+        f"""<div class="metric-container" style="color: #e8eef8 !important;">
             <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💱 Toplam Kasa</p>
             <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1>
         </div>""",
-        unsafe_allow_html=True,
-    )
-
-# Efektif Kasa rengi (Toplam Kasa hareketlerine göre kârda ise yeşil, zararda ise kırmızı)
-efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
-with col_ust3:
-    st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💎 Efektif Kasa</p><h1 style="color:{efektif_renk}; margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
-        unsafe_allow_html=True,
-    )
-
-with col_ust4:
-    st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💱 Toplam Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
@@ -1565,8 +1550,8 @@ for v in islenen_veriler:
     )
     
     if v["Notr"]:
-        kar_al_str = '<span style="color: #6c757d;">Nötr</span>'
-        stopla_str = '<span style="color: #6c757d;">Nötr</span>'
+        kar_al_str = '<span style="color: #91a0b8;">Nötr</span>'
+        stopla_str = '<span style="color: #91a0b8;">Nötr</span>'
         risk_hedef_gosterim = "Nötr"
     else:
         kar_al_str = (
@@ -1591,7 +1576,7 @@ for v in islenen_veriler:
 
     if v["Notr"]:
         oran_html = (
-            '<div style="background-color: rgba(255, 235, 59, 0.3); padding: 5px;'
+            '<div style="background-color: rgba(255, 235, 59, 0.2); color: #e8eef8; padding: 5px;'
             ' font-weight: bold;">%0<br>(Beklemede)</div>'
         )
     else:
@@ -1602,12 +1587,12 @@ for v in islenen_veriler:
 
     table_html += (
         f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight:"
-        " bold; color: rgb(70, 0, 255); background-color: rgba(70, 0, 255,"
-        f" 0.05);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td"
+        " bold; color: #5b8cff; background-color: rgba(91, 140, 255,"
+        f" 0.08);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td"
         " style='background-color:"
         f" rgba(0,0,0,0.02);'>{v['Matris_Puan_Sunumu']}</td><td>{v['Gunluk_Oran']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td"
         " style='font-weight: bold; color:"
-        f" #d63384;'>{risk_hedef_gosterim}</td></tr>"
+        f" #ff79c6;'>{risk_hedef_gosterim}</td></tr>"
     )
 table_html += "</tbody></table>"
 st.markdown(
@@ -1931,7 +1916,7 @@ with col_sag_endeks:
         '<div class="metric-container" style="text-align: center; padding: 10px'
         ' !important;"><div style="font-size: 12px; font-weight: bold;'
         " margin-bottom: 6px;\">Top 5 Ortalama Değeri: <span style=\"color:"
-        f' rgb(70, 0, 255);">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan:'
+        f' #5b8cff;\">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan:'
         ' <span style="color:'
         f' {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f}'
         f' / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>',
@@ -2234,8 +2219,8 @@ if not df_gosterilecek.empty:
             or "kısmi" in str(row["Durum"]).lower()
         ):
             kapanis_fiyat_h, durum_h = (
-                '<div style="padding: 5px; color: #6c757d;">-</div>',
-                '<div style="background-color: rgb(70, 0, 255); color: white;'
+                '<div style="padding: 5px; color: #91a0b8;">-</div>',
+                '<div style="background-color: #5b8cff; color: white;'
                 ' padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>',
             )
         else:
@@ -2276,7 +2261,7 @@ if not df_gosterilecek.empty:
             f"<td>{giris_fiyat_val:,.{basamak_degeri}f}&nbsp;$</td>"
             f"<td>{anlik_fiyat_h}</td>"
             f"<td>{kapanis_fiyat_h}</td>"
-            f"<td style='font-weight: bold; color: #495057;'>{matris_puan_rh_metin}</td>"
+            f"<td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td>"
             f"<td>{islem_miktari_val:,.2f}&nbsp;$</td>"
             f"<td>{kar_al_formatli}</td>"
             f"<td>{stop_formatli}</td>"
@@ -2290,7 +2275,7 @@ if not df_gosterilecek.empty:
         )
 else:
     portfoy_html += (
-        "<tr><td colspan='18' style='text-align: center; color: #6c757d; padding:"
+        "<tr><td colspan='18' style='text-align: center; color: #91a0b8; padding:"
         " 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
     )
 

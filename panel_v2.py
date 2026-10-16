@@ -1429,6 +1429,7 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz =
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
+
 # --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
@@ -1468,34 +1469,6 @@ with col_ust4:
         f"""<div class="metric-container">
             <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">💱 Toplam Kasa</div>
             <div style="color:#e8eef8; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-with col_ust2:
-    st.markdown(
-        f"""<div class="metric-container" style="color: #e8eef8 !important;">
-            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">🟢 Boştaki Nakit</p>
-            <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
-with col_ust3:
-    st.markdown(
-        f"""<div class="metric-container" style="color: #e8eef8 !important;">
-            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💎 Efektif Kasa</p>
-            <h1 style="color:{efektif_renk} !important; margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-with col_ust4:
-    st.markdown(
-        f"""<div class="metric-container" style="color: #e8eef8 !important;">
-            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">💱 Toplam Kasa</p>
-            <h1 style="color:#e8eef8 !important; margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1>
         </div>""",
         unsafe_allow_html=True,
     )

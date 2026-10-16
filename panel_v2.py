@@ -1429,7 +1429,7 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz =
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-# --- TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
+# --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
 col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
 )
@@ -1437,9 +1437,37 @@ col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
 aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
     st.markdown(
-        f"""<div class="metric-container" style="color: #e8eef8 !important;">
-            <p style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8 !important;">📊 Aktif Yatırım</p>
-            <h1 style="color:{aktif_renk} !important; margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1>
+        f"""<div class="metric-container">
+            <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">📊 Aktif Yatırım</div>
+            <div style="color:{aktif_renk}; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{aktif_yatirim_tutari:,.2f} $</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+with col_ust2:
+    st.markdown(
+        f"""<div class="metric-container">
+            <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">🟢 Boştaki Nakit</div>
+            <div style="color:#e8eef8; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{mevcut_bakiye:,.2f} $</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
+with col_ust3:
+    st.markdown(
+        f"""<div class="metric-container">
+            <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">💎 Efektif Kasa</div>
+            <div style="color:{efektif_renk}; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{efektif_kasa:,.2f} $</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+with col_ust4:
+    st.markdown(
+        f"""<div class="metric-container">
+            <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">💱 Toplam Kasa</div>
+            <div style="color:#e8eef8; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
         </div>""",
         unsafe_allow_html=True,
     )

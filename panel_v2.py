@@ -2196,10 +2196,28 @@ if not df_gosterilecek.empty:
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"
         stop_formatli = f"{float(row['Stop']):,.{basamak_degeri}f}&nbsp;$"
 
+        # Matris puanı ve diğer değerlerin HTML tablo hücresine işlenmesi
         portfoy_html += (
-            f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
-            " style='font-weight: bold; color:"
-            f' #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+            f"<tr>"
+            f"<td>{row['Islem_ID']}</td>"
+            f"<td>{row['Acilis_Zamani']}</td>"
+            f"<td>{logo_h}</td>"
+            f"<td>{row['Coin']}</td>"
+            f"<td>{yon_h}</td>"
+            f"<td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td>"
+            f"<td>{anlik_fiyat_h}</td>"
+            f"<td>{kapanis_fiyat_h}</td>"
+            f"<td style='font-weight: bold; color: #495057;'>{matris_puan_rh_metin}</td>"
+            f"<td>{islem_miktari_val:,.2f}&nbsp;$</td>"
+            f"<td>{kar_al_formatli}</td>"
+            f"<td>{stop_formatli}</td>"
+            f"<td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td>"
+            f"<td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td>"
+            f"<td>{durum_h}</td>"
+            f"<td>{kz_h}</td>"
+            f"<td>{row['Kapanis_Zamani']}</td>"
+            f"<td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td>"
+            f"</tr>"
         )
 else:
     portfoy_html += (

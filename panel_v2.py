@@ -69,6 +69,9 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .custom-table td { background:#101a2a; text-align:center; padding:9px 5px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:11px; }
 .custom-table tr:hover td { background:#17243a; }
 .custom-table td img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
+/* Kâr ve Zarar Durum Rozetleri (Siyah Yazı Garantili) */
+.kar-hucre { background-color: #00FF00 !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
+.zarar-hucre { background-color: rgb(255, 75, 0) !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
 [data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
 [data-testid="stCaptionContainer"] { color:var(--muted) !important; }
 @media (max-width: 768px) { .block-container { padding:1rem .7rem 2rem; } .metric-container { padding:12px !important; } .metric-container h1 { font-size:20px !important; } }
@@ -122,7 +125,7 @@ baz_fiyatlar = {
 
 def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
-    uygulama_sifresi = "jkef zgaf zwtg qyom"  # Doğrudan buraya tanımladık
+    uygulama_sifresi = "jkef zgaf zwtg qyom"
     alici_mail = "erhanvancin@gmail.com"
 
     try:
@@ -2198,16 +2201,17 @@ if not df_gosterilecek.empty:
         ):
             kapanis_fiyat_h, durum_h = (
                 '<div style="padding: 5px; color: #6c757d;">-</div>',
-                '<div style="background-color: rgb(70, 0, 255); color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>',
+                '<div style="background-color: rgb(70, 0, 255); color: white;'
+                ' padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>',
             )
         else:
             is_kar = float(row["Net_Kar_Zarar"]) >= 0
-            k_stil = "#00FF00" if is_kar else "rgb(255, 75, 0)"
+            sinif = "kar-hucre" if is_kar else "zarar-hucre"
             kapanis_fiyat_h = (
-                f'<div style="background-color: {k_stil}; color: #000000 !important; padding: 5px; font-weight: bold;">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
+                f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
             )
             durum_h = (
-                f'<div style="background-color: {k_stil}; color: #000000 !important; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
+                f'<div class="{sinif}">{"Kâr" if is_kar else "Zarar"}</div>'
             )
 
         kz_h = (

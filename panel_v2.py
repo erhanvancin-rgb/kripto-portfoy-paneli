@@ -2159,41 +2159,41 @@ with col_sag_sonlandir:
         if "girilen_yuzde_input" not in st.session_state:
             st.session_state["girilen_yuzde_input"] = 100.0
 
-        # Form içerisindeki tüm butonlar st.form_submit_button olarak düzeltilmiştir
-        with st.form(key="kapama_guvenli_form"):
-            col_tutar_kutusu, col_oran_kutusu = st.columns(2)
-            with col_tutar_kutusu:
-                girilen_tutar = st.number_input(
-                    "Tutar ($):",
-                    min_value=0.0,
-                    max_value=float(secilen_islem_miktar),
-                    value=float(st.session_state["girilen_dolar_input"]),
-                    step=10.0,
-                )
-            with col_oran_kutusu:
-                girilen_oran = st.number_input(
-                    "Oran (%):",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=float(st.session_state["girilen_yuzde_input"]),
-                    step=5.0,
-                )
+        # Form kullanılmadan, doğrudan güvenli state akışıyla iki yönlü senkronizasyon
+        col_tutar_kutusu, col_oran_kutusu = st.columns(2)
+        with col_tutar_kutusu:
+            yeni_dolar = st.number_input(
+                "Tutar ($):",
+                min_value=0.0,
+                max_value=float(secilen_islem_miktar),
+                value=float(st.session_state["girilen_dolar_input"]),
+                step=10.0,
+                key="input_dolar_degeri"
+            )
+        with col_oran_kutusu:
+            yeni_oran = st.number_input(
+                "Oran (%):",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state["girilen_yuzde_input"]),
+                step=5.0,
+                key="input_oran_degeri"
+            )
 
-            col_islem_yap, col_iptal = st.columns(2)
-            with col_islem_yap:
-                submit_kapat = st.form_submit_button("Emri Gerçekleştir", use_container_width=True)
-            with col_iptal:
-                submit_iptal = st.form_submit_button("İptal", use_container_width=True)
+        if yeni_dolar != st.session_state["girilen_dolar_input"]:
+            st.session_state["girilen_dolar_input"] = yeni_dolar
+            if secilen_islem_miktar > 0:
+                st.session_state["girilen_yuzde_input"] = round((yeni_dolar / secilen_islem_miktar) * 100.0, 2)
+            st.rerun()
+        elif yeni_oran != st.session_state["girilen_yuzde_input"]:
+            st.session_state["girilen_yuzde_input"] = yeni_oran
+            st.session_state["girilen_dolar_input"] = round((secilen_islem_miktar * yeni_oran) / 100.0, 2)
+            st.rerun()
 
-            if submit_iptal:
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
-
-            if submit_kapat:
-                kapatilacak_net_tutar = girilen_tutar
-                if girilen_oran != 100.0 and girilen_oran != st.session_state["girilen_yuzde_input"]:
-                    kapatilacak_net_tutar = round((secilen_islem_miktar * girilen_oran) / 100.0, 2)
-
+        col_islem_yap, col_iptal = st.columns(2)
+        with col_islem_yap:
+            if st.button("Emri Gerçekleştir", use_container_width=True, key="btn_emri_gerceklestir_yeni"):
+                kapatilacak_net_tutar = st.session_state["girilen_dolar_input"]
                 if kapatilacak_net_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                 else:
@@ -2213,6 +2213,10 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
+        with col_iptal:
+            if st.button("İptal", use_container_width=True, key="btn_kapama_iptal_yeni"):
+                st.session_state["kapama_paneli_acik"] = False
+                st.rerun()
         with col_iptal:
             if st.button("İptal", use_container_width=True, key="btn_kapama_iptal"):
                 st.session_state["kapama_paneli_acik"] = False

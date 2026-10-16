@@ -2112,7 +2112,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- KESİN ÇÖZÜMLÜ VE BENZERSİZ ANAHTARLI KAPAMA PANELİ ---
+# --- KESİN ÇÖZÜMLÜ VE TEKİL BUTONLU KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2120,13 +2120,13 @@ with col_sag_sonlandir:
     kapatilacak_id = st.selectbox(
         "ID Kodu:",
         acik_islem_listesi if acik_islem_listesi else [0],
-        key="k_id_secim",
+        key="k_id_secim_final",
     )
     
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
     
     if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn"):
+        if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn_final"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                 st.session_state["kapama_paneli_acik"] = True
                 secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
@@ -2167,7 +2167,7 @@ with col_sag_sonlandir:
                 max_value=float(secilen_islem_miktar),
                 value=float(st.session_state["girilen_dolar_input"]),
                 step=10.0,
-                key="input_dolar_degeri_unique"
+                key="input_dolar_nihai"
             )
         with col_oran_kutusu:
             yeni_oran = st.number_input(
@@ -2176,11 +2176,11 @@ with col_sag_sonlandir:
                 max_value=100.0,
                 value=float(st.session_state["girilen_yuzde_input"]),
                 step=5.0,
-                key="input_oran_degeri_unique"
+                key="input_oran_nihai"
             )
 
         # Hesapla & Oranla Butonu
-        if st.button("🔄 Hesapla & Oranla", use_container_width=True, key="btn_hesapla_oranla_unique"):
+        if st.button("🔄 Hesapla & Oranla", use_container_width=True, key="btn_hesapla_nihai"):
             if yeni_dolar != st.session_state["girilen_dolar_input"]:
                 st.session_state["girilen_dolar_input"] = yeni_dolar
                 if secilen_islem_miktar > 0:
@@ -2192,7 +2192,7 @@ with col_sag_sonlandir:
 
         col_islem_yap, col_iptal = st.columns(2)
         with col_islem_yap:
-            if st.button("Emri Gerçekleştir", use_container_width=True, key="btn_emri_gerceklestir_unique"):
+            if st.button("Emri Gerçekleştir", use_container_width=True, key="btn_gerceklestir_nihai"):
                 kapatilacak_net_tutar = st.session_state["girilen_dolar_input"]
                 if kapatilacak_net_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
@@ -2213,6 +2213,10 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
+        with col_iptal:
+            if st.button("İptal", use_container_width=True, key="btn_iptal_nihai"):
+                st.session_state["kapama_paneli_acik"] = False
+                st.rerun()
         with col_iptal:
             if st.button("İptal", use_container_width=True, key="btn_kapama_iptal_unique_final"):
                 st.session_state["kapama_paneli_acik"] = False

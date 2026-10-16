@@ -69,7 +69,6 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .custom-table td { background:#101a2a; text-align:center; padding:9px 5px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:11px; }
 .custom-table tr:hover td { background:#17243a; }
 .custom-table td img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
-/* Kâr ve Zarar Durum Rozetleri (Siyah Yazı Garantili) */
 .kar-hucre { background-color: #00FF00 !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
 .zarar-hucre { background-color: rgb(255, 75, 0) !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
 [data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
@@ -260,7 +259,6 @@ def load_15min_market_data(coin_symbol: str):
     })
 
 
-# --- DİNAMİK RİSK / HEDEF HESAPLAMA (MATRİS PUANINA GÖRE) ---
 def calculate_coin_metrics_by_score(matris_puani):
     if matris_puani < 54.0:
         stop_uzde = 1.0
@@ -294,7 +292,6 @@ def calculate_coin_metrics_by_score(matris_puani):
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
 
-# --- 3 İNDİKATÖR (EMA, RSI, FIB) LOGARİTMİK BONUS SİSTEMİ ---
 def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
     if df.empty or len(df) < 20:
         return 0.0, 0.0
@@ -713,7 +710,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         kap_trades = df_trade[
             df_trade["Durum"]
             .astype(str)
-            .str.contains("Kapandi|Kar|Zarar", case=False, na=False)
+            .str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)
         ]
         if not kap_trades.empty:
             trade_sonuc_defterde = 0.0
@@ -776,7 +773,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     )
 
 
-# --- YENİ İŞLEM EKLEME VE AĞIRLIKLI ORTALAMA (DCA) SİSTEMİ ---
+# --- YENİ İŞLEM EKLEME VE KISMI KAPAMA MİMARİSİ ---
 def yeni_islem_ekle(
     coin,
     yon,
@@ -933,7 +930,7 @@ def yeni_islem_ekle(
         return True, f"✅ {coin} emri başarıyla verildi!"
 
 
-def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
+def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     df = islem_gecmisi_getir()
     idx = df[df["Islem_ID"] == islem_id].index
     if idx.empty:
@@ -941,43 +938,106 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati):
     row = df.loc[idx[0]]
     try:
         giris_fiyat = float(row["Giris_Fiyat"])
-        miktar = float(row["Islem_Miktari"])
-        fark_yuzde = (
-            ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat)
-            if "Long" in row["Yon"]
-            else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
-        )
-        net_kar = miktar * KALDIRAC * fark_yuzde
+        mevcut_miktar = float(row["Islem_Miktari"])
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
-        durum_metni = "Kapandi (Zarar)" if net_kar < 0 else "Kapandi (Kar)"
-        df.at[idx[0], "Durum"] = durum_metni
-        df.at[idx[0], "Kapanis_Zamani"] = suan_tr
-        df.at[idx[0], "Net_Kar_Zarar"] = float(round(net_kar, 2))
-        df.at[idx[0], "Kapanis_Fiyati"] = float(round(anlik_kapatma_fiyati, 4))
+        # Eğer kısmi kapama ise ve miktar belirtilmişse
+        if kapatilacak_miktar is not None and 0 < kapatilacak_miktar < mevcut_miktar:
+            fark_yuzde = (
+                ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat)
+                if "Long" in row["Yon"]
+                else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
+            )
+            kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
+            
+            # 1. Kapatılan kısmı tabloya yeni bir kapalı satır olarak ekle
+            yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
+            durum_metni = "Kısmi Kapandı (Zarar)" if kısmi_kar < 0 else "Kısmi Kapandı (Kâr)"
+            
+            toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+            yeni_kapali_kayit = pd.DataFrame([{
+                "Islem_ID": yeni_id,
+                "Acilis_Zamani": row["Acilis_Zamani"],
+                "Coin": row["Coin"],
+                "Yon": row["Yon"],
+                "Zaman_Dilimi": row["Zaman_Dilimi"],
+                "Giris_Fiyat": giris_fiyat,
+                "Islem_Miktari": round(kapatilacak_miktar, 2),
+                "Stop": float(row["Stop"]),
+                "Kar_Al": float(row["Kar_Al"]),
+                "Beklenen_Kar": float(row["Beklenen_Kar"]),
+                "Matris_Puan_RH": row["Matris_Puan_RH"],
+                "Olasi_Stop": float(row["Olasi_Stop"]),
+                "Durum": durum_metni,
+                "Net_Kar_Zarar": float(round(kismi_kar, 2)),
+                "Guncel_Kasa": float(round(toplam_kasa + kısmi_kar, 2)),
+                "Kapanis_Zamani": suan_tr,
+                "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
+            }])
+            
+            # 2. Mevcut açık pozisyonun miktarını ve beklenen kar/stop değerlerini güncelle
+            kalan_miktar = mevcut_miktar - kapatilacak_miktar
+            df.at[idx[0], "Islem_Miktari"] = round(kalan_miktar, 2)
+            
+            if "Long" in row["Yon"]:
+                bek_kar_yeni = kalan_miktar * KALDIRAC * ((float(row["Kar_Al"]) - giris_fiyat) / giris_fiyat)
+                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((float(row["Stop"]) - giris_fiyat) / giris_fiyat)
+            else:
+                bek_kar_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Kar_Al"])) / giris_fiyat)
+                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Stop"])) / giris_fiyat)
+                
+            df.at[idx[0], "Beklenen_Kar"] = round(bek_kar_yeni, 2)
+            df.at[idx[0], "Olasi_Stop"] = round(olasi_stop_yeni, 2)
+            
+            df = pd.concat([df, yeni_kapali_kayit], ignore_index=True).sort_values(by="Islem_ID").reset_index(drop=True)
+            dataframe_guncelle_gsheets(df)
+            
+            kasa_islem_ekle_deftere(
+                "Trade_Sonuc",
+                float(round(kismi_kar, 2)),
+                f"Kısmi K/Z: #{islem_id} {row['Coin']} ({kapatilacak_miktar}$ kapatıldı)",
+            )
+            elli_islem_arsiv_kontrol()
+            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $. Kalan Pozisyon: {kalan_miktar} $"
 
-        toplam_kasa, _, _, _ = bakiye_durumunu_getir()
-        df.at[idx[0], "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
-        dataframe_guncelle_gsheets(df)
-        kasa_islem_ekle_deftere(
-            "Trade_Sonuc",
-            float(round(net_kar, 2)),
-            f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})",
-        )
-        elli_islem_arsiv_kontrol()
+        else:
+            # Tamamen Kapatma
+            fark_yuzde = (
+                ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat)
+                if "Long" in row["Yon"]
+                else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
+            )
+            net_kar = mevcut_miktar * KALDIRAC * fark_yuzde
 
-        mail_icerik = (
-            "<h3>İşlem Manuel Olarak Kapatıldı</h3><p><b>İşlem ID:</b>"
-            f" #{islem_id}</p><p><b>Coin:</b> {row['Coin']}</p><p><b>Yön:</b>"
-            f" {row['Yon']}</p><p><b>Durum:</b> {durum_metni}</p><p><b>Net"
-            f" Kâr/Zarar:</b> {net_kar:+,.2f} $</p><p><b>Güncel Kasa:</b>"
-            f" {toplam_kasa + net_kar:,.2f} $</p>"
-        )
-        gmail_bildirim_gonder(
-            f"🔔 Manuel Kapatma Raporu: #{islem_id} {row['Coin']} ({durum_metni})",
-            mail_icerik,
-        )
-        return True, f"Kapatıldı. K/Z: {net_kar:.2f} $"
+            durum_metni = "Kapandi (Zarar)" if net_kar < 0 else "Kapandi (Kar)"
+            df.at[idx[0], "Durum"] = durum_metni
+            df.at[idx[0], "Kapanis_Zamani"] = suan_tr
+            df.at[idx[0], "Net_Kar_Zarar"] = float(round(net_kar, 2))
+            df.at[idx[0], "Kapanis_Fiyati"] = float(round(anlik_kapatma_fiyati, 4))
+
+            toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+            df.at[idx[0], "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
+            dataframe_guncelle_gsheets(df)
+            kasa_islem_ekle_deftere(
+                "Trade_Sonuc",
+                float(round(net_kar, 2)),
+                f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})",
+            )
+            elli_islem_arsiv_kontrol()
+
+            mail_icerik = (
+                "<h3>İşlem Tamamen Kapatıldı</h3><p><b>İşlem ID:</b>"
+                f" #{islem_id}</p><p><b>Coin:</b> {row['Coin']}</p><p><b>Yön:</b>"
+                f" {row['Yon']}</p><p><b>Durum:</b> {durum_metni}</p><p><b>Net"
+                f" Kâr/Zarar:</b> {net_kar:+,.2f} $</p><p><b>Güncel Kasa:</b>"
+                f" {toplam_kasa + net_kar:,.2f} $</p>"
+            )
+            gmail_bildirim_gonder(
+                f"🔔 Kapatma Raporu: #{islem_id} {row['Coin']} ({durum_metni})",
+                mail_icerik,
+            )
+            return True, f"İşlem tamamen kapatıldı. K/Z: {net_kar:.2f} $"
+
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
@@ -1252,7 +1312,6 @@ for data in coin_ham_veriler:
         c_yonu == "Short" and gunluk_oran >= 2.0 and nihai_puan >= 58.0
     )
 
-    # --- 6 AŞAMALI YILDIZ SEÇİCİ FONKSİYON ---
     def get_6_stage_stars(puan, kategori_tipi):
         if kategori_tipi == "Notr":
             if puan < 45.0:
@@ -1623,7 +1682,6 @@ st.markdown(
 
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 
-# --- İŞLEM VE EKLEME PANELİ ---
 with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
@@ -1949,7 +2007,7 @@ with col_sol_analiz:
         else df_gecmis[
             df_gecmis["Durum"]
             .astype(str)
-            .str.contains("Kapandi|Kar|Zarar", case=False, na=False)
+            .str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)
         ]
     )
 
@@ -2042,8 +2100,9 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
+# --- KISMI KAPAMA VE İŞLEM SONLANDIRMA PANELİ ---
 with col_sag_sonlandir:
-    st.markdown("<h3>🛑 İşlemi Sonlandır</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🛑 İşlemi Kapat / Kısmi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     with st.form(key="pozisyon_kapat_form"):
         kapatilacak_id = st.selectbox(
@@ -2051,9 +2110,30 @@ with col_sag_sonlandir:
             acik_islem_listesi if acik_islem_listesi else [0],
             key="k_id",
         )
-        onay_verildi = st.checkbox("İşlemi Kapatmayı Onayla", key="onay_chk")
+        
+        # Seçilen işlemin mevcut miktarını bul
+        secilen_islem_miktar = 100.0
+        if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+            secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
+            if not secilen_islem_satir.empty:
+                secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
+
+        kapama_tipi = st.radio("İşlem Türü:", ["Tamamen Kapat", "Kısmi Kapat"], horizontal=True, key="k_tipi")
+        
+        kismi_tutar = 0.0
+        if kapama_tipi == "Kısmi Kapat":
+            kismi_tutar = st.number_input(
+                f"Kapatılacak Tutar ($) (Maks: {secilen_islem_miktar} $):",
+                min_value=1.0,
+                max_value=max(1.0, secilen_islem_miktar - 0.01),
+                value=min(50.0, secilen_islem_miktar / 2),
+                step=10.0,
+                key="k_kismi_tutar"
+            )
+
+        onay_verildi = st.checkbox("İşlemi Onayla", key="onay_chk")
         submit_kapat = st.form_submit_button(
-            "İşlemi Kapat", use_container_width=True
+            "Emri Gerçekleştir", use_container_width=True
         )
 
         if submit_kapat:
@@ -2062,15 +2142,19 @@ with col_sag_sonlandir:
                     kapanacak_coin = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id][
                         "Coin"
                     ].iloc[0]
+                    
+                    hedef_kapatma_miktari = kismi_tutar if kapama_tipi == "Kısmi Kapat" else None
+                    
                     b_durum, b_mesaj = manuel_islem_kapat(
                         kapatilacak_id,
                         ortak_fiyat_havuzu.get(
                             kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0)
                         ),
+                        kapatilacak_miktar=hedef_kapatma_miktari
                     )
                     if b_durum:
                         st.success(b_mesaj)
-                        time.sleep(1)
+                        time.sleep(1.2)
                         st.rerun()
                     else:
                         st.error(b_mesaj)
@@ -2211,7 +2295,7 @@ if not df_gosterilecek.empty:
                 f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
             )
             durum_h = (
-                f'<div class="{sinif}">{"Kâr" if is_kar else "Zarar"}</div>'
+                f'<div class="{sinif}">{row["Durum"]}</div>'
             )
 
         kz_h = (

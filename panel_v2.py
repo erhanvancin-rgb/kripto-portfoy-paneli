@@ -1265,34 +1265,32 @@ for data in coin_ham_veriler:
         )
         ham_agirlik = 1.0
     elif is_dip_tepkisi:
-        trend = "⭐⭐⭐⭐ 🎣 Dip Avcısı"
+        trend = "Dip / Tepe Avcısı 🎣"
         aktif_yon_turu = "Long"
         yon_html = (
             '<div style="background-color: #00FF00; padding: 6px; border-radius:'
-            ' 6px; color: #000000; font-weight: bold; font-size: 12px;">⭐⭐⭐⭐ 🎣'
-            " Dip Avcısı</div>"
+            ' 6px; color: #000000; font-weight: bold; font-size: 12px;">Dip / Tepe Avcısı 🎣</div>'
         )
         ham_agirlik = 4.0
     elif is_tepe_donusu:
-        trend = "⭐⭐⭐⭐ 🎣 Tepe Avcısı"
+        trend = "Dip / Tepe Avcısı 🎣"
         aktif_yon_turu = "Short"
         yon_html = (
             '<div style="background-color: rgb(255, 75, 0); padding: 6px;'
             " border-radius: 6px; color: #000000; font-weight: bold; font-size:"
-            ' 12px;">⭐⭐⭐⭐ 🎣 Tepe Avcısı</div>'
+            ' 12px;">Dip / Tepe Avcısı 🎣</div>'
         )
         ham_agirlik = 4.0
     elif c_yonu != d_yonu and c_yonu != "Nötr":
-        trend = "⭐⭐ ⚠️ Ters Akıntı"
+        trend = "Ters Akıntı"
         aktif_yon_turu = "Nötr"
         yon_html = (
             '<div style="background-color: #ffc107; padding: 6px; border-radius:'
-            ' 6px; color: #212529; font-weight: bold; font-size: 12px;">⭐⭐ ⚠️ Ters'
-            " Akıntı</div>"
+            ' 6px; color: #212529; font-weight: bold; font-size: 12px;">Ters Akıntı</div>'
         )
         ham_agirlik = 2.0
     elif nihai_puan >= 70.0:
-        trend = f"⭐⭐⭐⭐⭐ 🔥 Güçlü {aktif_yon}"
+        trend = f"Güçlü Trend / Boğa-Ayı Vuruşu 🔥"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = (
@@ -1302,7 +1300,7 @@ for data in coin_ham_veriler:
         )
         ham_agirlik = 5.0
     else:
-        trend = f"⭐⭐⭐ ✅ {aktif_yon} (Onaylı)"
+        trend = f"Onaylı Trend ({aktif_yon})"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = (
@@ -1365,14 +1363,14 @@ for item in gecici_islenen_liste:
         sepet_orani = 0.0
 
     if (
-        "⭐⭐⭐⭐⭐" in trend
+        "Güçlü Trend" in trend
         and not is_notr
         and sembol not in st.session_state["gonderilen_mailler"]
     ):
         st.session_state["gonderilen_mailler"].add(sembol)
         gmail_bildirim_gonder(
-            f"🔥 5 Yıldızlı Güçlü Trend Alarmı: {sembol} ({trend})",
-            "<h3>Piyasada 5 Yıldızlı Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b>"
+            f"🔥 Güçlü Trend Alarmı: {sembol} ({trend})",
+            "<h3>Piyasada Güçlü Trend Sinyali Tespit Edildi!</h3><p><b>Coin:</b>"
             f" {sembol}</p><p><b>Durum:</b> {trend}</p><p><b>Matris Puanı:</b>"
             f" {nihai_puan:.1f} / 100</p><p><b>Güncel Fiyat:</b> {anlik_fiyat:,.2f}"
             f" $</p><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>",

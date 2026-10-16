@@ -261,10 +261,6 @@ def load_15min_market_data(coin_symbol: str):
 
 
 def calculate_coin_metrics_by_score(matris_puani):
-    """
-    LOGARİTMİK GEÇİŞLİ REHBER KÂRLILIK VE HEDEF ÇARPANI (REWARD/RISK) MATRİSİ:
-    - 54.0 puanda 1.40'tan başlar, 100.0 puanda 3.00 ile biter (Logaritmik eğri).
-    """
     p = max(54.0, min(matris_puani, 100.0))
     log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
     hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
@@ -1433,25 +1429,25 @@ col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
 
 with col_ust1:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128202; Aktif Yatırım</p><h1 style="color:rgb(70,0,255); margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">📊 Aktif Yatırım</p><h1 style="color:rgb(70,0,255); margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
 with col_ust2:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128994; Boştaki Nakit</p><h1 style="margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">🟢 Boştaki Nakit</p><h1 style="margin:5px 0 0 0; font-size:24px;">{mevcut_bakiye:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
 with col_ust3:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128142; Efektif Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💎 Efektif Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
 with col_ust4:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">&#128176; Toplam Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💱 Toplam Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{toplam_kasa:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
@@ -2196,9 +2192,8 @@ if not df_gosterilecek.empty:
         matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (1,00 / 1,40)'))
         islem_miktari_val = float(row['Islem_Miktari'])
         
-        # Kar_Al ve Stop hassasiyet basamak ayarı
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
-        kar_al_formatli = f"{float(row['Kar_Al']):,.{bas_ok := basamak_degeri}f}&nbsp;$"
+        kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"
         stop_formatli = f"{float(row['Stop']):,.{basamak_degeri}f}&nbsp;$"
 
         portfoy_html += (

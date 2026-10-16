@@ -2112,7 +2112,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- KESİN ÇÖZÜMLÜ FORM TABANLI İKİ YÖNLÜ SENKRONİZE KAPAMA PANELİ ---
+# --- KESİN ÇÖZÜMLÜ BAĞIMSIZ HESAPLAMALI KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2154,50 +2154,48 @@ with col_sag_sonlandir:
             unsafe_allow_html=True,
         )
 
+        # Session state değerlerini güvenli başlangıç değerleriyle senkronize edelim
         if "girilen_dolar_input" not in st.session_state:
             st.session_state["girilen_dolar_input"] = secilen_islem_miktar
         if "girilen_yuzde_input" not in st.session_state:
             st.session_state["girilen_yuzde_input"] = 100.0
 
-        # Form kullanarak state döngü kilitlenmesini ve anlık senkronizasyon sorununu tamamen çözüyoruz
-        with st.form(key="kapama_formu_senkron"):
-            col_tutar_kutusu, col_oran_kutusu = st.columns(2)
-            with col_tutar_kutusu:
-                val_tutar = st.number_input(
-                    "Tutar ($):",
-                    min_value=0.0,
-                    max_value=float(secilen_islem_miktar),
-                    value=float(st.session_state["girilen_dolar_input"]),
-                    step=10.0,
-                )
-            with col_oran_kutusu:
-                val_oran = st.number_input(
-                    "Oran (%):",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=float(st.session_state["girilen_yuzde_input"]),
-                    step=5.0,
-                )
+        # İki bağımsız number input: Biri dolar tutarı, diğeri yüzde oranı için
+        col_tutar_kutusu, col_oran_kutusu = st.columns(2)
+        with col_tutar_kutusu:
+            yeni_dolar = st.number_input(
+                "Tutar ($):",
+                min_value=0.0,
+                max_value=float(secilen_islem_miktar),
+                value=float(st.session_state["girilen_dolar_input"]),
+                step=10.0,
+                key="input_dolar_degeri"
+            )
+        with col_oran_kutusu:
+            yeni_oran = st.number_input(
+                "Oran (%):",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state["girilen_yuzde_input"]),
+                step=5.0,
+                key="input_oran_degeri"
+            )
 
-            col_islem_yap, col_iptal = st.columns(2)
-            with col_islem_yap:
-                submit_kapat = st.form_submit_button("Emri Gerçekleştir", use_container_width=True)
-            with col_iptal:
-                submit_iptal = st.form_submit_button("İptal", use_container_width=True)
+        # Kullanıcının son dokunduğu alanı tespit edip diğerini güncelleyen güvenli mantık
+        if yeni_dolar != st.session_state["girilen_dolar_input"]:
+            st.session_state["girilen_dolar_input"] = yeni_dolar
+            if secilen_islem_miktar > 0:
+                st.session_state["girilen_yuzde_input"] = round((yeni_dolar / secilen_islem_miktar) * 100.0, 2)
+            st.rerun()
+        elif yeni_oran != st.session_state["girilen_yuzde_input"]:
+            st.session_state["girilen_yuzde_input"] = yeni_oran
+            st.session_state["girilen_dolar_input"] = round((secilen_islem_miktar * yeni_oran) / 100.0, 2)
+            st.rerun()
 
-            if submit_iptal:
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
-
-            if submit_kapat:
-                # Kullanıcının hangi alanı değiştirdiğini akıllıca algılayıp hesaplıyoruz
-                if val_tutar != st.session_state["girilen_dolar_input"]:
-                    kapatilacak_net_tutar = val_tutar
-                elif val_oran != st.session_state["girilen_yuzde_input"]:
-                    kapatilacak_net_tutar = round((secilen_islem_miktar * val_oran) / 100.0, 2)
-                else:
-                    kapatilacak_net_tutar = val_tutar
-
+        col_islem_yap, col_iptal = st.columns(2)
+        with col_islem_yap:
+            if st.button("Emri Gerçekleştir", use_container_width=True, key="btn_emri_gerceklestir"):
+                kapatilacak_net_tutar = st.session_state["girilen_dolar_input"]
                 if kapatilacak_net_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                 else:
@@ -2217,6 +2215,10 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
+        with col_iptal:
+            if st.button("İptal", use_container_width=True, key="btn_kapama_iptal"):
+                st.session_state["kapama_paneli_acik"] = False
+                st.rerun()
 
 st.markdown("---")
 

@@ -261,15 +261,22 @@ def load_15min_market_data(coin_symbol: str):
 
 
 def calculate_coin_metrics_by_score(matris_puani):
+    if matris_puani < 54.0:
+        return 1.15, 1.8, "Nötr"
+
     p = max(54.0, min(matris_puani, 100.0))
     log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
+    
+    # Hedef aralığı: 54'te 1.40, 100'de 3.00 (Logaritmik artış)
     hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
-
-    stop_uzde = max(0.65, 1.15 - (p - 54.0) * (0.50 / 46.0))
+    
+    # Stop aralığı: 54'te 1.15, 100'de 0.65 (Logaritmik daralma)
+    stop_uzde = 1.15 - (1.15 - 0.65) * (log_oran ** 0.85)
+    
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
 
-    str_stop = f"{stop_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-    str_hedef = f"{hedef_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
     risk_hedef_metin = f"{str_stop} / {str_hedef}"
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
@@ -1265,7 +1272,7 @@ for data in coin_ham_veriler:
             return "🥇🥇🥇"
         return "🥈"
 
-    if aktif_yon == "Nötr":
+    if aktif_yon == "Nötr" or nihai_puan < 54.0:
         yildizlar = get_6_stage_stars(nihai_puan, "Notr")
         trend = f"{yildizlar} Nötr (Beklemede)"
         aktif_yon_turu = "Nötr"
@@ -1305,7 +1312,7 @@ for data in coin_ham_veriler:
         ham_agirlik = 3.0
 
     is_notr = (
-        aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr"
+        aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr" or nihai_puan < 54.0
     )
 
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(
@@ -1527,16 +1534,24 @@ for v in islenen_veriler:
         if v["Basamak"] == 4
         else f"{v['Fiyat']:,.2f}&nbsp;$"
     )
-    kar_al_str = (
-        f"{v['Kar_Al']:,.4f}&nbsp;$"
-        if v["Basamak"] == 4
-        else f"{v['Kar_Al']:,.2f}&nbsp;$"
-    )
-    stopla_str = (
-        f"{v['Stopla']:,.4f}&nbsp;$"
-        if v["Basamak"] == 4
-        else f"{v['Stopla']:,.2f}&nbsp;$"
-    )
+    
+    if v["Notr"]:
+        kar_al_str = '<span style="color: #6c757d;">Nötr</span>'
+        stopla_str = '<span style="color: #6c757d;">Nötr</span>'
+        risk_hedef_gosterim = "Nötr"
+    else:
+        kar_al_str = (
+            f"{v['Kar_Al']:,.4f}&nbsp;$"
+            if v["Basamak"] == 4
+            else f"{v['Kar_Al']:,.2f}&nbsp;$"
+        )
+        stopla_str = (
+            f"{v['Stopla']:,.4f}&nbsp;$"
+            if v["Basamak"] == 4
+            else f"{v['Stopla']:,.2f}&nbsp;$"
+        )
+        risk_hedef_gosterim = v['Risk_Hedef_Metin']
+
     val_str = (
         f"%{v['Sepet_Orani']:.1f}"
         if v["Sepet_Orani"] != int(v["Sepet_Orani"])
@@ -1563,7 +1578,7 @@ for v in islenen_veriler:
         " style='background-color:"
         f" rgba(0,0,0,0.02);'>{v['Matris_Puan_Sunumu']}</td><td>{v['Gunluk_Oran']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td"
         " style='font-weight: bold; color:"
-        f" #d63384;'>{v['Risk_Hedef_Metin']}</td></tr>"
+        f" #d63384;'>{risk_hedef_gosterim}</td></tr>"
     )
 table_html += "</tbody></table>"
 st.markdown(
@@ -1584,7 +1599,7 @@ with col_sol_panel:
     onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = (
         0.0,
         0.0,
-        "1,00 / 1,40",
+        "1,15 / 1,40",
         None,
     )
     if secilen_coin:
@@ -2189,35 +2204,17 @@ if not df_gosterilecek.empty:
             f' nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
         )
 
-        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (1,00 / 1,40)'))
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (Nötr)'))
         islem_miktari_val = float(row['Islem_Miktari'])
         
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"
         stop_formatli = f"{float(row['Stop']):,.{basamak_degeri}f}&nbsp;$"
 
-        # Matris puanı ve diğer değerlerin HTML tablo hücresine işlenmesi
         portfoy_html += (
-            f"<tr>"
-            f"<td>{row['Islem_ID']}</td>"
-            f"<td>{row['Acilis_Zamani']}</td>"
-            f"<td>{logo_h}</td>"
-            f"<td>{row['Coin']}</td>"
-            f"<td>{yon_h}</td>"
-            f"<td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td>"
-            f"<td>{anlik_fiyat_h}</td>"
-            f"<td>{kapanis_fiyat_h}</td>"
-            f"<td style='font-weight: bold; color: #495057;'>{matris_puan_rh_metin}</td>"
-            f"<td>{islem_miktari_val:,.2f}&nbsp;$</td>"
-            f"<td>{kar_al_formatli}</td>"
-            f"<td>{stop_formatli}</td>"
-            f"<td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td>"
-            f"<td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td>"
-            f"<td>{durum_h}</td>"
-            f"<td>{kz_h}</td>"
-            f"<td>{row['Kapanis_Zamani']}</td>"
-            f"<td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td>"
-            f"</tr>"
+            f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
+            " style='font-weight: bold; color:"
+            f' #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
         )
 else:
     portfoy_html += (

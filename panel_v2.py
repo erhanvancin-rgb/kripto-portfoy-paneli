@@ -950,7 +950,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
             
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
-            durum_metni = "Kısmi Kapandı (Zarar)" if kısmi_kar < 0 else "Kısmi Kapandı (Kâr)"
+            durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
             
             toplam_kasa, _, _, _ = bakiye_durumunu_getir()
             yeni_kapali_kayit = pd.DataFrame([{
@@ -1775,9 +1775,13 @@ with col_sol_panel:
             value=float(guvenli_tutar),
             step=10.0,
         )
+        
+        # Boştaki Nakit Görünümü İyileştirildi (Temiz ve Bold Yeşil)
         st.markdown(
-            f"🟢 **Boştaki Nakit:** `{mevcut_bakiye:,.2f} $`", unsafe_allow_html=True
+            f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>',
+            unsafe_allow_html=True
         )
+        
         submit_islem = st.form_submit_button(
             "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
             use_container_width=True,
@@ -2112,7 +2116,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- %100 KARARLI VE SLIDER (KAYDIRICI) TABANLI KAPAMA PANELİ ---
+# --- SADELEŞTİRİLMİŞ, SADECE TUTAR GİRİLEN GÜVENLİ KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2120,13 +2124,13 @@ with col_sag_sonlandir:
     kapatilacak_id = st.selectbox(
         "ID Kodu:",
         acik_islem_listesi if acik_islem_listesi else [0],
-        key="kapat_id_secici_slider"
+        key="k_id_secim_sade",
     )
     
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
     
     if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("Kapama Yap", use_container_width=True, key="btn_kapama_modunu_ac"):
+        if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn_sade"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                 st.session_state["kapama_paneli_acik"] = True
                 st.rerun()
@@ -2149,32 +2153,28 @@ with col_sag_sonlandir:
             unsafe_allow_html=True,
         )
 
-        # HİÇBİR DÖNGÜYE GİRMEYEN GÜVENLİ SLIDER YÖNTEMİ
-        secilen_yuzde = st.slider(
-            "Kapatılacak Oran (%)", 
-            min_value=1.0, 
-            max_value=100.0, 
-            value=100.0, 
-            step=1.0, 
-            key="slider_kapatma_orani"
+        girilen_tutar = st.number_input(
+            "Kapatılacak Tutar ($):",
+            min_value=0.0,
+            max_value=float(secilen_islem_miktar),
+            value=float(secilen_islem_miktar),
+            step=10.0,
+            key="input_tek_tutar_sade"
         )
-        
-        # Tutarı anlık olarak slider'dan hesaplıyoruz (rerun gerektirmez)
-        hesaplanan_tutar = round(secilen_islem_miktar * (secilen_yuzde / 100.0), 2)
-        st.info(f"Kapatılacak Net Tutar: **{hesaplanan_tutar:,.2f} $**")
 
         col_islem_yap, col_iptal = st.columns(2)
         with col_islem_yap:
-            if st.button("Emri Gerçekleştir", use_container_width=True, key="btn_emri_uygula"):
-                if hesaplanan_tutar <= 0:
+            if st.button("Emri Al", use_container_width=True, key="btn_emri_al_sade"):
+                if girilen_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                 else:
-                    # %100 seçildiyse tam kapatma, değilse kısmi kapatma
-                    hedef_miktar = None if secilen_yuzde == 100.0 else hesaplanan_tutar
+                    hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
                     
                     b_durum, b_mesaj = manuel_islem_kapat(
                         kapatilacak_id,
-                        ortak_fiyat_havuzu.get(secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)),
+                        ortak_fiyat_havuzu.get(
+                            secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)
+                        ),
                         kapatilacak_miktar=hedef_miktar
                     )
                     if b_durum:
@@ -2184,13 +2184,8 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
-                        
         with col_iptal:
-            if st.button("İptal", use_container_width=True, key="btn_kapama_vazgec"):
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
-        with col_iptal:
-            if st.button("İptal", use_container_width=True, key="btn_iptal_mukemmel"):
+            if st.button("İptal", use_container_width=True, key="btn_iptal_sade"):
                 st.session_state["kapama_paneli_acik"] = False
                 st.rerun()
 

@@ -1139,6 +1139,8 @@ if "sadece_aktifleri_goster" not in st.session_state:
     st.session_state["sadece_aktifleri_goster"] = False
 if "kapama_paneli_acik" not in st.session_state:
     st.session_state["kapama_paneli_acik"] = False
+if "islem_emri_kilit_acik" not in st.session_state:
+    st.session_state["islem_emri_kilit_acik"] = False
 
 tum_takip_edilenler = coinler + ["TOTAL"]
 islenen_ham_veriler = []
@@ -1591,12 +1593,12 @@ with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     
-    # --- YENİ FİLTRE: Sadece işleme girilebilecek (Nötr olmayan, puanı >= 54.0 olan) coinler listelenir ---
+    # Sadece işlem yapılabilecek (Nötr olmayan, puanı >= 54.0 olan) coinler filtrelenir
     df_islem_yapilabilir = df_gosterge[~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)] if not df_gosterge.empty else pd.DataFrame()
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
 
     if not coin_listesi:
-        st.info("ℹ️ Şu an işlem yapılabilecek uygun (Non-Nötr / Puan >= 54) coin bulunmuyor.")
+        st.info("ℹ️ Şu an işlem yapılabilecek uygun coin bulunmuyor.")
         secilen_coin = None
     else:
         secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi)
@@ -1652,67 +1654,79 @@ with col_sol_panel:
             unsafe_allow_html=True,
         )
 
-    with st.form(key="manuel_islem_formu"):
-        MIN_ISLEM_TUTARI = 0.0
-        if acik_pozisyon_var:
-            hesaplanan_tutar = min(100.0, float(mevcut_bakiye))
-        else:
-            hesaplanan_tutar = float(onerilen_tutar_hesap)
+    st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
-        guvenli_tutar = max(float(MIN_ISLEM_TUTARI), float(hesaplanan_tutar))
-        max_tutar = (
-            max(float(guvenli_tutar), float(mevcut_bakiye))
-            if mevcut_bakiye > 0
-            else 999999.0
-        )
+    # İşlemi Kapat paneli ile birebir aynı görsel yapı ve mantık:
+    if not st.session_state.get("islem_emri_kilit_acik", False):
+        if st.button("🔓 İşlem Açma Kilidini Aç", use_container_width=True, key="btn_islem_kilidi_ac"):
+            if coin_listesi:
+                st.session_state["islem_emri_kilit_acik"] = True
+                st.rerun()
+            else:
+                st.warning("Uygun işlem yapılacak coin bulunmuyor!")
+    else:
+        with st.form(key="manuel_islem_formu"):
+            MIN_ISLEM_TUTARI = 0.0
+            if acik_pozisyon_var:
+                hesaplanan_tutar = min(100.0, float(mevcut_bakiye))
+            else:
+                hesaplanan_tutar = float(onerilen_tutar_hesap)
 
-        manuel_girilen_tutar = st.number_input(
-            "Tutar ($ Giriniz):",
-            min_value=float(MIN_ISLEM_TUTARI),
-            max_value=float(max_tutar),
-            value=float(guvenli_tutar),
-            step=10.0,
-        )
-        
-        st.markdown(
-            f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>',
-            unsafe_allow_html=True
-        )
-        
-        # --- YENİ GÜVENLİK KİLİDİ ---
-        islem_kilidi_acik = st.checkbox("🔓 İşlem Onay Kilidini Aç (İşlem Yapabilmek İçin İşaretleyin)", value=False)
-        
-        submit_islem = False
-        if islem_kilidi_acik:
-            submit_islem = st.form_submit_button(
-                "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
-                use_container_width=True,
+            guvenli_tutar = max(float(MIN_ISLEM_TUTARI), float(hesaplanan_tutar))
+            max_tutar = (
+                max(float(guvenli_tutar), float(mevcut_bakiye))
+                if mevcut_bakiye > 0
+                else 999999.0
             )
-        else:
-            st.warning("⚠️ Yanlışlıkla işlem açılmaması için kilit kapalı. İşlem yapmak için yukarıdaki kutucuğu işaretleyin.")
 
-        if submit_islem:
-            if not secilen_coin or coin_listesi == []:
-                st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-            elif coin_verisii is not None:
-                basari, mesaj = yeni_islem_ekle(
-                    secilen_coin,
-                    coin_verisii["Aktif_Yon"],
-                    coin_verisii["Fiyat"],
-                    manuel_girilen_tutar,
-                    coin_verisii["Stopla"],
-                    coin_verisii["Kar_Al"],
-                    "Matris_Kurgusu",
-                    anlik_matris_puani,
-                    anlik_risk_hedef_metin,
+            manuel_girilen_tutar = st.number_input(
+                "Tutar ($ Giriniz):",
+                min_value=float(MIN_ISLEM_TUTARI),
+                max_value=float(max_tutar),
+                value=float(guvenli_tutar),
+                step=10.0,
+            )
+            
+            st.markdown(
+                f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>',
+                unsafe_allow_html=True
+            )
+            
+            col_islem_yap, col_kapat_kilit = st.columns(2)
+            with col_islem_yap:
+                submit_islem = st.form_submit_button(
+                    "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
+                    use_container_width=True,
                 )
-                if basari:
-                    st.success(mesaj)
-                    st.balloons()
-                    time.sleep(1)
+            with col_kapat_kilit:
+                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", use_container_width=True)
+                if kapat_kilit_tik:
+                    st.session_state["islem_emri_kilit_acik"] = False
                     st.rerun()
-                else:
-                    st.error(mesaj)
+
+            if submit_islem:
+                if not secilen_coin or coin_listesi == []:
+                    st.error("⚠️ Geçerli bir coin seçmelisiniz!")
+                elif coin_verisii is not None:
+                    basari, mesaj = yeni_islem_ekle(
+                        secilen_coin,
+                        coin_verisii["Aktif_Yon"],
+                        coin_verisii["Fiyat"],
+                        manuel_girilen_tutar,
+                        coin_verisii["Stopla"],
+                        coin_verisii["Kar_Al"],
+                        "Matris_Kurgusu",
+                        anlik_matris_puani,
+                        anlik_risk_hedef_metin,
+                    )
+                    if basari:
+                        st.session_state["islem_emri_kilit_acik"] = False
+                        st.success(mesaj)
+                        st.balloons()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(mesaj)
 
 with col_orta_grafik:
     st.markdown(

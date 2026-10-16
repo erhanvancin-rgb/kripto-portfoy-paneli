@@ -121,15 +121,9 @@ baz_fiyatlar = {
 
 
 def gmail_bildirim_gonder(konu, icerik_html):
-    gonderici_mail = os.getenv("GMAIL_SENDER", "")
-    uygulama_sifresi = os.getenv("GMAIL_APP_PASSWORD", "")
-    alici_mail = os.getenv("GMAIL_RECIPIENT", gonderici_mail)
-    if not gonderici_mail or not uygulama_sifresi or not alici_mail:
-        return (
-            False,
-            "E-posta ayarları eksik. GMAIL_SENDER, GMAIL_APP_PASSWORD ve"
-            " GMAIL_RECIPIENT tanımlayın.",
-        )
+    gonderici_mail = "erhanvancin@gmail.com"
+    uygulama_sifresi = "jkef zgaf zwtg qyom"  # Doğrudan buraya tanımladık
+    alici_mail = "erhanvancin@gmail.com"
 
     try:
         msg = MIMEMultipart()

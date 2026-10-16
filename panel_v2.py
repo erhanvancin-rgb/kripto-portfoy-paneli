@@ -263,19 +263,31 @@ def load_15min_market_data(coin_symbol: str):
     })
 
 
-# --- LOGARİTMİK DİNAMİK RİSK / HEDEF HESAPLAMA (54 Puan -> %1,30 / %1,70, 80 Puan -> %0,90 / %3,50) ---
+# --- DİNAMİK RİSK / HEDEF HESAPLAMA (MATRİS PUANINA GÖRE) ---
 def calculate_coin_metrics_by_score(matris_puani):
     if matris_puani < 54.0:
-        stop_uzde = 1.30
-        hedef_uzde = 1.70
+        stop_uzde = 1.0
+        hedef_uzde = 1.5
         risk_hedef_metin = "Nötr"
+    elif 54.0 <= matris_puani <= 60.0:
+        oran = (matris_puani - 54.0) / (60.0 - 54.0)
+        stop_uzde = 1.2 - (1.2 - 1.0) * oran
+        hedef_uzde = 1.5 + (1.8 - 1.5) * oran
+    elif 60.0 < matris_puani <= 65.0:
+        oran = (matris_puani - 60.0) / (65.0 - 60.0)
+        stop_uzde = 0.9 - (0.9 - 0.8) * oran
+        hedef_uzde = 1.9 + (2.2 - 1.9) * oran
+    elif 65.0 < matris_puani <= 75.0:
+        oran = (matris_puani - 65.0) / (75.0 - 65.0)
+        stop_uzde = 0.8 - (0.8 - 0.7) * oran
+        hedef_uzde = 2.3 + (2.8 - 2.3) * oran
     else:
-        p = min(matris_puani, 80.0)
-        t_log = math.log(p / 54.0) / math.log(80.0 / 54.0)
-        stop_uzde = 1.30 - (0.40 * t_log)
-        hedef_uzde = 1.70 + (1.80 * t_log)
+        p = min(matris_puani, 100.0)
+        oran = (p - 75.0) / (100.0 - 75.0)
+        stop_uzde = 0.7
+        hedef_uzde = 3.0 + (4.0 - 3.0) * oran
 
-    hedef_carpan = hedef_uzde / stop_uzde
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
 
     if matris_puani >= 54.0:
         str_stop = f"{stop_uzde:.2f}".rstrip("0").rstrip(".").replace(".", ",")
@@ -781,7 +793,6 @@ def yeni_islem_ekle(
 ):
     df = islem_gecmisi_getir()
 
-    # Bakiye kontrolü (%100 kasa kullanımına izin vermek için > kontrolü)
     _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
     if round(islem_miktari, 2) > round(mevcut_bakiye, 2):
         return (
@@ -794,7 +805,6 @@ def yeni_islem_ekle(
 
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
-    # Açık pozisyon kontrolü
     acik_islem_idx = None
     if not df.empty and "Durum" in df.columns:
         acik_mask = ~df["Durum"].astype(str).str.contains(
@@ -805,7 +815,6 @@ def yeni_islem_ekle(
             acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
 
     if acik_islem_idx is not None:
-        # --- MEVCUT POZİSYONA EKLEME (AĞIRLIKLI ORTALAMA / DCA MODU) ---
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
@@ -858,9 +867,7 @@ def yeni_islem_ekle(
         df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
         df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
         df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
-        df.at[acik_islem_idx, "Acilis_Zamani"] = (
-            suan_tr  # Ağırlıklı ortalamanın oluştuğu zaman
-        )
+        df.at[acik_islem_idx, "Acilis_Zamani"] = suan_tr
         df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
@@ -875,7 +882,6 @@ def yeni_islem_ekle(
         )
 
     else:
-        # --- SIFIRDAN YENİ İŞLEM AÇMA ---
         if (
             matris_puan < 54.0
             or "Nötr" in yon
@@ -1310,7 +1316,7 @@ for data in coin_ham_veriler:
         aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr"
     )
 
-    # Logaritmik Dinamik Risk / Hedef Hesaplaması
+    # Dinamik Risk / Hedef Hesaplaması
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(
         nihai_puan
     )
@@ -1602,7 +1608,7 @@ with col_sol_panel:
     onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = (
         0.0,
         0.0,
-        "1,30 / 1,70",
+        "1,20 / 1,50",
         None,
     )
     if secilen_coin:
@@ -1652,16 +1658,24 @@ with col_sol_panel:
         )
 
     with st.form(key="manuel_islem_formu"):
-        var_tutar = (
-            float(onerilen_tutar_hesap)
-            if not acik_pozisyon_var
-            else min(100.0, float(mevcut_bakiye))
+        MIN_ISLEM_TUTARI = 0.0
+        if acik_pozisyon_var:
+            hesaplanan_tutar = min(100.0, float(mevcut_bakiye))
+        else:
+            hesaplanan_tutar = float(onerilen_tutar_hesap)
+
+        guvenli_tutar = max(float(MIN_ISLEM_TUTARI), float(hesaplanan_tutar))
+        max_tutar = (
+            max(float(guvenli_tutar), float(mevcut_bakiye))
+            if mevcut_bakiye > 0
+            else 999999.0
         )
+
         manuel_girilen_tutar = st.number_input(
             "Tutar ($ Giriniz):",
-            min_value=0.0,
-            max_value=999999.0,
-            value=float(var_tutar),
+            min_value=float(MIN_ISLEM_TUTARI),
+            max_value=float(max_tutar),
+            value=float(guvenli_tutar),
             step=10.0,
         )
         st.markdown(
@@ -1738,7 +1752,6 @@ with col_orta_grafik:
 
         fig_total = make_subplots(specs=[[{"secondary_y": True}]])
 
-        # CANLI / PARLAK ARKA PLAN BANT RENKLERİ VE OPASİTELERİ
         for b_alt, b_ust, renk in [
             (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),
             (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
@@ -2116,7 +2129,6 @@ if not df_gecmisile_goster.empty:
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
-# SÜTUN SIRALAMASI GÜNCELLENMİŞ PORTFÖY TABLOSU
 portfoy_html = """
 <table class="custom-table"><thead class="custom-table-header"><tr>
  <th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th>
@@ -2189,7 +2201,7 @@ if not df_gosterilecek.empty:
         portfoy_html += (
             f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
             " style='font-weight: bold; color:"
-            f" #495057;'>{str(row.get('Matris_Puan_RH', '50.0 (1,30 / 1,70)'))}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+            f" #495057;'>{str(row.get('Matris_Puan_RH', '50.0 (1,20 / 1,50)'))}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
         )
 else:
     portfoy_html += (

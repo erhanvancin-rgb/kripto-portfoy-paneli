@@ -773,7 +773,6 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     )
 
 
-# --- YENİ İŞLEM EKLEME VE KISMI KAPAMA MİMARİSİ ---
 def yeni_islem_ekle(
     coin,
     yon,
@@ -941,8 +940,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
         mevcut_miktar = float(row["Islem_Miktari"])
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
-        # Eğer kısmi kapama ise ve miktar belirtilmişse
-        if kapatilacak_miktar is not None and 0 < kapatilacak_miktar < mevcut_miktar:
+        if kapatilacak_miktar is not None and kapatilacak_miktar < mevcut_miktar:
             fark_yuzde = (
                 ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat)
                 if "Long" in row["Yon"]
@@ -950,7 +948,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             )
             kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
             
-            # 1. Kapatılan kısmı tabloya yeni bir kapalı satır olarak ekle
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
             durum_metni = "Kısmi Kapandı (Zarar)" if kısmi_kar < 0 else "Kısmi Kapandı (Kâr)"
             
@@ -970,12 +967,11 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 "Olasi_Stop": float(row["Olasi_Stop"]),
                 "Durum": durum_metni,
                 "Net_Kar_Zarar": float(round(kismi_kar, 2)),
-                "Guncel_Kasa": float(round(toplam_kasa + kısmi_kar, 2)),
+                "Guncel_Kasa": float(round(toplam_kasa + kismi_kar, 2)),
                 "Kapanis_Zamani": suan_tr,
                 "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
             }])
             
-            # 2. Mevcut açık pozisyonun miktarını ve beklenen kar/stop değerlerini güncelle
             kalan_miktar = mevcut_miktar - kapatilacak_miktar
             df.at[idx[0], "Islem_Miktari"] = round(kalan_miktar, 2)
             
@@ -1001,7 +997,6 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $. Kalan Pozisyon: {kalan_miktar} $"
 
         else:
-            # Tamamen Kapatma
             fark_yuzde = (
                 ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat)
                 if "Long" in row["Yon"]
@@ -2100,10 +2095,11 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- KISMI KAPAMA VE İŞLEM SONLANDIRMA PANELİ ---
+# --- İŞLEMİ KAPAT / KISMI KAPAT PANELİ ---
 with col_sag_sonlandir:
-    st.markdown("<h3>🛑 İşlemi Kapat / Kısmi Kapat</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+    
     with st.form(key="pozisyon_kapat_form"):
         kapatilacak_id = st.selectbox(
             "ID Kodu:",
@@ -2111,46 +2107,67 @@ with col_sag_sonlandir:
             key="k_id",
         )
         
-        # Seçilen işlemin mevcut miktarını bul
         secilen_islem_miktar = 100.0
+        secilen_coin = "BTC/USDT"
         if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
             secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
             if not secilen_islem_satir.empty:
                 secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
+                secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
 
-        kapama_tipi = st.radio("İşlem Türü:", ["Tamamen Kapat", "Kısmi Kapat"], horizontal=True, key="k_tipi")
-        
-        kismi_tutar = 0.0
-        if kapama_tipi == "Kısmi Kapat":
-            kismi_tutar = st.number_input(
-                f"Kapatılacak Tutar ($) (Maks: {secilen_islem_miktar} $):",
-                min_value=1.0,
-                max_value=max(1.0, secilen_islem_miktar - 0.01),
-                value=min(50.0, secilen_islem_miktar / 2),
+        # Yatırım miktarı ve oran bilgisi gösterimi
+        st.markdown(
+            f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;">
+                <b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>
+                Yatırım: <b style="color:#60a5fa;">{secilen_islem_miktar:,.2f} $</b>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+        # Parasal ve oransal iki kutu seçeneği
+        col_tutar_kutusu, col_oran_kutusu = st.columns(2)
+        with col_tutar_kutusu:
+            girilen_dolar = st.number_input(
+                "Tutar ($):",
+                min_value=0.0,
+                max_value=float(secilen_islem_miktar),
+                value=float(secilen_islem_miktar),
                 step=10.0,
-                key="k_kismi_tutar"
+                key="girilen_dolar_input"
+            )
+        with col_oran_kutusu:
+            girilen_yuzde = st.number_input(
+                "Oran (%):",
+                min_value=0.0,
+                max_value=100.0,
+                value=100.0,
+                step=5.0,
+                key="girilen_yuzde_input"
             )
 
-        onay_verildi = st.checkbox("İşlemi Onayla", key="onay_chk")
         submit_kapat = st.form_submit_button(
             "Emri Gerçekleştir", use_container_width=True
         )
 
         if submit_kapat:
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                if onay_verildi:
-                    kapanacak_coin = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id][
-                        "Coin"
-                    ].iloc[0]
-                    
-                    hedef_kapatma_miktari = kismi_tutar if kapama_tipi == "Kısmi Kapat" else None
+                # Kullanıcının hangi kutuyu aktif değiştirdiğini veya tutarı baz alıyoruz
+                kapatilacak_net_tutar = girilen_dolar
+                if girilen_yuzde < 100.0:
+                    kapatilacak_net_tutar = (secilen_islem_miktar * girilen_yuzde) / 100.0
+
+                if kapatilacak_net_tutar <= 0:
+                    st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
+                else:
+                    kapanacak_coin = secilen_coin
+                    hedef_miktar = None if kapatilacak_net_tutar >= secilen_islem_miktar else kapatilacak_net_tutar
                     
                     b_durum, b_mesaj = manuel_islem_kapat(
                         kapatilacak_id,
                         ortak_fiyat_havuzu.get(
                             kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0)
                         ),
-                        kapatilacak_miktar=hedef_kapatma_miktari
+                        kapatilacak_miktar=hedef_miktar
                     )
                     if b_durum:
                         st.success(b_mesaj)
@@ -2158,8 +2175,6 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
-                else:
-                    st.warning("Onay kutusunu işaretleyin!")
             else:
                 st.info("Kapatılacak açık işlem yok.")
 

@@ -2112,7 +2112,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- KESİN ÇÖZÜMLÜ VE HATASIZ KAPAMA PANELİ ---
+# --- KESİN ÇÖZÜMLÜ VE DÜZENLİ KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2159,7 +2159,6 @@ with col_sag_sonlandir:
         if "girilen_yuzde_input" not in st.session_state:
             st.session_state["girilen_yuzde_input"] = 100.0
 
-        # Form kullanılmadan, doğrudan güvenli state akışıyla iki yönlü senkronizasyon
         col_tutar_kutusu, col_oran_kutusu = st.columns(2)
         with col_tutar_kutusu:
             yeni_dolar = st.number_input(
@@ -2180,14 +2179,15 @@ with col_sag_sonlandir:
                 key="input_oran_degeri"
             )
 
-        if yeni_dolar != st.session_state["girilen_dolar_input"]:
-            st.session_state["girilen_dolar_input"] = yeni_dolar
-            if secilen_islem_miktar > 0:
-                st.session_state["girilen_yuzde_input"] = round((yeni_dolar / secilen_islem_miktar) * 100.0, 2)
-            st.rerun()
-        elif yeni_oran != st.session_state["girilen_yuzde_input"]:
-            st.session_state["girilen_yuzde_input"] = yeni_oran
-            st.session_state["girilen_dolar_input"] = round((secilen_islem_miktar * yeni_oran) / 100.0, 2)
+        # Hesapla & Oranla Butonu
+        if st.button("🔄 Hesapla & Oranla", use_container_width=True, key="btn_hesapla_oranla"):
+            if yeni_dolar != st.session_state["girilen_dolar_input"]:
+                st.session_state["girilen_dolar_input"] = yeni_dolar
+                if secilen_islem_miktar > 0:
+                    st.session_state["girilen_yuzde_input"] = round((yeni_dolar / secilen_islem_miktar) * 100.0, 2)
+            elif yeni_oran != st.session_state["girilen_yuzde_input"]:
+                st.session_state["girilen_yuzde_input"] = yeni_oran
+                st.session_state["girilen_dolar_input"] = round((secilen_islem_miktar * yeni_oran) / 100.0, 2)
             st.rerun()
 
         col_islem_yap, col_iptal = st.columns(2)
@@ -2213,6 +2213,10 @@ with col_sag_sonlandir:
                         st.rerun()
                     else:
                         st.error(b_mesaj)
+        with col_iptal:
+            if st.button("İptal", use_container_width=True, key="btn_kapama_iptal_yeni"):
+                st.session_state["kapama_paneli_acik"] = False
+                st.rerun()
         with col_iptal:
             if st.button("İptal", use_container_width=True, key="btn_kapama_iptal_yeni"):
                 st.session_state["kapama_paneli_acik"] = False

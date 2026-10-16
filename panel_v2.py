@@ -2209,11 +2209,6 @@ if not df_gosterilecek.empty:
             durum_h = (
                 f'<div style="background-color: {k_stil}; color: #000000 !important; padding: 4px; border-radius: 4px; font-weight: bold;">{"Kâr" if is_kar else "Zarar"}</div>'
             )
-            durum_h = (
-                f'<div style="background-color: {k_stil}; color: white; padding: 4px;'
-                ' border-radius: 4px; font-weight:'
-                f' bold;">{"Kâr" if is_kar else "Zarar"}</div>'
-            )
 
         kz_h = (
             '<div style="background-color:'

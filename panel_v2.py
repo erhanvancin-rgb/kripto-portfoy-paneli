@@ -760,6 +760,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         float(efektif_kasa),
         float(bos_bakiye),
         float(aktif_marjin_toplami),
+        float(acik_kz_toplam),
     )
 
 
@@ -776,7 +777,7 @@ def yeni_islem_ekle(
 ):
     df = islem_gecmisi_getir()
 
-    _, _, mevcut_bakiye, _ = bakiye_durumunu_getir()
+    _, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
     if round(islem_miktari, 2) > round(mevcut_bakiye, 2):
         return (
             False,
@@ -842,7 +843,7 @@ def yeni_islem_ekle(
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
         matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
-        toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+        toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(
             yeni_agirlikli_ortalama, basamak
@@ -891,7 +892,7 @@ def yeni_islem_ekle(
 
         basamak = 4 if giris_fiyat < 10 else 2
         matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
-        toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+        toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
         yeni_kayit = pd.DataFrame([{
             "Islem_ID": yeni_id,
             "Acilis_Zamani": suan_tr,
@@ -941,7 +942,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
             durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
             
-            toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+            toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
             yeni_kapali_kayit = pd.DataFrame([{
                 "Islem_ID": yeni_id,
                 "Acilis_Zamani": row["Acilis_Zamani"],
@@ -1000,7 +1001,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             df.at[idx[0], "Net_Kar_Zarar"] = float(round(net_kar, 2))
             df.at[idx[0], "Kapanis_Fiyati"] = float(round(anlik_kapatma_fiyati, 4))
 
-            toplam_kasa, _, _, _ = bakiye_durumunu_getir()
+            toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
             df.at[idx[0], "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
             dataframe_guncelle_gsheets(df)
             kasa_islem_ekle_deftere(
@@ -1086,7 +1087,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 df.at[idx, "Net_Kar_Zarar"] = float(round(net_kar, 2))
                 df.at[idx, "Kapanis_Fiyati"] = float(round(kapanis_fiyat_degeri, 4))
 
-                toplam_kasa, _, _, _ = bakiye_durumunu_getir(
+                toplam_kasa, _, _, _, _ = bakiye_durumunu_getir(
                     {} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu
                 )
                 df.at[idx, "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
@@ -1425,7 +1426,7 @@ for item in gecici_islenen_liste:
 islenen_veriler = sorted(
     islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Ham_Agirlik"], -x["Skor"])
 )
-toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari = (
+toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz = (
     bakiye_durumunu_getir(ortak_fiyat_havuzu)
 )
 
@@ -1436,9 +1437,11 @@ col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
     [2, 2, 2, 2, 1.55], gap="medium"
 )
 
+# Aktif Yatırım rengi (Açık K/Z durumuna göre yeşil veya kırmızı)
+aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">📊 Aktif Yatırım</p><h1 style="color:rgb(70,0,255); margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">📊 Aktif Yatırım</p><h1 style="color:{aktif_renk}; margin:5px 0 0 0; font-size:24px;">{aktif_yatirim_tutari:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
@@ -1448,9 +1451,11 @@ with col_ust2:
         unsafe_allow_html=True,
     )
 
+# Efektif Kasa rengi (Toplam Kasa hareketlerine göre kârda ise yeşil, zararda ise kırmızı)
+efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
 with col_ust3:
     st.markdown(
-        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💎 Efektif Kasa</p><h1 style="margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
+        f"""<div class="metric-container"><p style="margin:0; font-size:14px; font-weight:bold;">💎 Efektif Kasa</p><h1 style="color:{efektif_renk}; margin:5px 0 0 0; font-size:24px;">{efektif_kasa:,.2f} $</h1></div>""",
         unsafe_allow_html=True,
     )
 
@@ -1593,7 +1598,6 @@ with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     
-    # Sadece işlem yapılabilecek (Nötr olmayan, puanı >= 54.0 olan) coinler filtrelenir
     df_islem_yapilabilir = df_gosterge[~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)] if not df_gosterge.empty else pd.DataFrame()
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
 
@@ -1656,7 +1660,6 @@ with col_sol_panel:
 
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
-    # İşlemi Kapat paneli ile birebir aynı görsel yapı ve mantık:
     if not st.session_state.get("islem_emri_kilit_acik", False):
         if st.button("🔓 İşlem Açma Kilidini Aç", use_container_width=True, key="btn_islem_kilidi_ac"):
             if coin_listesi:

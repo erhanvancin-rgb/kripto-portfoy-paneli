@@ -2112,7 +2112,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- KESİN ÇÖZÜMLÜ KARARLI KAPAMA PANELİ ---
+# --- KESİN ÇÖZÜMLÜ VE HATASIZ KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2159,7 +2159,7 @@ with col_sag_sonlandir:
         if "girilen_yuzde_input" not in st.session_state:
             st.session_state["girilen_yuzde_input"] = 100.0
 
-        # Döngüsel çakışmayı önlemek için form içinde buton mantığıyla güvenli kullanım
+        # Form yapısı içinde sadece st.form_submit_button kullanılarak layout hatası engellenmiştir
         with st.form(key="kapama_guvenli_form"):
             col_tutar_kutusu, col_oran_kutusu = st.columns(2)
             with col_tutar_kutusu:
@@ -2190,7 +2190,6 @@ with col_sag_sonlandir:
                 st.rerun()
 
             if submit_kapat:
-                # Hangisi değiştirildiyse önceliği ona vererek net tutarı hesaplıyoruz
                 kapatilacak_net_tutar = girilen_tutar
                 if girilen_oran != 100.0 and girilen_oran != st.session_state["girilen_yuzde_input"]:
                     kapatilacak_net_tutar = round((secilen_islem_miktar * girilen_oran) / 100.0, 2)

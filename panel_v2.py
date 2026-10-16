@@ -45,7 +45,7 @@ html, body, [class*="css"], .stApp { font-family: Inter, ui-sans-serif, system-u
 [data-testid="stMetric"], .metric-container { background:linear-gradient(145deg,#141f31,#0f1726) !important; border:1px solid var(--border) !important; border-radius:16px !important; padding:17px 19px !important; box-shadow:0 8px 28px rgba(0,0,0,.16); }
 .metric-container { min-height:104px; }
 .metric-container p { color:var(--muted) !important; font-size:12px !important; letter-spacing:.35px; }
-.metric-container h1 { color:var(--text) !important; font-size:25px !important; font-weight:750 !important; }
+.metric-container h1 { font-size:25px !important; font-weight:750 !important; }
 h1 { color:#f4f7ff !important; font-size:clamp(1.7rem,2.3vw,2.45rem) !important; font-weight:800 !important; letter-spacing:-.7px; }
 h2,h3,h4 { color:#e8eef8 !important; font-weight:700 !important; letter-spacing:-.25px; }
 p, label, [data-testid="stMarkdownContainer"] { color:var(--text); }
@@ -267,12 +267,8 @@ def calculate_coin_metrics_by_score(matris_puani):
     p = max(54.0, min(matris_puani, 100.0))
     log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
     
-    # Hedef aralığı: 54'te 1.40, 100'de 3.00 (Logaritmik artış)
     hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
-    
-    # Stop aralığı: 54'te 1.15, 100'de 0.65 (Logaritmik daralma)
     stop_uzde = 1.15 - (1.15 - 0.65) * (log_oran ** 0.85)
-    
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
 
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")

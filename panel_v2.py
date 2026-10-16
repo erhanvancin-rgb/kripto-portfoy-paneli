@@ -735,7 +735,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         kapali_mask = (
             df_trade["Durum"]
             .astype(str)
-            .str.contains("kapandi|kar|zarar", case=False, na=False)
+            .str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
         )
         acik_df = df_trade[~kapali_mask]
 
@@ -802,7 +802,7 @@ def yeni_islem_ekle(
     acik_islem_idx = None
     if not df.empty and "Durum" in df.columns:
         acik_mask = ~df["Durum"].astype(str).str.contains(
-            "kapandi|kar|zarar", case=False, na=False
+            "kapandi|kar|zarar|kısmi", case=False, na=False
         )
         acik_df = df[acik_mask]
         if not acik_df.empty and coin in acik_df["Coin"].values:
@@ -950,6 +950,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
             
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
+            # DÜZELTME: Kısmi kapanan kısım artık doğru şekilde "Kısmi Kapandı" olarak işaretleniyor ve aktif görünmeyecek
             durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
             
             toplam_kasa, _, _, _ = bakiye_durumunu_getir()
@@ -1063,7 +1064,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
     for idx, row in df.iterrows():
         durum_str = str(row["Durum"]).lower()
         if not (
-            "kapandi" in durum_str or "kar" in durum_str or "zarar" in durum_str
+            "kapandi" in durum_str or "kar" in durum_str or "zarar" in durum_str or "kısmi" in durum_str
         ):
             islem_id = int(row["Islem_ID"])
             coin = row["Coin"]
@@ -1725,7 +1726,7 @@ with col_sol_panel:
     acik_pozisyon_var = False
     if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
         acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains(
-            "kapandi|kar|zarar", case=False, na=False
+            "kapandi|kar|zarar|kısmi", case=False, na=False
         )
         if secilen_coin in df_gecmis_temp[acik_mask]["Coin"].values:
             acik_pozisyon_var = True
@@ -2001,7 +2002,7 @@ acik_islem_listesi = (
     df_gecmis[
         ~df_gecmis["Durum"]
         .astype(str)
-        .str.contains("kapandi|kar|zarar", case=False, na=False)
+        .str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
     ]["Islem_ID"].tolist()
     if not df_gecmis.empty and "Durum" in df_gecmis.columns
     else []
@@ -2120,7 +2121,6 @@ with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     
-    # KORUMA: ID değiştirildiğinde paneli otomatik olarak kilitleyen fonksiyon
     def paneli_kilitle():
         st.session_state["kapama_paneli_acik"] = False
 
@@ -2133,7 +2133,6 @@ with col_sag_sonlandir:
     
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
     
-    # EĞER KİLİTLİYSE (PASİF DURUM) SADECE KİLİT AÇMA BUTONU GÖRÜNÜR
     if not st.session_state.get("kapama_paneli_acik", False):
         if st.button("🔒 İşlem Kapatma Kilidini Aç", use_container_width=True, key="btn_kilit_ac_yeni"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
@@ -2141,8 +2140,6 @@ with col_sag_sonlandir:
                 st.rerun()
             else:
                 st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
-    
-    # KİLİT AÇILDIĞINDA MÜDAHALE ALANI GÖRÜNÜR
     else:
         secilen_islem_miktar = 100.0
         secilen_coin = "BTC/USDT"
@@ -2152,7 +2149,6 @@ with col_sag_sonlandir:
                 secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
                 secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
 
-        # Kapatma paneline özel kırmızımtırak dikkat çekici arkaplan
         st.markdown(
             f"""<div style="background:linear-gradient(145deg,#2b1111,#1a0b0b); color:#e8eef8; border:1px solid #5b3030; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;">
                 <b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>
@@ -2203,7 +2199,7 @@ if not df_gecmisile_goster.empty:
         df_gecmisile_goster[
             ~df_gecmisile_goster["Durum"]
             .astype(str)
-            .str.contains("kapandi|kar|zarar", case=False, na=False)
+            .str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
         ]
         if st.session_state["sadece_aktifleri_goster"]
         else df_gecmisile_goster.copy()
@@ -2257,6 +2253,7 @@ if not df_gecmisile_goster.empty:
             "kapandi" in str(row["Durum"]).lower()
             or "kar" in str(row["Durum"]).lower()
             or "zarar" in str(row["Durum"]).lower()
+            or "kısmi" in str(row["Durum"]).lower()
         ):
             anlik_kz_sozluk[islem_id] = round(
                 miktar
@@ -2313,6 +2310,7 @@ if not df_gosterilecek.empty:
             "kapandi" in str(row["Durum"]).lower()
             or "kar" in str(row["Durum"]).lower()
             or "zarar" in str(row["Durum"]).lower()
+            or "kısmi" in str(row["Durum"]).lower()
         ):
             kapanis_fiyat_h, durum_h = (
                 '<div style="padding: 5px; color: #6c757d;">-</div>',

@@ -1175,6 +1175,8 @@ if "gonderilen_mailler" not in st.session_state:
     st.session_state["gonderilen_mailler"] = set()
 if "total_sermaye_alarm" not in st.session_state:
     st.session_state["total_sermaye_alarm"] = None
+if "kapama_paneli_acik" not in st.session_state:
+    st.session_state["kapama_paneli_acik"] = False
 
 tum_takip_edilenler = coinler + ["TOTAL"]
 islenen_ham_veriler = []
@@ -2095,18 +2097,29 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- İŞLEMİ KAPAT / KISMI KAPAT PANELİ ---
+# --- GÜVENLİ İKİ AŞAMALI KAPAMA PANELİ ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     
-    with st.form(key="pozisyon_kapat_form"):
-        kapatilacak_id = st.selectbox(
-            "ID Kodu:",
-            acik_islem_listesi if acik_islem_listesi else [0],
-            key="k_id",
-        )
-        
+    kapatilacak_id = st.selectbox(
+        "ID Kodu:",
+        acik_islem_listesi if acik_islem_listesi else [0],
+        key="k_id_secim",
+    )
+    
+    st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
+    
+    # 1. Aşama: Sadece "Kapama Yap" Butonu
+    if not st.session_state.get("kapama_paneli_acik", False):
+        if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn"):
+            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+                st.session_state["kapama_paneli_acik"] = True
+                st.rerun()
+            else:
+                st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
+    else:
+        # 2. Aşama: Detaylı Senkronize Panel
         secilen_islem_miktar = 100.0
         secilen_coin = "BTC/USDT"
         if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
@@ -2115,7 +2128,6 @@ with col_sag_sonlandir:
                 secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
                 secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
 
-        # Yatırım miktarı ve oran bilgisi gösterimi
         st.markdown(
             f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;">
                 <b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>
@@ -2124,59 +2136,75 @@ with col_sag_sonlandir:
             unsafe_allow_html=True,
         )
 
-        # Parasal ve oransal iki kutu seçeneği
+        # Session state ile tam senkronizasyon (Tutar <-> Oran)
+        if "sync_tutar" not in st.session_state:
+            st.session_state["sync_tutar"] = secilen_islem_miktar
+        if "sync_oran" not in st.session_state:
+            st.session_state["sync_oran"] = 100.0
+
+        def tutar_degisti():
+            val = st.session_state.get("girilen_dolar_input", secilen_islem_miktar)
+            if secilen_islem_miktar > 0:
+                st.session_state["sync_oran"] = float(round((val / secilen_islem_miktar) * 100.0, 2))
+            st.session_state["sync_tutar"] = float(val)
+
+        def oran_degisti():
+            val = st.session_state.get("girilen_yuzde_input", 100.0)
+            st.session_state["sync_tutar"] = float(round((secilen_islem_miktar * val) / 100.0, 2))
+            st.session_state["sync_oran"] = float(val)
+
         col_tutar_kutusu, col_oran_kutusu = st.columns(2)
         with col_tutar_kutusu:
             girilen_dolar = st.number_input(
                 "Tutar ($):",
                 min_value=0.0,
                 max_value=float(secilen_islem_miktar),
-                value=float(secilen_islem_miktar),
+                value=float(st.session_state["sync_tutar"]),
                 step=10.0,
-                key="girilen_dolar_input"
+                key="girilen_dolar_input",
+                on_change=tutar_degisti
             )
         with col_oran_kutusu:
             girilen_yuzde = st.number_input(
                 "Oran (%):",
                 min_value=0.0,
                 max_value=100.0,
-                value=100.0,
+                value=float(st.session_state["sync_oran"]),
                 step=5.0,
-                key="girilen_yuzde_input"
+                key="girilen_yuzde_input",
+                on_change=oran_degisti
             )
 
-        submit_kapat = st.form_submit_button(
-            "Emri Gerçekleştir", use_container_width=True
-        )
-
-        if submit_kapat:
-            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                # Kullanıcının hangi kutuyu aktif değiştirdiğini veya tutarı baz alıyoruz
-                kapatilacak_net_tutar = girilen_dolar
-                if girilen_yuzde < 100.0:
-                    kapatilacak_net_tutar = (secilen_islem_miktar * girilen_yuzde) / 100.0
-
-                if kapatilacak_net_tutar <= 0:
-                    st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
-                else:
-                    kapanacak_coin = secilen_coin
-                    hedef_miktar = None if kapatilacak_net_tutar >= secilen_islem_miktar else kapatilacak_net_tutar
-                    
-                    b_durum, b_mesaj = manuel_islem_kapat(
-                        kapatilacak_id,
-                        ortak_fiyat_havuzu.get(
-                            kapanacak_coin, baz_fiyatlar.get(kapanacak_coin, 100.0)
-                        ),
-                        kapatilacak_miktar=hedef_miktar
-                    )
-                    if b_durum:
-                        st.success(b_mesaj)
-                        time.sleep(1.2)
-                        st.rerun()
+        col_islem_yap, col_iptal = st.columns(2)
+        with col_islem_yap:
+            if st.button("Emri Gerçekleştir", use_container_width=True, key="emri_gerceklestir_btn"):
+                if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+                    kapatilacak_net_tutar = st.session_state["sync_tutar"]
+                    if kapatilacak_net_tutar <= 0:
+                        st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                     else:
-                        st.error(b_mesaj)
-            else:
-                st.info("Kapatılacak açık işlem yok.")
+                        hedef_miktar = None if kapatilacak_net_tutar >= secilen_islem_miktar else kapatilacak_net_tutar
+                        
+                        b_durum, b_mesaj = manuel_islem_kapat(
+                            kapatilacak_id,
+                            ortak_fiyat_havuzu.get(
+                                secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)
+                            ),
+                            kapatilacak_miktar=hedef_miktar
+                        )
+                        if b_durum:
+                            st.session_state["kapama_paneli_acik"] = False
+                            st.success(b_mesaj)
+                            time.sleep(1.2)
+                            st.rerun()
+                        else:
+                            st.error(b_mesaj)
+                else:
+                    st.info("Kapatılacak açık işlem yok.")
+        with col_iptal:
+            if st.button("İptal", use_container_width=True, key="kapama_iptal_btn"):
+                st.session_state["kapama_paneli_acik"] = False
+                st.rerun()
 
 st.markdown("---")
 
@@ -2323,7 +2351,7 @@ if not df_gosterilecek.empty:
         portfoy_html += (
             f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
             " style='font-weight: bold; color:"
-            f" #495057;'>{str(row.get('Matris_Puan_RH', '50.0 (1,20 / 1,50)'))}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+            f' #495057;'>{str(row.get('Matris_Puan_RH', '50.0 (1,20 / 1,50)'))}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
         )
 else:
     portfoy_html += (

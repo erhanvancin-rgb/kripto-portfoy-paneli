@@ -140,6 +140,7 @@ def gmail_bildirim_gonder(konu, icerik_html):
         server.quit()
         return True, "E-posta başarıyla gönderildi."
     except Exception as e:
+        print(f"Mail Gönderim Hatası: {e}")
         return False, str(e)
 
 
@@ -994,6 +995,19 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 f"Kısmi K/Z: #{islem_id} {row['Coin']} ({kapatilacak_miktar}$ kapatıldı)",
             )
             elli_islem_arsiv_kontrol()
+
+            # Kısmi Kapama Mail Bildirimi
+            mail_icerik = (
+                f"<h3>Kısmi İşlem Kapatıldı</h3>"
+                f"<p><b>İşlem ID:</b> #{islem_id}</p>"
+                f"<p><b>Coin:</b> {row['Coin']}</p>"
+                f"<p><b>Yön:</b> {row['Yon']}</p>"
+                f"<p><b>Kapatılan Miktar:</b> {kapatilacak_miktar:,.2f} $</p>"
+                f"<p><b>Realize Edilen K/Z:</b> {kismi_kar:+,.2f} $</p>"
+                f"<p><b>Güncel Kasa:</b> {toplam_kasa + kismi_kar:,.2f} $</p>"
+            )
+            gmail_bildirim_gonder(f"🔔 Kısmi Kapatma Raporu: #{islem_id} {row['Coin']}", mail_icerik)
+
             return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $. Kalan Pozisyon: {kalan_miktar} $"
 
         else:
@@ -1021,11 +1035,13 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             elli_islem_arsiv_kontrol()
 
             mail_icerik = (
-                "<h3>İşlem Tamamen Kapatıldı</h3><p><b>İşlem ID:</b>"
-                f" #{islem_id}</p><p><b>Coin:</b> {row['Coin']}</p><p><b>Yön:</b>"
-                f" {row['Yon']}</p><p><b>Durum:</b> {durum_metni}</p><p><b>Net"
-                f" Kâr/Zarar:</b> {net_kar:+,.2f} $</p><p><b>Güncel Kasa:</b>"
-                f" {toplam_kasa + net_kar:,.2f} $</p>"
+                f"<h3>İşlem Tamamen Kapatıldı</h3>"
+                f"<p><b>İşlem ID:</b> #{islem_id}</p>"
+                f"<p><b>Coin:</b> {row['Coin']}</p>"
+                f"<p><b>Yön:</b> {row['Yon']}</p>"
+                f"<p><b>Durum:</b> {durum_metni}</p>"
+                f"<p><b>Net Kâr/Zarar:</b> {net_kar:+,.2f} $</p>"
+                f"<p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
             )
             gmail_bildirim_gonder(
                 f"🔔 Kapatma Raporu: #{islem_id} {row['Coin']} ({durum_metni})",
@@ -2097,7 +2113,7 @@ with col_orta_durum:
     else:
         st.info("ℹ️ Tüm işlemler.")
 
-# --- GÜVENLİ İKİ AŞAMALI KAPAMA PANELİ ---
+# --- GÜVENLİ İKİ AŞAMALI KAPAMA PANELİ (DÜZELTİLMİŞ SENKRONİZASYON) ---
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
@@ -2115,11 +2131,17 @@ with col_sag_sonlandir:
         if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                 st.session_state["kapama_paneli_acik"] = True
+                # Seçilen işlemin yatırım tutarını başlangıç state'ine alıyoruz
+                secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
+                if not secilen_islem_satir.empty:
+                    miktarr = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
+                    st.session_state["sync_tutar"] = miktarr
+                    st.session_state["sync_oran"] = 100.0
                 st.rerun()
             else:
                 st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
     else:
-        # 2. Aşama: Detaylı Senkronize Panel
+        # 2. Aşama: Güvenli ve Kararlı Senkronize Panel
         secilen_islem_miktar = 100.0
         secilen_coin = "BTC/USDT"
         if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
@@ -2136,22 +2158,10 @@ with col_sag_sonlandir:
             unsafe_allow_html=True,
         )
 
-        # Session state ile tam senkronizasyon (Tutar <-> Oran)
         if "sync_tutar" not in st.session_state:
             st.session_state["sync_tutar"] = secilen_islem_miktar
         if "sync_oran" not in st.session_state:
             st.session_state["sync_oran"] = 100.0
-
-        def tutar_degisti():
-            val = st.session_state.get("girilen_dolar_input", secilen_islem_miktar)
-            if secilen_islem_miktar > 0:
-                st.session_state["sync_oran"] = float(round((val / secilen_islem_miktar) * 100.0, 2))
-            st.session_state["sync_tutar"] = float(val)
-
-        def oran_degisti():
-            val = st.session_state.get("girilen_yuzde_input", 100.0)
-            st.session_state["sync_tutar"] = float(round((secilen_islem_miktar * val) / 100.0, 2))
-            st.session_state["sync_oran"] = float(val)
 
         col_tutar_kutusu, col_oran_kutusu = st.columns(2)
         with col_tutar_kutusu:
@@ -2161,8 +2171,7 @@ with col_sag_sonlandir:
                 max_value=float(secilen_islem_miktar),
                 value=float(st.session_state["sync_tutar"]),
                 step=10.0,
-                key="girilen_dolar_input",
-                on_change=tutar_degisti
+                key="girilen_dolar_input"
             )
         with col_oran_kutusu:
             girilen_yuzde = st.number_input(
@@ -2171,9 +2180,19 @@ with col_sag_sonlandir:
                 max_value=100.0,
                 value=float(st.session_state["sync_oran"]),
                 step=5.0,
-                key="girilen_yuzde_input",
-                on_change=oran_degisti
+                key="girilen_yuzde_input"
             )
+
+        # Kararlı ve çakışmasız senkronizasyon kontrolü
+        if girilen_dolar != st.session_state["sync_tutar"]:
+            st.session_state["sync_tutar"] = girilen_dolar
+            if secilen_islem_miktar > 0:
+                st.session_state["sync_oran"] = round((girilen_dolar / secilen_islem_miktar) * 100.0, 2)
+            st.rerun()
+        elif girilen_yuzde != st.session_state["sync_oran"]:
+            st.session_state["sync_oran"] = girilen_yuzde
+            st.session_state["sync_tutar"] = round((secilen_islem_miktar * girilen_yuzde) / 100.0, 2)
+            st.rerun()
 
         col_islem_yap, col_iptal = st.columns(2)
         with col_islem_yap:

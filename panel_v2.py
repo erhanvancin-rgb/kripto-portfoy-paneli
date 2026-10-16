@@ -1590,11 +1590,16 @@ col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
-    coin_listesi = df_gosterge["Coin"].tolist() if not df_gosterge.empty else []
+    
+    # --- YENİ FİLTRE: Sadece işleme girilebilecek (Nötr olmayan, puanı >= 54.0 olan) coinler listelenir ---
+    df_islem_yapilabilir = df_gosterge[~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)] if not df_gosterge.empty else pd.DataFrame()
+    coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
 
-    secilen_coin = st.selectbox("Coin Seç:", coin_listesi) if coin_listesi else None
     if not coin_listesi:
-        st.warning("Uygun coin yok.")
+        st.info("ℹ️ Şu an işlem yapılabilecek uygun (Non-Nötr / Puan >= 54) coin bulunmuyor.")
+        secilen_coin = None
+    else:
+        secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi)
 
     onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = (
         0.0,
@@ -1603,7 +1608,7 @@ with col_sol_panel:
         None,
     )
     if secilen_coin:
-        coin_verisii = df_gosterge[df_gosterge["Coin"] == secilen_coin].iloc[0]
+        coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
         (
             onerilen_oran_val,
             anlik_matris_puani,
@@ -1620,7 +1625,7 @@ with col_sol_panel:
         acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains(
             "kapandi|kar|zarar|kısmi", case=False, na=False
         )
-        if secilen_coin in df_gecmis_temp[acik_mask]["Coin"].values:
+        if secilen_coin and secilen_coin in df_gecmis_temp[acik_mask]["Coin"].values:
             acik_pozisyon_var = True
 
     onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
@@ -1635,7 +1640,7 @@ with col_sol_panel:
         """,
             unsafe_allow_html=True,
         )
-    else:
+    elif secilen_coin:
         st.markdown(
             f"""
         <div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;">
@@ -1674,10 +1679,17 @@ with col_sol_panel:
             unsafe_allow_html=True
         )
         
-        submit_islem = st.form_submit_button(
-            "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
-            use_container_width=True,
-        )
+        # --- YENİ GÜVENLİK KİLİDİ ---
+        islem_kilidi_acik = st.checkbox("🔓 İşlem Onay Kilidini Aç (İşlem Yapabilmek İçin İşaretleyin)", value=False)
+        
+        submit_islem = False
+        if islem_kilidi_acik:
+            submit_islem = st.form_submit_button(
+                "🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat",
+                use_container_width=True,
+            )
+        else:
+            st.warning("⚠️ Yanlışlıkla işlem açılmaması için kilit kapalı. İşlem yapmak için yukarıdaki kutucuğu işaretleyin.")
 
         if submit_islem:
             if not secilen_coin or coin_listesi == []:

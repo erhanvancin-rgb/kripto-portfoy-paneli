@@ -266,11 +266,9 @@ def calculate_coin_metrics_by_score(matris_puani):
     - 54.0 puanda 1.40'tan başlar, 100.0 puanda 3.00 ile biter (Logaritmik eğri).
     """
     p = max(54.0, min(matris_puani, 100.0))
-    # Logaritmik interpolasyon eğrisi (54 -> 1.40, 100 -> 3.00)
     log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
     hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
 
-    # Symmetrical stop-loss adjustment
     stop_uzde = max(0.65, 1.15 - (p - 54.0) * (0.50 / 46.0))
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
 
@@ -2107,7 +2105,6 @@ if not df_gecmisile_goster.empty:
         anl_f = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
         anlik_fiyat_sozluk[islem_id] = anl_f
 
-        # E-Tablo ile birebir senkronizasyon (Beklenen ve Kapanan kârlar tabloda ne yazıyorsa o baz alınır)
         hedef_kar_sozluk[islem_id] = float(row["Beklenen_Kar"])
         olasi_stop_sozluk[islem_id] = float(row["Olasi_Stop"])
 
@@ -2198,11 +2195,16 @@ if not df_gosterilecek.empty:
 
         matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (1,00 / 1,40)'))
         islem_miktari_val = float(row['Islem_Miktari'])
+        
+        # Kar_Al ve Stop hassasiyet basamak ayarı
+        basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
+        kar_al_formatli = f"{float(row['Kar_Al']):,.{bas_ok := basamak_degeri}f}&nbsp;$"
+        stop_formatli = f"{float(row['Stop']):,.{basamak_degeri}f}&nbsp;$"
 
         portfoy_html += (
             f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td"
             " style='font-weight: bold; color:"
-            f' #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Stop']):,.{4 if row['Coin'] == 'XRP/USDT' else 2}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+            f' #495057;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
         )
 else:
     portfoy_html += (

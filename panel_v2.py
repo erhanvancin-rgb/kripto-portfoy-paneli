@@ -2159,7 +2159,7 @@ with col_sag_sonlandir:
         if "girilen_yuzde_input" not in st.session_state:
             st.session_state["girilen_yuzde_input"] = 100.0
 
-        # Form yapısı içinde sadece st.form_submit_button kullanılarak layout hatası engellenmiştir
+        # Form içerisindeki tüm butonlar st.form_submit_button olarak düzeltilmiştir
         with st.form(key="kapama_guvenli_form"):
             col_tutar_kutusu, col_oran_kutusu = st.columns(2)
             with col_tutar_kutusu:

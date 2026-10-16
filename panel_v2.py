@@ -1776,7 +1776,6 @@ with col_sol_panel:
             step=10.0,
         )
         
-        # Boştaki Nakit Görünümü İyileştirildi (Temiz ve Bold Yeşil)
         st.markdown(
             f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>',
             unsafe_allow_html=True
@@ -2121,22 +2120,22 @@ with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
     
-    # KORUMA: ID değiştirildiğinde paneli otomatik olarak kilitleyen (pasife alan) fonksiyon
+    # KORUMA: ID değiştirildiğinde paneli otomatik olarak kilitleyen fonksiyon
     def paneli_kilitle():
         st.session_state["kapama_paneli_acik"] = False
 
     kapatilacak_id = st.selectbox(
         "ID Kodu:",
         acik_islem_listesi if acik_islem_listesi else [0],
-        key="k_id_secim_sade",
-        on_change=paneli_kilitle  # Seçim değiştiği an kilitlenir
+        key="k_id_secim_en_yeni_kilitli",
+        on_change=paneli_kilitle
     )
     
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
     
     # EĞER KİLİTLİYSE (PASİF DURUM) SADECE KİLİT AÇMA BUTONU GÖRÜNÜR
     if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("🔒 İşlem Kapatma Kilidini Aç", use_container_width=True, key="kapama_paneli_ac_btn_sade"):
+        if st.button("🔒 İşlem Kapatma Kilidini Aç", use_container_width=True, key="btn_kilit_ac_yeni"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                 st.session_state["kapama_paneli_acik"] = True
                 st.rerun()
@@ -2168,22 +2167,19 @@ with col_sag_sonlandir:
             max_value=float(secilen_islem_miktar),
             value=float(secilen_islem_miktar),
             step=10.0,
-            key="input_tek_tutar_sade"
+            key="input_tek_tutar_en_yeni"
         )
 
         col_islem_yap, col_iptal = st.columns(2)
         with col_islem_yap:
-            if st.button("🛑 Emri Al", use_container_width=True, key="btn_emri_al_sade"):
+            if st.button("🛑 Emri Al", use_container_width=True, key="btn_emri_al_en_yeni"):
                 if girilen_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                 else:
                     hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
-                    
                     b_durum, b_mesaj = manuel_islem_kapat(
                         kapatilacak_id,
-                        ortak_fiyat_havuzu.get(
-                            secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)
-                        ),
+                        ortak_fiyat_havuzu.get(secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)),
                         kapatilacak_miktar=hedef_miktar
                     )
                     if b_durum:
@@ -2194,69 +2190,7 @@ with col_sag_sonlandir:
                     else:
                         st.error(b_mesaj)
         with col_iptal:
-            if st.button("İptal", use_container_width=True, key="btn_iptal_sade"):
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
-    
-    st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
-    
-    if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("Kapama Yap", use_container_width=True, key="kapama_paneli_ac_btn_sade"):
-            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                st.session_state["kapama_paneli_acik"] = True
-                st.rerun()
-            else:
-                st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
-    else:
-        secilen_islem_miktar = 100.0
-        secilen_coin = "BTC/USDT"
-        if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-            secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
-            if not secilen_islem_satir.empty:
-                secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
-                secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
-
-        st.markdown(
-            f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;">
-                <b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>
-                Yatırım: <b style="color:#60a5fa;">{secilen_islem_miktar:,.2f} $</b>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-
-        girilen_tutar = st.number_input(
-            "Kapatılacak Tutar ($):",
-            min_value=0.0,
-            max_value=float(secilen_islem_miktar),
-            value=float(secilen_islem_miktar),
-            step=10.0,
-            key="input_tek_tutar_sade"
-        )
-
-        col_islem_yap, col_iptal = st.columns(2)
-        with col_islem_yap:
-            if st.button("Emri Al", use_container_width=True, key="btn_emri_al_sade"):
-                if girilen_tutar <= 0:
-                    st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
-                else:
-                    hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
-                    
-                    b_durum, b_mesaj = manuel_islem_kapat(
-                        kapatilacak_id,
-                        ortak_fiyat_havuzu.get(
-                            secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)
-                        ),
-                        kapatilacak_miktar=hedef_miktar
-                    )
-                    if b_durum:
-                        st.session_state["kapama_paneli_acik"] = False
-                        st.success(b_mesaj)
-                        time.sleep(1.2)
-                        st.rerun()
-                    else:
-                        st.error(b_mesaj)
-        with col_iptal:
-            if st.button("İptal", use_container_width=True, key="btn_iptal_sade"):
+            if st.button("İptal", use_container_width=True, key="btn_iptal_en_yeni"):
                 st.session_state["kapama_paneli_acik"] = False
                 st.rerun()
 

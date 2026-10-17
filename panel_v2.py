@@ -1551,57 +1551,36 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         '''<style>
-        /* 1. ADIM: Butonun KENDİSİNİ siyah metrik kutusu yapıyoruz (Garantili Hedef) */
-        [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(7) button {
+        /* 7. Sütundaki butonu doğrudan diğer metrik kutularının tasarımına dönüştürüyoruz */
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
             height: 104px !important;
             width: 100% !important;
-            padding: 0 !important;
+            color: #e8eef8 !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
             box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
-            transition: all 0.2s ease !important;
-        }
-
-        /* İç yapıyı ortalamak için hizalama */
-        [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(7) button > div {
-            width: 100% !important;
             display: flex !important;
-            justify-content: center !important;
             align-items: center !important;
-        }
-
-        /* 2. ADIM: İçindeki metni (yazıyı) şık bir mavi butona çeviriyoruz */
-        [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(7) button p {
-            background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
-            border: 1px solid #4f83f5 !important;
-            border-radius: 10px !important;
-            color: white !important;
-            font-weight: 800 !important;
-            font-size: 14px !important;
-            padding: 12px 0px !important;
-            margin: 0 !important;
-            width: 85% !important; /* Mavi kısmın genişliği */
-            text-align: center !important;
+            justify-content: center !important;
             transition: all 0.2s ease !important;
         }
-
-        /* Üzerine gelince (hover) dış kutunun çizgisi parlasın */
-        [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(7) button:hover {
-            border-color: #3977f6 !important;
-        }
-
-        /* Üzerine gelince (hover) içteki mavi alan parlasın ve hafif yukarı kalksın */
-        [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(7) button:hover p {
-            filter: brightness(1.15) !important;
+        
+        /* Üzerine gelince (hover) diğer kutularla uyumlu şık bir parlama efekti */
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button:hover {
+            border-color: #3b82f6 !important;
+            background: linear-gradient(145deg, #1a2942, #131d2e) !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 4px 12px rgba(57, 119, 246, 0.4) !important;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.25) !important;
+            color: #ffffff !important;
         }
         </style>''',
         unsafe_allow_html=True
     )
     
-    if st.button("🏢 Kasa İşlemleri", use_container_width=True, key="ana_kasa_butonu"):
+    if st.button("🏦 Kasa İşlemleri", use_container_width=True, key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 

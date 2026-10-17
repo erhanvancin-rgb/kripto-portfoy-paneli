@@ -799,10 +799,26 @@ def yeni_islem_ekle(
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
 
+        # Eski matris puanını string içinden çekip sayısal değere dönüştürme
+        eski_matris_rh = str(df.loc[acik_islem_idx, "Matris_Puan_RH"])
+        try:
+            eski_puan = float(eski_matris_rh.split()[0].replace(",", "."))
+        except:
+            eski_puan = matris_puan
+
         yeni_toplam_miktar = eski_miktar + islem_miktari
+        
+        # Ağırlıklı ortalama maliyet hesabı
         yeni_agirlikli_ortalama = (
             (eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)
         ) / yeni_toplam_miktar
+
+        # Ağırlıklı ortalama matris puanı hesabı
+        yeni_agirlikli_puan = (
+            (eski_miktar * eski_puan) + (islem_miktari * matris_puan)
+        ) / yeni_toplam_miktar
+
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
 
         if eski_giris > 0:
             stop_oran = abs(stop - giris_fiyat) / giris_fiyat

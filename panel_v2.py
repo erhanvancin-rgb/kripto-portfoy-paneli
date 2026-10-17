@@ -1549,43 +1549,47 @@ with col_ust6:
     )
 
 with col_kasa_buton:
+    # Garantili bulma işlemi için görünmez bir işaretçi ekliyoruz
+    st.markdown('<div class="kasa-buton-isaretcisi"></div>', unsafe_allow_html=True)
+    
     st.markdown(
         '''<style>
-        /* 7. Sütunun dış kutusunu metrik kutusuna zorla çevirir */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) {
+        /* İçinde işaretçi olan sütun bloğunu tespit et ve Metrik Kutusu gibi tasarla */
+        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
-            padding: 24px 15px !important;
-            box-shadow: 0 8px 28px rgba(0,0,0,0.16) !important;
-            min-height: 104px !important;
+            height: 104px !important;
+            padding: 0 16px !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
+            box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
+            gap: 0 !important;
         }
         
-        /* Streamlit'in buton etrafına koyduğu gizli boşlukları sıfırla */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) > div {
-            width: 100% !important;
-        }
-
-        /* Kutunun içine oturan Mavi Buton Tasarımı */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button {
-            height: 48px !important; 
+        /* O bloğun içindeki butonu mavi şık tasarıma çevir */
+        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) button {
+            height: 48px !important;
+            min-height: 48px !important;
             margin: 0 !important;
             border-radius: 10px !important;
-            font-size: 14px !important;
             font-weight: 800 !important;
+            font-size: 14px !important;
+            color: white !important;
             background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
             border: 1px solid #4f83f5 !important;
-            color: white !important;
             width: 100% !important;
         }
         
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button:hover {
+        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) button:hover {
             filter: brightness(1.15) !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 4px 12px rgba(57, 119, 246, 0.4) !important;
+        }
+        
+        /* İşaretçinin yarattığı fazladan yüksekliği sıfırla */
+        .kasa-buton-isaretcisi {
+            display: none !important;
         }
         </style>''',
         unsafe_allow_html=True

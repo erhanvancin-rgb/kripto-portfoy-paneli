@@ -1432,7 +1432,7 @@ for v in islenen_veriler:
 # --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
 # Toplam 6 Metrik + 1 Buton Sütunu (Sığması için oranlar ayarlandı)
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6, col_kasa_buton = st.columns(
-    [1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.4], gap="small"
+    [1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6], gap="small"
 )
 
 # --- YÜZDELİK ORAN VE NET KAZANÇ HESAPLAMALARI ---
@@ -1573,8 +1573,8 @@ with col_kasa_buton:
             align-items:center !important;
             justify-content:center !important;
             width:100% !important;
-            height:104px !important;
-            min-height:104px !important;
+            height:140px !important;
+            min-height:140px !important;
             padding:12px 8px !important;
             margin:0 !important;
             background:linear-gradient(135deg,#3977f6,#5b8cff) !important;

@@ -799,7 +799,6 @@ def yeni_islem_ekle(
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
 
-        # Eski matris puanını string içinden çekip sayısal değere dönüştürme
         eski_matris_rh = str(df.loc[acik_islem_idx, "Matris_Puan_RH"])
         try:
             eski_puan = float(eski_matris_rh.split()[0].replace(",", "."))
@@ -808,17 +807,13 @@ def yeni_islem_ekle(
 
         yeni_toplam_miktar = eski_miktar + islem_miktari
         
-        # Ağırlıklı ortalama maliyet hesabı
         yeni_agirlikli_ortalama = (
             (eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)
         ) / yeni_toplam_miktar
 
-        # Ağırlıklı ortalama matris puanı hesabı
         yeni_agirlikli_puan = (
             (eski_miktar * eski_puan) + (islem_miktari * matris_puan)
         ) / yeni_toplam_miktar
-
-        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
 
         if eski_giris > 0:
             stop_oran = abs(stop - giris_fiyat) / giris_fiyat
@@ -854,7 +849,7 @@ def yeni_islem_ekle(
             )
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
-        matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(
@@ -1446,33 +1441,22 @@ for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
 # --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
-# Toplam 6 Metrik + 1 Buton Sütunu (Sığması için oranlar ayarlandı)
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6, col_kasa_buton = st.columns(
     [1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6], gap="small"
 )
 
 # --- YÜZDELİK ORAN VE NET KAZANÇ HESAPLAMALARI ---
-# 1. Realize (Gerçekleşen) Kâr/Zarar Hesaplaması (Kapanan İşlemlerden)
 df_metrik_trade = islem_gecmisi_getir(sheet_guncelle=False)
 realize_kar = 0.0
 if not df_metrik_trade.empty and "Durum" in df_metrik_trade.columns:
     kapananlar_mask = df_metrik_trade["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)
     realize_kar = pd.to_numeric(df_metrik_trade[kapananlar_mask]["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
 
-# 2. Oranların Hesaplanması
 aktif_oran = (aktif_yatirim_tutari / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
 bostaki_oran = (mevcut_bakiye / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
-
-# Yeni Eklenen: Aktif Kâr Oranı (ROI)
 aktif_kar_oran = (toplam_acik_kz / aktif_yatirim_tutari * 100) if aktif_yatirim_tutari > 0 else 0.0
-
-# Başlangıç Bakiyesine Göre Realize Edilen Kâr Oranı
 realize_kar_oran = (realize_kar / BASLANGIC_BAKIYE * 100)
-
-# Toplam Kasaya Göre Açık İşlemlerin Anlık Getiri/Götürü Oranı (Efektif Kasa Değişimi)
 ef_kasa_oran = (toplam_acik_kz / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
-
-# Başlangıç Bakiyesine Göre Toplam Kasanın Büyüme Oranı
 toplam_kasa_oran = ((toplam_kasa - BASLANGIC_BAKIYE) / BASLANGIC_BAKIYE * 100)
 
 def format_yuzde(val, is_change=False):
@@ -1501,7 +1485,6 @@ with col_ust1:
         unsafe_allow_html=True,
     )
 
-# Yeni Eklenen Aktif Kâr Kutusu
 with col_ust2:
     st.markdown(
         f"""<div class="metric-container">
@@ -2400,14 +2383,8 @@ if not df_gosterilecek.empty:
             f' nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
         )
 
-        # Tablo çizim döngüsünün içinde (portföy HTML oluşturulurken):
         matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (Nötr)'))
-
-    # Eğer işlem hâlâ aktifse ve metin içinde Nötr geçiyorsa, anlık hesaplanan skoru kullandıralım:
-    if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
-    # Coinin anlık matris puanını güncel havuzdan bulup yazdırabiliriz
-    aktif_coin_adi = row['Coin']
-    # İlgili coinin güncel skoru islenen_veriler içinden eşleştirilerek buraya dinamik verilebilir
+        islem_miktari_val = float(row['Islem_Miktari'])
         
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"

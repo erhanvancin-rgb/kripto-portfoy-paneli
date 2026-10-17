@@ -1549,50 +1549,67 @@ with col_ust6:
     )
 
 with col_kasa_buton:
+    # Kasa İşlemleri: diğer metriklerle aynı kart ölçüsü; mavi vurgulu, tam kart butonu.
     st.markdown(
         '''<style>
-        /* 7. Sütunun tamamını diğer metrik kutularının kalıbına (104px, koyu tema) sabitliyoruz */
+        /* Yalnızca üst metrik satırındaki 7. sütunu hedefler. */
         [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) {
-            background: linear-gradient(145deg, #141f31, #0f1726) !important;
-            border: 1px solid #253247 !important;
+            box-sizing: border-box !important;
+            background: linear-gradient(145deg, #172943, #101a2b) !important;
+            border: 1px solid #3977f6 !important;
             border-radius: 16px !important;
-            height: 104px !important;
-            padding: 12px 14px !important;
-            box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
+            min-height: 104px !important;
+            padding: 8px !important;
+            box-shadow: 0 0 0 1px rgba(57,119,246,.10), 0 8px 26px rgba(0,0,0,.20) !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
+            align-self: stretch !important;
+            transition: border-color .2s ease, box-shadow .2s ease !important;
         }
-
-        /* İçindeki Streamlit butonunu bu kutunun içine tam oturacak şekilde tasarlıyoruz */
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button {
-            background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
-            border: 1px solid #4f83f5 !important;
-            border-radius: 10px !important;
-            height: 48px !important;
-            min-height: 48px !important;
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7):hover {
+            border-color: #75a5ff !important;
+            box-shadow: 0 0 18px rgba(57,119,246,.22), 0 8px 26px rgba(0,0,0,.22) !important;
+        }
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] {
             width: 100% !important;
-            color: #ffffff !important;
+            margin: 0 !important;
+        }
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button {
+            box-sizing: border-box !important;
+            width: 100% !important;
+            min-height: 84px !important;
+            height: 100% !important;
+            padding: 12px 6px !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 11px !important;
+            color: #f4f7ff !important;
             font-size: 14px !important;
             font-weight: 800 !important;
-            box-shadow: 0 4px 12px rgba(57, 119, 246, 0.3) !important;
-            margin: 0 !important;
+            line-height: 1.35 !important;
+            white-space: normal !important;
+            box-shadow: none !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            transition: all 0.2s ease !important;
+            text-align: center !important;
+            transition: background .2s ease, color .2s ease !important;
         }
-        
-        /* Butonun üzerine gelince oluşacak şık parlama efekti */
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button:hover {
-            filter: brightness(1.15) !important;
-            transform: translateY(-2px) !important;
-            border-color: #91b2ff !important;
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button:hover {
+            background: rgba(57,119,246,.13) !important;
+            color: #ffffff !important;
+            border: 0 !important;
+            filter: none !important;
+            transform: none !important;
+        }
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button:focus {
+            box-shadow: inset 0 0 0 1px #75a5ff !important;
         }
         </style>''',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
-    
+
     if st.button("🏦 Kasa İşlemleri", use_container_width=True, key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()

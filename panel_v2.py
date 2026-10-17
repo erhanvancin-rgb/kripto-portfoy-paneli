@@ -1549,50 +1549,42 @@ with col_ust6:
     )
 
 with col_kasa_buton:
-    # Yalnızca Kasa İşlemleri sütununu hedefler; diğer butonlara dokunmaz.
+    # Kasa butonunu kendi Streamlit key sınıfı üzerinden hedefle; diğer butonlara dokunma.
     st.markdown(
-        """<div class="kasa-card-marker" aria-hidden="true"></div>
-        <style>
-        .kasa-card-marker { display:none !important; }
-        /* Kartı aynı satırdaki metriklerle dikeyde ortala ve tam yüksekliğe uzat. */
-        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) {
-            align-self: stretch !important;
+        """<style>
+        /* Metrik kartlarıyla aynı dış yüksekliği kullan; mavi renk korunur. */
+        .st-key-ana_kasa_butonu,
+        .st-key-ana_kasa_butonu [data-testid="stButton"] {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .st-key-ana_kasa_butonu button {
+            box-sizing: border-box !important;
             display: flex !important;
-            flex-direction: column !important;
+            align-items: center !important;
             justify-content: center !important;
+            width: 100% !important;
+            height: 104px !important;
+            min-height: 104px !important;
+            padding: 12px 8px !important;
+            margin: 0 !important;
+            background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
+            color: #ffffff !important;
+            border: 1px solid #4f83f5 !important;
+            border-radius: 16px !important;
+            font-size: 14px !important;
+            font-weight: 800 !important;
+            line-height: 1.35 !important;
+            white-space: normal !important;
+            text-align: center !important;
+            box-shadow: 0 4px 12px rgba(57,119,246,.25) !important;
+            transition: filter .18s ease, border-color .18s ease !important;
         }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] {
-            width:100% !important;
-            margin:0 !important;
-            padding:0 !important;
-        }
-        /* Yalnızca ebat ve hizalama değişir; orijinal mavi buton rengi korunur. */
-        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button {
-            box-sizing:border-box !important;
-            display:flex !important;
-            align-items:center !important;
-            justify-content:center !important;
-            width:100% !important;
-            height:140px !important;
-            min-height:140px !important;
-            padding:12px 8px !important;
-            margin:0 !important;
-            background:linear-gradient(135deg,#3977f6,#5b8cff) !important;
-            color:#ffffff !important;
-            border:1px solid #4f83f5 !important;
-            border-radius:16px !important;
-            font-size:14px !important;
-            font-weight:800 !important;
-            line-height:1.35 !important;
-            white-space:normal !important;
-            text-align:center !important;
-            box-shadow:0 4px 12px rgba(57,119,246,.25) !important;
-            transition:filter .18s ease, border-color .18s ease !important;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button:hover {
-            filter:brightness(1.08) !important;
-            border-color:#91b2ff !important;
-            transform:none !important;
+        .st-key-ana_kasa_butonu button:hover {
+            filter: brightness(1.08) !important;
+            border-color: #91b2ff !important;
+            transform: none !important;
         }
         </style>""",
         unsafe_allow_html=True,

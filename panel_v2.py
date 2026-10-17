@@ -1549,64 +1549,52 @@ with col_ust6:
     )
 
 with col_kasa_buton:
-    # Kasa İşlemleri: diğer metriklerle aynı kart ölçüsü; mavi vurgulu, tam kart butonu.
+    # Bu işaretçi CSS'in yalnızca Kasa İşlemleri sütununu hedeflemesini sağlar.
     st.markdown(
-        '''<style>
-        /* Yalnızca üst metrik satırındaki 7. sütunu hedefler. */
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) {
-            box-sizing: border-box !important;
-            background: linear-gradient(145deg, #172943, #101a2b) !important;
-            border: 1px solid #3977f6 !important;
-            border-radius: 16px !important;
-            min-height: 104px !important;
-            padding: 8px !important;
-            box-shadow: 0 0 0 1px rgba(57,119,246,.10), 0 8px 26px rgba(0,0,0,.20) !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: center !important;
+        """<div class="kasa-card-marker" aria-hidden="true"></div>
+        <style>
+        /* İşaretçi görünmez; diğer yatay satırların sütunlarına dokunulmaz. */
+        .kasa-card-marker { display: none !important; }
+        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) {
             align-self: stretch !important;
-            transition: border-color .2s ease, box-shadow .2s ease !important;
         }
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7):hover {
-            border-color: #75a5ff !important;
-            box-shadow: 0 0 18px rgba(57,119,246,.22), 0 8px 26px rgba(0,0,0,.22) !important;
-        }
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] {
+        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] {
             width: 100% !important;
             margin: 0 !important;
         }
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button {
+        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button {
             box-sizing: border-box !important;
             width: 100% !important;
-            min-height: 84px !important;
-            height: 100% !important;
-            padding: 12px 6px !important;
-            background: transparent !important;
-            border: 0 !important;
-            border-radius: 11px !important;
+            min-height: 104px !important;
+            height: 104px !important;
+            padding: 14px 8px !important;
+            background: linear-gradient(145deg, #1b3152 0%, #13233b 58%, #101a2b 100%) !important;
             color: #f4f7ff !important;
+            border: 1px solid #3977f6 !important;
+            border-radius: 16px !important;
             font-size: 14px !important;
             font-weight: 800 !important;
             line-height: 1.35 !important;
             white-space: normal !important;
-            box-shadow: none !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 0 0 1px rgba(57,119,246,.10), 0 7px 22px rgba(26,91,210,.16) !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             text-align: center !important;
-            transition: background .2s ease, color .2s ease !important;
+            transition: background .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease !important;
         }
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button:hover {
-            background: rgba(57,119,246,.13) !important;
-            color: #ffffff !important;
-            border: 0 !important;
+        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button:hover {
+            background: linear-gradient(145deg, #244578 0%, #172d4d 100%) !important;
+            border-color: #78a7ff !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(57,119,246,.25), 0 8px 24px rgba(26,91,210,.20) !important;
             filter: none !important;
-            transform: none !important;
+            transform: translateY(-1px) !important;
         }
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) [data-testid="stButton"] button:focus {
-            box-shadow: inset 0 0 0 1px #75a5ff !important;
+        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button:focus-visible {
+            outline: 2px solid #91b7ff !important;
+            outline-offset: 2px !important;
         }
-        </style>''',
+        </style>""",
         unsafe_allow_html=True,
     )
 

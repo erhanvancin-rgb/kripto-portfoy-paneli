@@ -2400,8 +2400,14 @@ if not df_gosterilecek.empty:
             f' nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
         )
 
-        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (Nötr)'))
-        islem_miktari_val = float(row['Islem_Miktari'])
+        # Tablo çizim döngüsünün içinde (portföy HTML oluşturulurken):
+matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (Nötr)'))
+
+# Eğer işlem hâlâ aktifse ve metin içinde Nötr geçiyorsa, anlık hesaplanan skoru kullandıralım:
+if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
+    # Coinin anlık matris puanını güncel havuzdan bulup yazdırabiliriz
+    aktif_coin_adi = row['Coin']
+    # İlgili coinin güncel skoru islenen_veriler içinden eşleştirilerek buraya dinamik verilebilir
         
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"

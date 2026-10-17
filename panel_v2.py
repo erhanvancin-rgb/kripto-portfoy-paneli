@@ -43,7 +43,7 @@ html, body, [class*="css"], .stApp { font-family: Inter, ui-sans-serif, system-u
 .block-container { max-width: 1600px; padding-top:1.4rem; padding-bottom:3rem; }
 [data-testid="stVerticalBlockBorderWrapper"] { background:transparent; }
 [data-testid="stMetric"], .metric-container { background:linear-gradient(145deg,#141f31,#0f1726) !important; border:1px solid var(--border) !important; border-radius:16px !important; padding:17px 19px !important; box-shadow:0 8px 28px rgba(0,0,0,.16); }
-.metric-container { box-sizing:border-box; height:104px; min-height:104px; display:flex; flex-direction:column; justify-content:center; }
+.metric-container { min-height:104px; }
 .metric-container p { color:var(--muted) !important; font-size:12px !important; letter-spacing:.35px; }
 .metric-container h1 { font-size:25px !important; font-weight:750 !important; }
 h1 { color:#f4f7ff !important; font-size:clamp(1.7rem,2.3vw,2.45rem) !important; font-weight:800 !important; letter-spacing:-.7px; }
@@ -1432,7 +1432,7 @@ for v in islenen_veriler:
 # --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
 # Toplam 6 Metrik + 1 Buton Sütunu (Sığması için oranlar ayarlandı)
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6, col_kasa_buton = st.columns(
-    [1, 1, 1, 1, 1, 1, 1], gap="small"
+    [1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.4], gap="small"
 )
 
 # --- YÜZDELİK ORAN VE NET KAZANÇ HESAPLAMALARI ---
@@ -1549,19 +1549,24 @@ with col_ust6:
     )
 
 with col_kasa_buton:
-    # Yalnızca bu kartı hedefleyen işaretçi; diğer Streamlit butonlarını etkilemez.
+    # Yalnızca Kasa İşlemleri sütununu hedefler; diğer butonlara dokunmaz.
     st.markdown(
         """<div class="kasa-card-marker" aria-hidden="true"></div>
         <style>
         .kasa-card-marker { display:none !important; }
+        /* Kartı aynı satırdaki metriklerle dikeyde ortala ve tam yüksekliğe uzat. */
         [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) {
             align-self: stretch !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
         }
         [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] {
             width:100% !important;
             margin:0 !important;
+            padding:0 !important;
         }
-        /* Butonun dış ölçüleri diğer metric-container kartlarıyla aynı: 104px. */
+        /* Yalnızca ebat ve hizalama değişir; orijinal mavi buton rengi korunur. */
         [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button {
             box-sizing:border-box !important;
             display:flex !important;
@@ -1572,29 +1577,22 @@ with col_kasa_buton:
             min-height:104px !important;
             padding:12px 8px !important;
             margin:0 !important;
-            background:linear-gradient(145deg,#141f31,#0f1726) !important;
-            color:#dce7f8 !important;
-            border:1px solid #253247 !important;
+            background:linear-gradient(135deg,#3977f6,#5b8cff) !important;
+            color:#ffffff !important;
+            border:1px solid #4f83f5 !important;
             border-radius:16px !important;
-            font-size:13px !important;
-            font-weight:750 !important;
+            font-size:14px !important;
+            font-weight:800 !important;
             line-height:1.35 !important;
             white-space:normal !important;
             text-align:center !important;
-            box-shadow:0 8px 28px rgba(0,0,0,.16) !important;
-            transition:border-color .18s ease, background .18s ease, box-shadow .18s ease !important;
+            box-shadow:0 4px 12px rgba(57,119,246,.25) !important;
+            transition:filter .18s ease, border-color .18s ease !important;
         }
         [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button:hover {
-            background:linear-gradient(145deg,#18263b,#111c2d) !important;
-            border-color:#4269a9 !important;
-            box-shadow:0 8px 28px rgba(0,0,0,.20),0 0 0 1px rgba(91,140,255,.10) !important;
-            color:#ffffff !important;
+            filter:brightness(1.08) !important;
+            border-color:#91b2ff !important;
             transform:none !important;
-            filter:none !important;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.kasa-card-marker) [data-testid="stButton"] button:focus-visible {
-            outline:2px solid #5b8cff !important;
-            outline-offset:2px !important;
         }
         </style>""",
         unsafe_allow_html=True,

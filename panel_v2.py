@@ -1429,18 +1429,54 @@ toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz =
 for v in islenen_veriler:
     v["Yatırım_Bedeli"] = f"{mevcut_bakiye * (v['Sepet_Orani'] / 100.0):,.2f} $"
 
-
 # --- DÜZGÜN TEK SATIR METRİK YAPISI VE KESİN RENK ÇÖZÜMÜ ---
-col_ust1, col_ust2, col_ust3, col_ust4, col_kasa_buton = st.columns(
-    [2, 2, 2, 2, 1.55], gap="medium"
+# Toplam 5 Metrik + 1 Buton Sütunu (Sığması için oranlar ayarlandı)
+col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_kasa_buton = st.columns(
+    [1.8, 1.8, 1.8, 1.8, 1.8, 1.4], gap="small"
 )
 
+# --- YÜZDELİK ORAN VE NET KAZANÇ HESAPLAMALARI ---
+# 1. Realize (Gerçekleşen) Kâr/Zarar Hesaplaması (Kapanan İşlemlerden)
+df_metrik_trade = islem_gecmisi_getir(sheet_guncelle=False)
+realize_kar = 0.0
+if not df_metrik_trade.empty and "Durum" in df_metrik_trade.columns:
+    kapananlar_mask = df_metrik_trade["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)
+    realize_kar = pd.to_numeric(df_metrik_trade[kapananlar_mask]["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
+
+# 2. Oranların Hesaplanması
+aktif_oran = (aktif_yatirim_tutari / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
+bostaki_oran = (mevcut_bakiye / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
+
+# Başlangıç Bakiyesine Göre Realize Edilen Kâr Oranı
+realize_kar_oran = (realize_kar / BASLANGIC_BAKIYE * 100)
+
+# Toplam Kasaya Göre Açık İşlemlerin Anlık Getiri/Götürü Oranı (Efektif Kasa Değişimi)
+ef_kasa_oran = (toplam_acik_kz / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
+
+# Başlangıç Bakiyesine Göre Toplam Kasanın Büyüme Oranı
+toplam_kasa_oran = ((toplam_kasa - BASLANGIC_BAKIYE) / BASLANGIC_BAKIYE * 100)
+
+def format_yuzde(val, is_change=False):
+    if is_change:
+        return f"+%{val:.1f}" if val > 0 else f"-%{abs(val):.1f}" if val < 0 else "%0.0"
+    return f"%{val:.1f}"
+
+aktif_oran_str = format_yuzde(aktif_oran)
+bostaki_oran_str = format_yuzde(bostaki_oran)
+realize_kar_oran_str = format_yuzde(realize_kar_oran, is_change=True)
+ef_kasa_oran_str = format_yuzde(ef_kasa_oran, is_change=True)
+toplam_kasa_oran_str = format_yuzde(toplam_kasa_oran, is_change=True)
+
+# --- METRİK KUTULARI ÇİZİMİ ---
 aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
     st.markdown(
         f"""<div class="metric-container">
             <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">📊 Aktif Yatırım</div>
-            <div style="color:{aktif_renk}; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{aktif_yatirim_tutari:,.2f} $</div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:5px 0 0 0;">
+                <div style="color:{aktif_renk}; font-size:24px; font-weight:800; letter-spacing:-0.5px;">{aktif_yatirim_tutari:,.2f} $</div>
+                <div style="color:#ffffff; font-size:14px; font-weight:700;">{aktif_oran_str}</div>
+            </div>
         </div>""",
         unsafe_allow_html=True,
     )
@@ -1449,41 +1485,71 @@ with col_ust2:
     st.markdown(
         f"""<div class="metric-container">
             <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">🟢 Boştaki Nakit</div>
-            <div style="color:#e8eef8; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{mevcut_bakiye:,.2f} $</div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:5px 0 0 0;">
+                <div style="color:#e8eef8; font-size:24px; font-weight:800; letter-spacing:-0.5px;">{mevcut_bakiye:,.2f} $</div>
+                <div style="color:#ffffff; font-size:14px; font-weight:700;">{bostaki_oran_str}</div>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+realize_kar_renk = "#00FF00" if realize_kar >= 0 else "rgb(255, 75, 0)"
+with col_ust3:
+    st.markdown(
+        f"""<div class="metric-container">
+            <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">⚡ Net Kâr (Realize)</div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:5px 0 0 0;">
+                <div style="color:{realize_kar_renk}; font-size:24px; font-weight:800; letter-spacing:-0.5px;">{realize_kar:+,.2f} $</div>
+                <div style="color:#ffffff; font-size:14px; font-weight:700;">{realize_kar_oran_str}</div>
+            </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
 efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
-with col_ust3:
+with col_ust4:
     st.markdown(
         f"""<div class="metric-container">
             <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">💎 Efektif Kasa</div>
-            <div style="color:{efektif_renk}; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{efektif_kasa:,.2f} $</div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:5px 0 0 0;">
+                <div style="color:{efektif_renk}; font-size:24px; font-weight:800; letter-spacing:-0.5px;">{efektif_kasa:,.2f} $</div>
+                <div style="color:#ffffff; font-size:14px; font-weight:700;">{ef_kasa_oran_str}</div>
+            </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
-with col_ust4:
+with col_ust5:
     st.markdown(
         f"""<div class="metric-container">
             <div style="margin:0; font-size:14px; font-weight:bold; color:#91a0b8;">💱 Toplam Kasa</div>
-            <div style="color:#e8eef8; margin:5px 0 0 0; font-size:26px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:5px 0 0 0;">
+                <div style="color:#e8eef8; font-size:24px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
+                <div style="color:#ffffff; font-size:14px; font-weight:700;">{toplam_kasa_oran_str}</div>
+            </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
 with col_kasa_buton:
-    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
-    if st.button(
-        "💵 Kasaya Para Ekle", use_container_width=True, key="kasaya_para_ekle"
-    ):
+    st.markdown(
+        '''<style>
+        [data-testid="column"]:nth-of-type(6) [data-testid="stVerticalBlock"] {
+            gap: 6px !important;
+            padding-top: 1px !important;
+        }
+        [data-testid="column"]:nth-of-type(6) button {
+            min-height: 48px !important;
+            margin: 0 !important;
+        }
+        </style>''',
+        unsafe_allow_html=True
+    )
+    if st.button("💵 Kasaya Ekle", use_container_width=True, key="kasaya_para_ekle"):
         st.session_state["kasa_islem_turu"] = "Para Yatır"
         st.session_state["kasa_islem_acik"] = True
         st.rerun()
-    if st.button(
-        "💸 Kasadan Para Çek", use_container_width=True, key="kasadan_para_cek"
-    ):
+    if st.button("💸 Kasadan Çek", use_container_width=True, key="kasadan_para_cek"):
         st.session_state["kasa_islem_turu"] = "Para Çek"
         st.session_state["kasa_islem_acik"] = True
         st.rerun()

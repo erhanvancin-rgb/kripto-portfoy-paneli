@@ -1553,7 +1553,14 @@ with col_kasa_buton:
     st.markdown(
         """<style>
         /* Metrik kartlarıyla aynı dış yüksekliği kullan; mavi renk korunur. */
-        .st-key-ana_kasa_butonu,
+        /* Butonun genişliğini koru ve tüm buton bileşenini metrik kartlarının üst hizasına al. */
+        .st-key-ana_kasa_butonu {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: relative !important;
+            top: -16px !important;
+        }
         .st-key-ana_kasa_butonu [data-testid="stButton"] {
             width: 100% !important;
             margin: 0 !important;

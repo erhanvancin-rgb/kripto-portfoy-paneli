@@ -1551,32 +1551,41 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         '''<style>
-        /* Sütunun dış çerçevesini standart metrik kutusu tasarımına dönüştür */
-        [data-testid="column"]:nth-of-type(7) > div:first-child {
+        /* 7. Sütunun dış kutusunu metrik kutusuna zorla çevirir */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
-            padding: 17px 19px !important;
-            box-shadow: 0 8px 28px rgba(0,0,0,.16);
-            min-height: 104px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            padding: 24px 15px !important;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.16) !important;
+            min-height: 104px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
         }
-        /* İçindeki butonun yeni zarif tasarımı (resimdeki mavi ton ve yükseklik) */
-        [data-testid="column"]:nth-of-type(7) button {
+        
+        /* Streamlit'in buton etrafına koyduğu gizli boşlukları sıfırla */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) > div {
+            width: 100% !important;
+        }
+
+        /* Kutunun içine oturan Mavi Buton Tasarımı */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button {
             height: 48px !important; 
             margin: 0 !important;
             border-radius: 10px !important;
             font-size: 14px !important;
-            font-weight: bold !important;
+            font-weight: 800 !important;
             background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
             border: 1px solid #4f83f5 !important;
             color: white !important;
+            width: 100% !important;
         }
-        [data-testid="column"]:nth-of-type(7) button:hover {
-            filter: brightness(1.12);
-            transform: translateY(-1px);
+        
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button:hover {
+            filter: brightness(1.15) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 12px rgba(57, 119, 246, 0.4) !important;
         }
         </style>''',
         unsafe_allow_html=True

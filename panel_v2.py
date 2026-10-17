@@ -1549,26 +1549,31 @@ with col_ust6:
     )
 
 with col_kasa_buton:
-    # İşaretçi
-    st.markdown('<div class="kasa-buton-isaretcisi"></div>', unsafe_allow_html=True)
-    
     st.markdown(
         '''<style>
-        /* HATA DÜZELTİLDİ: Sadece 'column' elementini hedefliyoruz, tüm sayfayı değil */
-        div[data-testid="column"]:has(.kasa-buton-isaretcisi) {
+        /* 7. Sütunun en dış katmanını doğrudan metrik kutusu yapıyoruz (Kesin Çözüm) */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
-            min-height: 104px !important;
-            padding: 17px 15px !important;
+            height: 104px !important;
+            padding: 0 16px !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
             box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
         }
         
-        /* Buton stili */
-        div[data-testid="column"]:has(.kasa-buton-isaretcisi) button {
+        /* Butonu sarmalayan gizli Streamlit bloklarının iç boşluklarını sıfırlıyoruz */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) > div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+            padding: 0 !important;
+            justify-content: center !important;
+            display: flex !important;
+        }
+
+        /* Mavi Butonun İçeriye Tam Oturan Stili */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button {
             height: 48px !important;
             min-height: 48px !important;
             margin: 0 !important;
@@ -1579,15 +1584,15 @@ with col_kasa_buton:
             background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
             border: 1px solid #4f83f5 !important;
             width: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         
-        div[data-testid="column"]:has(.kasa-buton-isaretcisi) button:hover {
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button:hover {
             filter: brightness(1.15) !important;
             transform: translateY(-2px) !important;
         }
-        
-        /* İşaretçiyi gizle */
-        .kasa-buton-isaretcisi { display: none !important; }
         </style>''',
         unsafe_allow_html=True
     )

@@ -1551,21 +1551,38 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         '''<style>
-        [data-testid="column"]:nth-of-type(7) button {
-            height: 104px !important;
-            margin: 0 !important;
+        /* Sütunun dış çerçevesini standart metrik kutusu tasarımına dönüştür */
+        [data-testid="column"]:nth-of-type(7) > div:first-child {
+            background: linear-gradient(145deg, #141f31, #0f1726) !important;
+            border: 1px solid #253247 !important;
             border-radius: 16px !important;
-            font-size: 15px !important;
-            background: linear-gradient(135deg, #1f2b3e, #162234) !important;
-            border: 1px solid #3b82f6 !important;
+            padding: 17px 19px !important;
+            box-shadow: 0 8px 28px rgba(0,0,0,.16);
+            min-height: 104px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        /* İçindeki butonun yeni zarif tasarımı (resimdeki mavi ton ve yükseklik) */
+        [data-testid="column"]:nth-of-type(7) button {
+            height: 48px !important; 
+            margin: 0 !important;
+            border-radius: 10px !important;
+            font-size: 14px !important;
+            font-weight: bold !important;
+            background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
+            border: 1px solid #4f83f5 !important;
+            color: white !important;
         }
         [data-testid="column"]:nth-of-type(7) button:hover {
-            background: linear-gradient(135deg, #2a3b55, #1e2e47) !important;
+            filter: brightness(1.12);
+            transform: translateY(-1px);
         }
         </style>''',
         unsafe_allow_html=True
     )
-    if st.button("🏦 Kasa\nİşlemleri", use_container_width=True, key="ana_kasa_butonu"):
+    
+    if st.button("🏢 Kasa İşlemleri", use_container_width=True, key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 

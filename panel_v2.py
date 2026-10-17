@@ -1551,30 +1551,43 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         '''<style>
-        /* 7. Sütundaki butonu doğrudan diğer metrik kutularının tasarımına dönüştürüyoruz */
-        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button {
+        /* 7. Sütunun tamamını diğer metrik kutularının kalıbına (104px, koyu tema) sabitliyoruz */
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
             height: 104px !important;
-            width: 100% !important;
-            color: #e8eef8 !important;
-            font-size: 15px !important;
-            font-weight: 700 !important;
+            padding: 12px 14px !important;
             box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+
+        /* İçindeki Streamlit butonunu bu kutunun içine tam oturacak şekilde tasarlıyoruz */
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button {
+            background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
+            border: 1px solid #4f83f5 !important;
+            border-radius: 10px !important;
+            height: 48px !important;
+            min-height: 48px !important;
+            width: 100% !important;
+            color: #ffffff !important;
+            font-size: 14px !important;
+            font-weight: 800 !important;
+            box-shadow: 0 4px 12px rgba(57, 119, 246, 0.3) !important;
+            margin: 0 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             transition: all 0.2s ease !important;
         }
         
-        /* Üzerine gelince (hover) diğer kutularla uyumlu şık bir parlama efekti */
+        /* Butonun üzerine gelince oluşacak şık parlama efekti */
         [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-of-type(7) button:hover {
-            border-color: #3b82f6 !important;
-            background: linear-gradient(145deg, #1a2942, #131d2e) !important;
+            filter: brightness(1.15) !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 12px 32px rgba(0,0,0,0.25) !important;
-            color: #ffffff !important;
+            border-color: #91b2ff !important;
         }
         </style>''',
         unsafe_allow_html=True

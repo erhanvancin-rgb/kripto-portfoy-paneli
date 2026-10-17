@@ -1551,29 +1551,22 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         '''<style>
-        /* 7. Sütunun en dış katmanını doğrudan metrik kutusu yapıyoruz (Kesin Çözüm) */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) {
+        /* 1. ADIM: Butonu saran alanı (stButton) doğrudan Karanlık Kutuya çeviriyoruz */
+        div[data-testid="column"]:nth-of-type(7) div.stButton {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
             height: 104px !important;
             padding: 0 16px !important;
             display: flex !important;
-            flex-direction: column !important;
             justify-content: center !important;
+            align-items: center !important;
             box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
+            margin-top: 0 !important;
         }
         
-        /* Butonu sarmalayan gizli Streamlit bloklarının iç boşluklarını sıfırlıyoruz */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) > div[data-testid="stVerticalBlock"] {
-            gap: 0 !important;
-            padding: 0 !important;
-            justify-content: center !important;
-            display: flex !important;
-        }
-
-        /* Mavi Butonun İçeriye Tam Oturan Stili */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button {
+        /* 2. ADIM: Kutunun İçindeki gerçek tıklanabilir Mavi Butonun ayarları */
+        div[data-testid="column"]:nth-of-type(7) div.stButton > button {
             height: 48px !important;
             min-height: 48px !important;
             margin: 0 !important;
@@ -1584,12 +1577,10 @@ with col_kasa_buton:
             background: linear-gradient(135deg, #3977f6, #5b8cff) !important;
             border: 1px solid #4f83f5 !important;
             width: 100% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
         }
         
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(7) button:hover {
+        /* Butonun üzerine gelinceki parlama efekti */
+        div[data-testid="column"]:nth-of-type(7) div.stButton > button:hover {
             filter: brightness(1.15) !important;
             transform: translateY(-2px) !important;
         }

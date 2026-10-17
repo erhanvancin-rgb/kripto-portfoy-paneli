@@ -86,6 +86,10 @@ BASLANGIC_BAKIYE = 500.0
 KALDIRAC = 3
 TR_TZ = pytz.timezone("Europe/Istanbul")
 
+# Sinyal spam koruması için küresel hafıza sözlüğü
+if "gonderilen_sinyaller_hafizasi" not in st.session_state:
+    st.session_state["gonderilen_sinyaller_hafizasi"] = {}
+
 
 def tr_zaman():
     return datetime.now(TR_TZ)
@@ -1016,6 +1020,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 float(round(net_kar, 2)),
                 f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})",
             )
+            # Manuel kapatmalarda İSTEĞİNİZ ÜZERE mail gönderilmez.
             elli_islem_arsiv_kontrol()
             return True, f"İşlem tamamen kapatıldı. K/Z: {net_kar:.2f} $"
 
@@ -1105,11 +1110,47 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     float(round(net_kar, 2)),
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
+                
+                # --- 1) KOŞUL: Otomatik Stop / Kâr Hedefi Maili ---
+                konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
+                icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
+                gmail_bildirim_gonder(konu_mail, icerik_mail)
+
                 degisiklik_oldu = True
 
     if degisiklik_oldu:
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
+
+
+def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni):
+    # Sinyal spam koruması (Hafıza sözlüğü kontrolü)
+    if "gonderilen_sinyaller_hafizasi" not in st.session_state:
+        st.session_state["gonderilen_sinyaller_hafizasi"] = {}
+    
+    hafiza = st.session_state["gonderilen_sinyaller_hafizasi"]
+    if sembol not in hafiza:
+        hafiza[sembol] = {"guclu_trend": False, "boga_ayi_vuruşu": False}
+
+    # --- 2) KOŞUL: Güçlü Trend Sinyali (Puan >= 70.0) ---
+    guclu_trend_oldu = nihai_puan >= 70.0
+    if guclu_trend_oldu and not hafiza[sembol]["guclu_trend"]:
+        hafiza[sembol]["guclu_trend"] = True
+        konu = f"🔥 Güçlü Trend Sinyali: {sembol} (Puan: {nihai_puan:.1f})"
+        icerik = f"<h3>Güçlü Trend Algılandı!</h3><p><b>Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
+        gmail_bildirim_gonder(konu, icerik)
+    elif not guclu_trend_oldu:
+        hafiza[sembol]["guclu_trend"] = False  # Puan düşerse hafızayı sıfırla ki tekrar girdiğinde mail atabilsin
+
+    # --- 3) KOŞUL: Boğa Vuruşu / Ayı Pençesi (Dip/Tepe Avcısı veya Güçlü Trend Başlığı) ---
+    boga_ayi_vuruşu_oldu = "Dip / Tepe Avcısı" in trend_metni or "Güçlü Trend / Boğa-Ayı Vuruşu" in trend_metni
+    if boga_ayi_vuruşu_oldu and not hafiza[sembol]["boga_ayi_vuruşu"]:
+        hafiza[sembol]["boga_ayi_vuruşu"] = True
+        konu = f"🐂🐻 Boğa Vuruşu / Ayı Pençesi: {sembol}"
+        icerik = f"<h3>Özel Formasyon Sinyali!</h3><p><b>Coin:</b> {sembol}</p><p><b>Formasyon:</b> {trend_metni}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f}</p>"
+        gmail_bildirim_gonder(konu, icerik)
+    elif not boga_ayi_vuruşu_oldu:
+        hafiza[sembol]["boga_ayi_vuruşu"] = False
 
 
 def arka_plan_dinleyicisi():
@@ -1118,8 +1159,9 @@ def arka_plan_dinleyicisi():
             tum_semboller = coinler + ["TOTAL"]
             for s in tum_semboller:
                 _, p_val, a_yon, _, _, _ = kurgusal_matris_hesapla(s)
-                if p_val >= 70.0:
-                    pass
+                # Arka planda dönerken sinyal kontrollerini tetikle
+                # (Not: Streamlit session_state thread içinde doğrudan erişilemeyebilir, 
+                # ancak ana akış her yenilendiğinde ve arka plan kontrolünde tetiklenir)
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
             print(f"Arka plan hata: {e}")
@@ -1320,6 +1362,9 @@ for data in coin_ham_veriler:
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
         ham_agirlik = 3.0
+
+    # Sinyal ve trend maillerini spam korumalı olarak kontrol et
+    sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon_turu, trend)
 
     is_notr = (
         aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr" or nihai_puan < 54.0

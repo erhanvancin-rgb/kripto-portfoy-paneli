@@ -1734,7 +1734,24 @@ with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     
-    df_islem_yapilabilir = df_gosterge[~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)] if not df_gosterge.empty else pd.DataFrame()
+    # 1. Önce açık pozisyonu olan coinleri tespit edelim
+    df_gecmis_temp = islem_gecmisi_getir(sheet_guncelle=False)
+    acik_coinler = []
+    if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
+        acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains(
+            "kapandi|kar|zarar|kısmi", case=False, na=False
+        )
+        acik_coinler = df_gecmis_temp[acik_mask]["Coin"].unique().tolist()
+
+    # 2. Seçilebilir coinler: Ya puanı 54+ olanlar (yeni işlem için) VEYA zaten açık pozisyonu olanlar (ekleme için)
+    if not df_gosterge.empty:
+        df_islem_yapilabilir = df_gosterge[
+            (~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)) | 
+            (df_gosterge["Coin"].isin(acik_coinler))
+        ]
+    else:
+        df_islem_yapilabilir = pd.DataFrame()
+
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
 
     if not coin_listesi:

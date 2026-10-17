@@ -1536,24 +1536,22 @@ with col_ust5:
         unsafe_allow_html=True,
     )
 
+toplam_kasa_renk = "#00FF00" if toplam_kasa >= BASLANGIC_BAKIYE else "rgb(255, 75, 0)"
 with col_ust6:
     st.markdown(
         f"""<div class="metric-container">
             <div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💱 Toplam Kasa</div>
             <div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;">
-                <div style="color:#e8eef8; font-size:22px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
-                <div style="color:#ffffff; font-size:13px; font-weight:700;">{toplam_kasa_oran_str}</div>
+                <div style="color:{toplam_kasa_renk}; font-size:22px; font-weight:800; letter-spacing:-0.5px;">{toplam_kasa:,.2f} $</div>
+                <div style="color:{toplam_kasa_renk}; font-size:13px; font-weight:700;">{toplam_kasa_oran_str}</div>
             </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
 with col_kasa_buton:
-    # Kasa butonunu kendi Streamlit key sınıfı üzerinden hedefle; diğer butonlara dokunma.
     st.markdown(
         """<style>
-        /* Metrik kartlarıyla aynı dış yüksekliği kullan; mavi renk korunur. */
-        /* Butonun genişliğini koru ve tüm buton bileşenini metrik kartlarının üst hizasına al. */
         .st-key-ana_kasa_butonu {
             width: 100% !important;
             margin: 0 !important;
@@ -1610,7 +1608,6 @@ if st.session_state.get("kasa_islem_acik", False):
         unsafe_allow_html=True,
     )
     
-    # Üst Blok: Sol taraf başlık ve açıklama, Sağ taraf Ekle/Çek butonları
     col_header_sol, col_header_sag = st.columns([2.5, 1])
     with col_header_sol:
         baslik = "Kasaya Para Ekle" if islem_yatir else "Kasadan Para Çek"
@@ -1631,9 +1628,8 @@ if st.session_state.get("kasa_islem_acik", False):
                 st.session_state["kasa_islem_turu"] = "Para Çek"
                 st.rerun()
                 
-    st.markdown("</div>", unsafe_allow_html=True) # Gradient kutuyu kapat
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # Alt Kısım: Form yapısı
     col_k1, col_k2, col_onay, col_kapat = st.columns([1.05, 2.2, 1, 1], gap="medium")
     with col_k1:
         kasa_tutar = st.number_input(
@@ -1738,7 +1734,6 @@ with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
     df_gosterge = pd.DataFrame(islenen_veriler)
     
-    # 1. Önce açık pozisyonu olan coinleri tespit edelim
     df_gecmis_temp = islem_gecmisi_getir(sheet_guncelle=False)
     acik_coinler = []
     if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
@@ -1747,7 +1742,6 @@ with col_sol_panel:
         )
         acik_coinler = df_gecmis_temp[acik_mask]["Coin"].unique().tolist()
 
-    # 2. Seçilebilir coinler: Ya puanı 54+ olanlar (yeni işlem için) VEYA zaten açık pozisyonu olanlar (ekleme için)
     if not df_gosterge.empty:
         df_islem_yapilabilir = df_gosterge[
             (~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)) | 

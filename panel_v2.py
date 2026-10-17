@@ -1549,27 +1549,26 @@ with col_ust6:
     )
 
 with col_kasa_buton:
-    # Garantili bulma işlemi için görünmez bir işaretçi ekliyoruz
+    # İşaretçi
     st.markdown('<div class="kasa-buton-isaretcisi"></div>', unsafe_allow_html=True)
     
     st.markdown(
         '''<style>
-        /* İçinde işaretçi olan sütun bloğunu tespit et ve Metrik Kutusu gibi tasarla */
-        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) {
+        /* HATA DÜZELTİLDİ: Sadece 'column' elementini hedefliyoruz, tüm sayfayı değil */
+        div[data-testid="column"]:has(.kasa-buton-isaretcisi) {
             background: linear-gradient(145deg, #141f31, #0f1726) !important;
             border: 1px solid #253247 !important;
             border-radius: 16px !important;
-            height: 104px !important;
-            padding: 0 16px !important;
+            min-height: 104px !important;
+            padding: 17px 15px !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
             box-shadow: 0 8px 28px rgba(0,0,0,.16) !important;
-            gap: 0 !important;
         }
         
-        /* O bloğun içindeki butonu mavi şık tasarıma çevir */
-        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) button {
+        /* Buton stili */
+        div[data-testid="column"]:has(.kasa-buton-isaretcisi) button {
             height: 48px !important;
             min-height: 48px !important;
             margin: 0 !important;
@@ -1582,15 +1581,13 @@ with col_kasa_buton:
             width: 100% !important;
         }
         
-        div[data-testid="stVerticalBlock"]:has(.kasa-buton-isaretcisi) button:hover {
+        div[data-testid="column"]:has(.kasa-buton-isaretcisi) button:hover {
             filter: brightness(1.15) !important;
             transform: translateY(-2px) !important;
         }
         
-        /* İşaretçinin yarattığı fazladan yüksekliği sıfırla */
-        .kasa-buton-isaretcisi {
-            display: none !important;
-        }
+        /* İşaretçiyi gizle */
+        .kasa-buton-isaretcisi { display: none !important; }
         </style>''',
         unsafe_allow_html=True
     )

@@ -1139,9 +1139,9 @@ for item in gecici_islenen_liste:
 
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
 
-    # Matris puanı altında yönü renge göre gösteren yapı (Long: Yeşil, Short: Kırmızı)
+    # Matris puanı altında Nötr yazısı kalır, ancak rengi Long için yeşil, Short için kırmızı olur
     yon_renk = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
-    puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if not is_notr and aktif_yon == "Long" else ("rgb(255, 75, 0)" if not is_notr and aktif_yon == "Short" else "#91a0b8")};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px; color: {yon_renk};">({aktif_yon})</span></div>'
+    puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if not is_notr and aktif_yon == "Long" else ("rgb(255, 75, 0)" if not is_notr and aktif_yon == "Short" else "#e8eef8")};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px; color: {yon_renk};">(Nötr)</span></div>'
 
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'

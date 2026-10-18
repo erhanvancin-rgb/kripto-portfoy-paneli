@@ -91,6 +91,17 @@ MAIL_LOG_DOSYASI = "mail_log.txt"
 def tr_zaman():
     return datetime.now(TR_TZ)
 
+def hafta_sonu_mu():
+    simdi = tr_zaman()
+    haftanin_gunu = simdi.weekday() # 0: Pazartesi, ..., 4: Cuma, 5: Cumartesi, 6: Pazar
+    saat = simdi.hour
+    if (haftanin_gunu == 4 and saat >= 23) or (haftanin_gunu in [5, 6]) or (haftanin_gunu == 0 and saat < 3):
+        return True
+    return False
+
+def aktif_min_puan_esigi_getir():
+    return 60.0 if hafta_sonu_mu() else 55.0
+
 def hafizayi_oku():
     if os.path.exists(HAFIZA_DOSYASI):
         try:
@@ -256,11 +267,12 @@ def load_15min_market_data(coin_symbol: str):
     })
 
 def calculate_coin_metrics_by_score(matris_puani):
-    if matris_puani < 54.0:
+    min_esik = aktif_min_puan_esigi_getir()
+    if matris_puani < min_esik:
         return 1.15, 1.8, "Nötr"
 
-    p = max(54.0, min(matris_puani, 100.0))
-    log_oran = np.log1p(p - 54.0) / np.log1p(100.0 - 54.0)
+    p = max(min_esik, min(matris_puani, 100.0))
+    log_oran = np.log1p(p - min_esik) / np.log1p(100.0 - min_esik)
     
     hedef_uzde = 1.40 + (3.00 - 1.40) * (log_oran ** 0.85)
     stop_uzde = 1.15 - (1.15 - 0.65) * (log_oran ** 0.85)
@@ -397,11 +409,12 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     nihai_long = round(toplam_long_puan, 2)
     nihai_short = round(toplam_short_puan, 2)
+    min_esik_degeri = aktif_min_puan_esigi_getir()
 
-    if nihai_long >= 54.0:
+    if nihai_long >= min_esik_degeri:
         nihai_puan = nihai_long
         aktif_yon = "Long"
-    elif nihai_short >= 54.0:
+    elif nihai_short >= min_esik_degeri:
         nihai_puan = nihai_short
         aktif_yon = "Short"
     else:
@@ -708,8 +721,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         elli_islem_arsiv_kontrol()
         return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Yeni Ort. Maliyet: {yeni_agirlikli_ortalama:,.{basamak}f} $"
     else:
-        if matris_puan < 54.0 or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon:
-            return False, "⚠️ Nötr (Puan < 54.0) veya Ters Akıntı konumunda yeni işlem açılamaz!"
+        min_esik_kontrol = aktif_min_puan_esigi_getir()
+        if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon:
+            return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
 
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
 
@@ -891,7 +905,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
-                # --- 1) KOŞUL: Otomatik Stop / Kâr Hedefi Maili ---
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 if not hafiza.get(islem_mail_anahtari, False):
@@ -908,33 +921,68 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
 
-def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni):
+def trend_asamasini_ve_yildiz_belirle(puan):
+    hsonu = hafta_sonu_mu()
+    if not hsonu:
+        # Hafta İçi Eşik: 55.0
+        if puan < 55.0:
+            return "Nötr (Beklemede)", "Nötr", 1.0, False, False
+        elif puan < 57.50:
+            return "⭐ 1. Aşama (Zayıf Trend)", "Onaylı", 3.0, False, False
+        elif puan < 62.50:
+            return "⭐⭐ 2. Aşama (Orta Trend)", "Onaylı", 3.0, False, False
+        elif puan < 66.25:
+            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", "Onaylı", 3.0, False, False
+        elif puan < 70.00:
+            return "🌟 4. Aşama (Güçlü Trend)", "Onaylı", 3.0, False, False
+        elif puan < 73.75:
+            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", "Onaylı", 4.0, True, False  # Coin için 5. aşamada mail
+        else:
+            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", "Onaylı", 5.0, False, True  # Endeks için 6. aşamada mail
+    else:
+        # Hafta Sonu Eşik: 60.0
+        if puan < 60.0:
+            return "Nötr (Beklemede)", "Nötr", 1.0, False, False
+        elif puan < 63.75:
+            return "⭐ 1. Aşama (Zayıf Trend)", "Onaylı", 3.0, False, False
+        elif puan < 67.50:
+            return "⭐⭐ 2. Aşama (Orta Trend)", "Onaylı", 3.0, False, False
+        elif puan < 71.25:
+            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", "Onaylı", 3.0, False, False
+        elif puan < 75.00:
+            return "🌟 4. Aşama (Güçlü Trend)", "Onaylı", 3.0, False, False
+        elif puan < 78.75:
+            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", "Onaylı", 4.0, True, False  # Coin için 5. aşamada mail
+        else:
+            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", "Onaylı", 5.0, False, True  # Endeks için 6. aşamada mail
+
+def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, coin_mi=True):
     hafiza = hafizayi_oku()
     if sembol not in hafiza:
-        hafiza[sembol] = {"guclu_trend": False, "boga_ayi_vuruşu": False}
+        hafiza[sembol] = {"asama_5_tetiklendi": False, "asama_6_tetiklendi": False}
 
-    # --- 2) KOŞUL: Güçlü Trend Sinyali (Puan >= 70.0) ---
-    guclu_trend_oldu = nihai_puan >= 70.0
-    if guclu_trend_oldu and not hafiza[sembol]["guclu_trend"]:
-        hafiza[sembol]["guclu_trend"] = True
+    _, _, _, asama_5_sart, asama_6_sart = trend_asamasini_ve_yildiz_belirle(nihai_puan)
+
+    # Coinler için 5. aşamada mail
+    if coin_mi and asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
+        hafiza[sembol]["asama_5_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
-        konu = f"🔥 Güçlü Trend Sinyali: {sembol} (Puan: {nihai_puan:.1f})"
-        icerik = f"<h3>Güçlü Trend Algılandı!</h3><p><b>Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
+        konu = f"🌟🌟 Çok Güçlü Trend Sinyali (5. Aşama): {sembol} (Puan: {nihai_puan:.1f})"
+        icerik = f"<h3>Coin 5. Aşama Çok Güçlü Trende Ulaştı!</h3><p><b>Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
         gmail_bildirim_gonder(konu, icerik)
-    elif not guclu_trend_oldu and hafiza[sembol]["guclu_trend"]:
-        hafiza[sembol]["guclu_trend"] = False
+    elif coin_mi and not asama_5_sart and hafiza[sembol]["asama_5_tetiklendi"]:
+        hafiza[sembol]["asama_5_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-    # --- 3) KOŞUL: Boğa Vuruşu / Ayı Pençesi ---
-    boga_ayi_vuruşu_oldu = "Dip / Tepe Avcısı" in trend_metni or "Güçlü Trend / Boğa-Ayı Vuruşu" in trend_metni
-    if boga_ayi_vuruşu_oldu and not hafiza[sembol]["boga_ayi_vuruşu"]:
-        hafiza[sembol]["boga_ayi_vuruşu"] = True
+    # Top 5 Endeksi için 6. aşamada mail
+    if not coin_mi and asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
+        hafiza[sembol]["asama_6_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
-        konu = f"🐂🐻 Boğa Vuruşu / Ayı Pençesi: {sembol}"
-        icerik = f"<h3>Özel Formasyon Sinyali!</h3><p><b>Coin:</b> {sembol}</p><p><b>Formasyon:</b> {trend_metni}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f}</p>"
+        konu = f"🔥 Top 5 Endeks Zirvede (6. Aşama - Boğa/Ayı Vuruşu): Puan {nihai_puan:.1f}"
+        icerik = f"<h3>Top 5 Endeks 6. Aşama Zirveye Ulaştı!</h3><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Durum:</b> Boğa Vuruşu / Ayı Pençesi</p>"
         gmail_bildirim_gonder(konu, icerik)
-    elif not boga_ayi_vuruşu_oldu and hafiza[sembol]["boga_ayi_vuruşu"]:
-        hafiza[sembol]["boga_ayi_vuruşu"] = False
+    elif not coin_mi and not asama_6_sart and hafiza[sembol]["asama_6_tetiklendi"]:
+        hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
 def arka_plan_dinleyicisi():
@@ -942,7 +990,9 @@ def arka_plan_dinleyicisi():
         try:
             tum_semboller = coinler + ["TOTAL"]
             for s in tum_semboller:
-                _, _, _, _, _, _ = kurgusal_matris_hesapla(s)
+                _, puan, yon, _, _, _ = kurgusal_matris_hesapla(s)
+                trend_metni, _, _, _, _ = trend_asamasini_ve_yildiz_belirle(puan)
+                sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
             print(f"Arka plan hata: {e}")
@@ -957,7 +1007,9 @@ def botu_baslat_bir_kez():
 arka_plan_thread = botu_baslat_bir_kez()
 
 st.title("Piyasa Genel Bakış")
-st.caption("Fibonacci ağırlıklı sinyal matrisi · Logaritmik Karlılık ve Risk Modeli · Portföy Takibi")
+min_esik_bilgi = aktif_min_puan_esigi_getir()
+mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
+st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Logaritmik Karlılık ve Risk Modeli · Portföy Takibi | ⚙️ **{mod_bilgi_metni}**")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1017,7 +1069,7 @@ for data in coin_ham_veriler:
     y_yuzde = (l_puan / puan_toplam * 100.0) if puan_toplam > 0 else 50.0
     k_yuzde = 100.0 - y_yuzde
 
-    c_led = "🟢" if (nihai_puan >= 54.0 and aktif_yon == "Long") else ("🔴" if (nihai_puan >= 54.0 and aktif_yon == "Short") else "🟡")
+    c_led = "🟢" if (nihai_puan >= min_esik_bilgi and aktif_yon == "Long") else ("🔴" if (nihai_puan >= min_esik_bilgi and aktif_yon == "Short") else "🟡")
     d_led = "🟢" if total_yon_val == "Long" else "🔴"
 
     yesil_led_sayisi = round((y_yuzde / 100.0) * 10.0)
@@ -1028,70 +1080,19 @@ for data in coin_ham_veriler:
         f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     )
 
-    c_yonu = "Long" if (nihai_puan >= 54.0 and aktif_yon == "Long") else ("Short" if (nihai_puan >= 54.0 and aktif_yon == "Short") else "Nötr")
-    d_yonu = total_yon_val
+    trend, aktif_yon_turu_durum, ham_agirlik, asama_5, asama_6 = trend_asamasini_ve_yildiz_belirle(nihai_puan)
 
-    is_dip_tepkisi = (c_yonu == "Long" and gunluk_oran <= -2.0 and nihai_puan >= 58.0)
-    is_tepe_donusu = (c_yonu == "Short" and gunluk_oran >= 2.0 and nihai_puan >= 58.0)
-
-    def get_6_stage_stars(puan, kategori_tipi):
-        if kategori_tipi == "Notr":
-            return "🥈" if puan < 48.0 else "🥈🥈"
-        elif kategori_tipi == "Ters_Akinti" or kategori_tipi == "Onayli":
-            if puan < 56.66: return "🥈"
-            elif puan < 59.33: return "🥈🥈"
-            elif puan < 62.00: return "🥈🥈🥈"
-            elif puan < 64.66: return "🥇🥈🥈"
-            elif puan < 67.33: return "🥇🥇🥈"
-            else: return "🥇🥇🥇"
-        elif kategori_tipi == "Avci":
-            return "🥇🥈🥈" if puan < 70.0 else "🥇🥇🥇"
-        elif kategori_tipi == "Guclu":
-            return "🥇🥇🥇"
-        return "🥈"
-
-    if aktif_yon == "Nötr" or nihai_puan < 54.0:
-        yildizlar = get_6_stage_stars(nihai_puan, "Notr")
-        trend = f"{yildizlar} Nötr (Beklemede)"
+    if nihai_puan < min_esik_bilgi:
         aktif_yon_turu = "Nötr"
         yon_html = f'<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 1.0
-    elif is_dip_tepkisi:
-        yildizlar = get_6_stage_stars(nihai_puan, "Avci")
-        trend = f"{yildizlar} Dip / Tepe Avcısı 🎣"
-        aktif_yon_turu = "Long"
-        yon_html = f'<div style="background-color: #00FF00; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 4.0
-    elif is_tepe_donusu:
-        yildizlar = get_6_stage_stars(nihai_puan, "Avci")
-        trend = f"{yildizlar} Dip / Tepe Avcısı 🎣"
-        aktif_yon_turu = "Short"
-        yon_html = f'<div style="background-color: rgb(255, 75, 0); padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 4.0
-    elif c_yonu != d_yonu and c_yonu != "Nötr":
-        yildizlar = get_6_stage_stars(nihai_puan, "Ters_Akinti")
-        trend = f"{yildizlar} Ters Akıntı"
-        aktif_yon_turu = "Nötr"
-        yon_html = f'<div style="background-color: #ffc107; padding: 6px; border-radius: 6px; color: #212529; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 2.0
-    elif nihai_puan >= 70.0:
-        yildizlar = get_6_stage_stars(nihai_puan, "Guclu")
-        trend = f"{yildizlar} Güçlü Trend / Boğa-Ayı Vuruşu 🔥"
-        aktif_yon_turu = aktif_yon
-        renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
-        yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 5.0
     else:
-        yildizlar = get_6_stage_stars(nihai_puan, "Onayli")
-        trend = f"{yildizlar} Onaylı Trend ({aktif_yon})"
         aktif_yon_turu = aktif_yon
         renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
-        ham_agirlik = 3.0
 
-    sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon_turu, trend)
+    sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon_turu, trend, coin_mi=True)
 
-    is_notr = (aktif_yon_turu == "Nötr" or "Ters Akıntı" in trend or aktif_yon == "Nötr" or nihai_puan < 54.0)
+    is_notr = (nihai_puan < min_esik_bilgi)
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(nihai_puan)
 
     gecici_islenen_liste.append({
@@ -1128,7 +1129,7 @@ for item in gecici_islenen_liste:
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
 
     if is_notr:
-        puan_html = f'<div style="font-weight: bold; color: #91a0b8;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
+        puan_html = f'<div style="font-weight: bold; color: #91a0b8;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">(Nötr)</span></div>'
     else:
         puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
 
@@ -1287,7 +1288,7 @@ with col_sol_panel:
         acik_coinler = df_gecmis_temp[acik_mask]["Coin"].unique().tolist()
 
     if not df_gosterge.empty:
-        df_islem_yapilabilir = df_gosterge[(~df_gosterge["Notr"] & (df_gosterge["Skor"] >= 54.0)) | (df_gosterge["Coin"].isin(acik_coinler))]
+        df_islem_yapilabilir = df_gosterge[(~df_gosterge["Notr"] & (df_gosterge["Skor"] >= min_esik_bilgi)) | (df_gosterge["Coin"].isin(acik_coinler))]
     else:
         df_islem_yapilabilir = pd.DataFrame()
 
@@ -1580,7 +1581,7 @@ if not df_gosterilecek.empty:
 
         kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
-        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '50.0 (Nötr)'))
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
         islem_miktari_val = float(row['Islem_Miktari'])
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"

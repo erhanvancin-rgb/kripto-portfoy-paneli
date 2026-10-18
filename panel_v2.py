@@ -1346,176 +1346,92 @@ with col_sol_panel:
                         st.error(mesaj)
 
 with col_orta_grafik:
-  st.markdown(
-      "<h3>🌐 Top 5 Coin (Fiyat, Fib Bantları & Gerçek RSI)</h3>",
-      unsafe_allow_html=True,
-  )
-  t_df_ham = total_ham_veri["df_market"]
-  t_df = t_df_ham.tail(192).reset_index(drop=True)
+    st.markdown("<h3>🌐 Top 5 Coin (Fiyat, Genişletilmiş Fib & Bağımsız RSI)</h3>", unsafe_allow_html=True)
+    t_df_ham = total_ham_veri["df_market"]
+    t_df = t_df_ham.tail(192).reset_index(drop=True)
 
-  if not t_df.empty:
-    delta = t_df["Close"].diff()
-    rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (
-        -delta.where(delta < 0, 0)
-    ).rolling(window=14).mean()
-    t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
+    if not t_df.empty:
+        delta = t_df["Close"].diff()
+        rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
 
-    min_f, max_f = float(t_df["Close"].min()), float(t_df["Close"].max())
-    if max_f - min_f < (max_f * 0.0001):
-      min_f, max_f = min_f * 0.999, max_f * 1.001
+        min_f, max_f = float(t_df["Close"].min()), float(t_df["Close"].max())
+        if max_f - min_f < (max_f * 0.0001):
+            min_f, max_f = min_f * 0.999, max_f * 1.001
 
-    fiyat_fark = max_f - min_f
-    fib_levels = {
-        0.0: min_f,
-        0.236: min_f + 0.236 * fiyat_fark,
-        0.382: min_f + 0.382 * fiyat_fark,
-        0.5: min_f + 0.5 * fiyat_fark,
-        0.618: min_f + 0.618 * fiyat_fark,
-        0.786: min_f + 0.786 * fiyat_fark,
-        1.0: max_f,
-    }
+        fiyat_fark = max_f - min_f
+        
+        # Fibonacci seviyelerini -0.250 ile 1.250 aralığına genişletiyoruz
+        genis_min = min_f - (fiyat_fark * 0.25)
+        genis_max = max_f + (fiyat_fark * 0.25)
+        genis_fark = genis_max - genis_min
 
-    min_zaman, max_zaman_grafik = (
-        t_df["timestamp"].min(),
-        t_df["timestamp"].max() + pd.Timedelta(hours=1),
-    )
-    alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.05), max_f + (
-        fiyat_fark * 0.05
-    )
+        fib_levels = {
+            -0.250: genis_min,
+            0.0: min_f, 
+            0.236: min_f + 0.236 * fiyat_fark, 
+            0.382: min_f + 0.382 * fiyat_fark,
+            0.5: min_f + 0.5 * fiyat_fark, 
+            0.618: min_f + 0.618 * fiyat_fark,
+            0.786: min_f + 0.786 * fiyat_fark, 
+            1.0: max_f,
+            1.250: genis_max
+        }
 
-    fig_total = make_subplots(specs=[[{"secondary_y": True}]])
+        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(hours=1)
+        
+        # 2 Satırlı Alt Alta Subplot Yapısı (Üstte Fiyat/Fib, Altta RSI)
+        fig_total = make_subplots(
+            rows=2, cols=1, 
+            shared_xaxes=True, 
+            vertical_spacing=0.08, 
+            row_heights=[0.7, 0.3]
+        )
 
-    # Fibonacci Renkli Dolgu Bantları (Sol Eksen / Fiyat Üzerinde)
-    for b_alt, b_ust, renk in [
-        (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),
-        (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
-        (0.382, 0.5, "rgba(255, 200, 0, 0.35)"),
-        (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
-        (0.618, 0.786, "rgba(40, 180, 80, 0.32)"),
-        (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
-    ]:
-      x_coords = (
-          list(t_df["timestamp"])
-          + [max_zaman_grafik, max_zaman_grafik]
-          + list(t_df["timestamp"][::-1])
-      )
-      y_coords = (
-          [fib_levels[b_ust]] * len(t_df)
-          + [fib_levels[b_ust], fib_levels[b_alt]]
-          + [fib_levels[b_alt]] * len(t_df)
-      )
-      fig_total.add_trace(
-          go.Scatter(
-              x=x_coords,
-              y=y_coords,
-              fill="toself",
-              fillcolor=renk,
-              line=dict(color="rgba(255,255,255,0)"),
-              showlegend=False,
-              hoverinfo="skip",
-          ),
-          secondary_y=False,
-      )
+        # --- 1. ÜST PANEL: FİYAT VE GENİŞLETİLMİŞ FİBONACCİ BANTLARI ---
+        fib_bantlar = [
+            (-0.250, 0.0, "rgba(120, 10, 30, 0.3)"),
+            (0.0, 0.236, "rgba(180, 20, 50, 0.35)"), 
+            (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
+            (0.382, 0.5, "rgba(255, 200, 0, 0.35)"), 
+            (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
+            (0.618, 0.786, "rgba(40, 180, 80, 0.32)"), 
+            (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
+            (1.0, 1.250, "rgba(0, 120, 50, 0.3)")
+        ]
+        
+        for b_alt, b_ust, renk in fib_bantlar:
+            x_coords = list(t_df["timestamp"]) + [max_zaman_grafik, max_zaman_grafik] + list(t_df["timestamp"][::-1])
+            y_coords = [fib_levels[b_ust]] * len(t_df) + [fib_levels[b_ust], fib_levels[b_alt]] + [fib_levels[b_alt]] * len(t_df)
+            fig_total.add_trace(go.Scatter(x=x_coords, y=y_coords, fill="toself", fillcolor=renk, line=dict(color="rgba(255,255,255,0)"), showlegend=False, hoverinfo="skip"), row=1, col=1)
 
-    # Fiyat Çizgisi
-    fig_total.add_trace(
-        go.Scatter(
-            x=t_df["timestamp"],
-            y=t_df["Close"],
-            mode="lines",
-            name="Total Market",
-            line=dict(color="#5b8cff", width=2.5),
-        ),
-        secondary_y=False,
-    )
+        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market", line=dict(color="#5b8cff", width=2.5)), row=1, col=1)
 
-    # RSI Çizgisi (Sağ Eksen - 0-100)
-    fig_total.add_trace(
-        go.Scatter(
-            x=t_df["timestamp"],
-            y=t_df["RSI"],
-            mode="lines",
-            name="RSI (0-100)",
-            line=dict(color="#FF9900", width=1.5, dash="solid"),
-        ),
-        secondary_y=True,
-    )
+        for oran, val in fib_levels.items():
+            fig_total.add_hline(y=val, line_dash="dash", line_color="#CCCC00" if oran == 0.5 else ("#006400" if 0.5 < oran <= 1.0 else ("#00FF00" if oran > 1.0 else "#800020")), line_width=1, row=1, col=1)
 
-    # Fibonacci Çizgileri ve Etiketleri
-    for oran, val in fib_levels.items():
-      fig_total.add_hline(
-          y=val,
-          line_dash="dash",
-          line_color="#CCCC00"
-          if oran == 0.5
-          else ("#006400" if oran > 0.5 else "#800020"),
-          line_width=1,
-          secondary_y=False,
-      )
+        # --- 2. ALT PANEL: BAĞIMSIZ GERÇEK 0-100 RSI ---
+        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["RSI"], mode="lines", name="RSI (0-100)", line=dict(color="#FF9900", width=1.5)), row=2, col=1)
+        
+        fig_total.add_hline(y=70, line_dash="dash", line_color="rgba(255,100,100,0.5)", line_width=1, row=2, col=1)
+        fig_total.add_hline(y=50, line_dash="dash", line_color="rgba(255,255,255,0.3)", line_width=1, row=2, col=1)
+        fig_total.add_hline(y=30, line_dash="dash", line_color="rgba(100,255,100,0.5)", line_width=1, row=2, col=1)
 
-    # RSI Eşik Çizgileri (70, 50, 30)
-    fig_total.add_hline(
-        y=70,
-        line_dash="dash",
-        line_color="rgba(255,100,100,0.4)",
-        line_width=1,
-        secondary_y=True,
-    )
-    fig_total.add_hline(
-        y=50,
-        line_dash="dash",
-        line_color="rgba(255,255,255,0.25)",
-        line_width=1,
-        secondary_y=True,
-    )
-    fig_total.add_hline(
-        y=30,
-        line_dash="dash",
-        line_color="rgba(100,255,100,0.4)",
-        line_width=1,
-        secondary_y=True,
-    )
-
-    fig_total.update_layout(
-        template="plotly_dark",
-        margin=dict(t=15, b=25, l=10, r=0),
-        height=340,
-        xaxis=dict(
-            range=[min_zaman, max_zaman_grafik],
-            dtick=3600000,
-            tickformat="%H:%M",
-            tickangle=25,
-            gridcolor="rgba(255,255,255,0.05)",
-        ),
-        xaxis_rangeslider_visible=False,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color="#e8eef8"),
-        ),
-    )
-
-    fig_total.update_yaxes(
-        title_text="",
-        showticklabels=False,
-        range=[alt_sinir, ust_sinir],
-        gridcolor="rgba(255,255,255,0.05)",
-        secondary_y=False,
-    )
-    fig_total.update_yaxes(
-        title_text="",
-        showticklabels=True,
-        range=[0, 100],
-        gridcolor="rgba(255,255,255,0.02)",
-        secondary_y=True,
-    )
-
-    st.plotly_chart(fig_total, use_container_width=True)
+        fig_total.update_layout(
+            template="plotly_dark", 
+            margin=dict(t=15, b=25, l=10, r=10), 
+            height=400,
+            xaxis_rangeslider_visible=False, 
+            paper_bgcolor="rgba(0,0,0,0)", 
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False
+        )
+        
+        fig_total.update_xaxes(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", gridcolor="rgba(255,255,255,0.05)", row=2, col=1)
+        fig_total.update_yaxes(range=[genis_min, genis_max], gridcolor="rgba(255,255,255,0.05)", row=1, col=1)
+        fig_total.update_yaxes(range=[0, 100], dtick=50, gridcolor="rgba(255,255,255,0.05)", row=2, col=1)
+        
+        st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)

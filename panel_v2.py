@@ -271,12 +271,11 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 0.90, 0.90 / 0.90, "Nötr"
+        return 0.90, 1.0, "Nötr"
 
-    # Yeni Akışkan Lineer İnterpolasyon Kurgusu:
-    # 55/60 Puan (Taban / Zayıf Trend) -> Risk: 0.90, Hedef: 0.90
-    # 100 Puan (Zirve / Boğa Vuruşu veya Ayı Pençesi) -> Risk: 0.60, Hedef: 2.00
-    
+    # Yeni Orantılı Risk / Hedef Kurgusu:
+    # 55/60 Puan (Zayıf Trend) -> Risk: 0.90 / Hedef: 0.90
+    # 100 Puan (Boğa Vuruşu veya Ayı Pençesi) -> Risk: 0.60 / Hedef: 2.00
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
@@ -350,6 +349,12 @@ def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
 
+    # Yeni Zaman Dilimi Omurgası ve Ağırlıkları
+    # 16 Saat (%9,5) -> 15m (64 adet)
+    # 8 Saat (%15,5) -> 5m (96 adet)
+    # 4 Saat (%50) -> 5m (48 adet)
+    # 2 Saat (%15,5) -> 1m (120 adet)
+    # 1 Saat (%9,5) -> 1m (60 adet)
     df_16s = kline_cek_binance(sembol_istek, "15m", 64)
     df_8s = kline_cek_binance(sembol_istek, "5m", 96)
     df_4s = kline_cek_binance(sembol_istek, "5m", 48)
@@ -372,11 +377,11 @@ def kurgusal_matris_hesapla(coin_symbol):
     k1 = len(df_1s[df_1s["Close"] < df_1s["Open"]]) if not df_1s.empty else 30
 
     dilimler = [
-        (y16, k16, 64, 6.37, df_16s),
-        (y8, k8, 96, 12.73, df_8s),
+        (y16, k16, 64, 9.5, df_16s),
+        (y8, k8, 96, 15.5, df_8s),
         (y4, k4, 48, 50.0, df_4s),
-        (y2, k2, 120, 20.6, df_2s),
-        (y1, k1, 60, 10.3, df_1s),
+        (y2, k2, 120, 15.5, df_2s),
+        (y1, k1, 60, 9.5, df_1s),
     ]
 
     toplam_long_puan = 0.0
@@ -1027,7 +1032,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
 mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
-st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Akışkan Risk/Hedef (0.90/0.90 -> 0.60/2.00) | ⚙️ **{mod_bilgi_metni}**")
+st.caption(f"Yeni Zaman Dilimi Matrisi (16S:%9.5, 8S:%15.5, 4S:%50, 2S:%15.5, 1S:%9.5) + RSI, EMA & Fib Katkıları | ⚙️ **{mod_bilgi_metni}**")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1369,7 +1374,7 @@ with col_sol_panel:
                         st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Top 5 Coin (16 Saat 5m Fibonacci & RSI)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin (Yeni Zaman Dilimi Omurgası & Logaritmik Teyit)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(192).reset_index(drop=True)
 

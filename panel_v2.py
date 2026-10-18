@@ -93,7 +93,7 @@ def tr_zaman():
 
 def hafta_sonu_mu():
     simdi = tr_zaman()
-    haftanin_gunu = simdi.weekday() # 0: Pazartesi, ..., 4: Cuma, 5: Cumartesi, 6: Pazar
+    haftanin_gunu = simdi.weekday()
     saat = simdi.hour
     if (haftanin_gunu == 4 and saat >= 23) or (haftanin_gunu in [5, 6]) or (haftanin_gunu == 0 and saat < 3):
         return True
@@ -419,7 +419,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         aktif_yon = "Short"
     else:
         nihai_puan = round(max(nihai_long, nihai_short), 2)
-        aktif_yon = "Nötr"
+        aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
 
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
@@ -722,7 +722,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Yeni Ort. Maliyet: {yeni_agirlikli_ortalama:,.{basamak}f} $"
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
-        if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon or "Ters Akıntı" in yon:
+        if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
             return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
 
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
@@ -921,49 +921,63 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
 
-def trend_asamasini_ve_yildiz_belirle(puan):
+def trend_asamasini_ve_yildiz_belirle(puan, aktif_yon):
     hsonu = hafta_sonu_mu()
+    min_esik = 60.0 if hsonu else 55.0
+
+    if puan < min_esik:
+        return "Nötr (Beklemede)", 1.0, False, False
+
     if not hsonu:
         # Hafta İçi Eşik: 55.0
-        if puan < 55.0:
-            return "Nötr (Beklemede)", "Nötr", 1.0, False, False
-        elif puan < 57.50:
-            return "⭐ 1. Aşama (Zayıf Trend)", "Onaylı", 3.0, False, False
+        if puan < 57.50:
+            return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
         elif puan < 62.50:
-            return "⭐⭐ 2. Aşama (Orta Trend)", "Onaylı", 3.0, False, False
+            return "⭐⭐ 2. Aşama (Orta Trend)", 3.0, False, False
         elif puan < 66.25:
-            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", "Onaylı", 3.0, False, False
+            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", 3.0, False, False
         elif puan < 70.00:
-            return "🌟 4. Aşama (Güçlü Trend)", "Onaylı", 3.0, False, False
+            return "🌟 4. Aşama (Güçlü Trend)", 3.0, False, False
         elif puan < 73.75:
-            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", "Onaylı", 4.0, True, False  # Coin için 5. aşamada mail
+            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", 4.0, True, False
         else:
-            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", "Onaylı", 5.0, False, True  # Endeks için 6. aşamada mail
+            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", 5.0, False, True
     else:
         # Hafta Sonu Eşik: 60.0
-        if puan < 60.0:
-            return "Nötr (Beklemede)", "Nötr", 1.0, False, False
-        elif puan < 63.75:
-            return "⭐ 1. Aşama (Zayıf Trend)", "Onaylı", 3.0, False, False
+        if puan < 63.75:
+            return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
         elif puan < 67.50:
-            return "⭐⭐ 2. Aşama (Orta Trend)", "Onaylı", 3.0, False, False
+            return "⭐⭐ 2. Aşama (Orta Trend)", 3.0, False, False
         elif puan < 71.25:
-            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", "Onaylı", 3.0, False, False
+            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", 3.0, False, False
         elif puan < 75.00:
-            return "🌟 4. Aşama (Güçlü Trend)", "Onaylı", 3.0, False, False
+            return "🌟 4. Aşama (Güçlü Trend)", 3.0, False, False
         elif puan < 78.75:
-            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", "Onaylı", 4.0, True, False  # Coin için 5. aşamada mail
+            return "🌟🌟 5. Aşama (Çok Güçlü Trend)", 4.0, True, False
         else:
-            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", "Onaylı", 5.0, False, True  # Endeks için 6. aşamada mail
+            return "🌟🌟🌟 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", 5.0, False, True
 
 def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, coin_mi=True):
     hafiza = hafizayi_oku()
     if sembol not in hafiza:
         hafiza[sembol] = {"asama_5_tetiklendi": False, "asama_6_tetiklendi": False}
 
-    _, _, _, asama_5_sart, asama_6_sart = trend_asamasini_ve_yildiz_belirle(nihai_puan)
+    min_esik = 60.0 if hafta_sonu_mu() else 55.0
+    asama_5_sart = False
+    asama_6_sart = False
 
-    # Coinler için 5. aşamada mail
+    if nihai_puan >= min_esik:
+        if not hafta_sonu_mu():
+            if 70.0 <= nihai_puan < 73.75:
+                asama_5_sart = True
+            elif nihai_puan >= 73.75:
+                asama_6_sart = True
+        else:
+            if 75.0 <= nihai_puan < 78.75:
+                asama_5_sart = True
+            elif nihai_puan >= 78.75:
+                asama_6_sart = True
+
     if coin_mi and asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
@@ -974,7 +988,6 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_5_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-    # Top 5 Endeksi için 6. aşamada mail
     if not coin_mi and asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
@@ -991,7 +1004,7 @@ def arka_plan_dinleyicisi():
             tum_semboller = coinler + ["TOTAL"]
             for s in tum_semboller:
                 _, puan, yon, _, _, _ = kurgusal_matris_hesapla(s)
-                trend_metni, _, _, _, _ = trend_asamasini_ve_yildiz_belirle(puan)
+                trend_metni, _, _, _ = trend_asamasini_ve_yildiz_belirle(puan, yon)
                 sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
             otomatik_stop_kar_kontrolu(None)
         except Exception as e:
@@ -1080,9 +1093,10 @@ for data in coin_ham_veriler:
         f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     )
 
-    trend, aktif_yon_turu_durum, ham_agirlik, asama_5, asama_6 = trend_asamasini_ve_yildiz_belirle(nihai_puan)
+    is_notr = (nihai_puan < min_esik_bilgi)
+    trend, ham_agirlik, asama_5, asama_6 = trend_asamasini_ve_yildiz_belirle(nihai_puan, aktif_yon)
 
-    if nihai_puan < min_esik_bilgi:
+    if is_notr:
         aktif_yon_turu = "Nötr"
         yon_html = f'<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
     else:
@@ -1092,7 +1106,6 @@ for data in coin_ham_veriler:
 
     sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon_turu, trend, coin_mi=True)
 
-    is_notr = (nihai_puan < min_esik_bilgi)
     stop_uzde, hedef_carpan, risk_hedef_metin = calculate_coin_metrics_by_score(nihai_puan)
 
     gecici_islenen_liste.append({
@@ -1108,8 +1121,8 @@ toplam_aktif_agirlik = sum([item["ham_agirlik"] for item in gecici_islenen_liste
 islenen_veriler = []
 
 for item in gecici_islenen_liste:
-    sembol, nihai_puan, aktif_yon_turu, anlik_fiyat, stop_uzde, hedef_carpan, is_notr, trend = (
-        item["sembol"], item["nihai_puan"], item["aktif_yon_turu"],
+    sembol, nihai_puan, aktif_yon_turu, aktif_yon, anlik_fiyat, stop_uzde, hedef_carpan, is_notr, trend = (
+        item["sembol"], item["nihai_puan"], item["aktif_yon_turu"], item["aktif_yon"],
         item["anlik_fiyat"], item["stop_uzde"], item["hedef_carpan"],
         item["is_notr"], item["trend"]
     )
@@ -1119,19 +1132,16 @@ for item in gecici_islenen_liste:
     else:
         sepet_orani = 0.0
 
-    if aktif_yon_turu == "Long":
+    if aktif_yon_turu == "Long" or (is_notr and aktif_yon == "Long"):
         stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
-    elif aktif_yon_turu == "Short":
-        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - (stop_uzde * hedef_carpan) / 100.0)
     else:
-        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
+        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - (stop_uzde * hedef_carpan) / 100.0)
 
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
 
-    if is_notr:
-        puan_html = f'<div style="font-weight: bold; color: #91a0b8;">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">(Nötr)</span></div>'
-    else:
-        puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if aktif_yon_turu == "Long" else "rgb(255, 75, 0)"};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px;">({aktif_yon_turu})</span></div>'
+    # Matris puanı altında yönü renge göre gösteren yapı (Long: Yeşil, Short: Kırmızı)
+    yon_renk = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
+    puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if not is_notr and aktif_yon == "Long" else ("rgb(255, 75, 0)" if not is_notr and aktif_yon == "Short" else "#91a0b8")};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px; color: {yon_renk};">({aktif_yon})</span></div>'
 
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'

@@ -1347,7 +1347,7 @@ with col_sol_panel:
 
 with col_orta_grafik:
   st.markdown(
-      "<h3>🌐 Top 5 Coin (Fiyat & Gerçek 0-100 RSI Ölçeği)</h3>",
+      "<h3>🌐 Top 5 Coin (Fiyat, Fib Bantları & Gerçek RSI)</h3>",
       unsafe_allow_html=True,
   )
   t_df_ham = total_ham_veri["df_market"]
@@ -1365,6 +1365,16 @@ with col_orta_grafik:
       min_f, max_f = min_f * 0.999, max_f * 1.001
 
     fiyat_fark = max_f - min_f
+    fib_levels = {
+        0.0: min_f,
+        0.236: min_f + 0.236 * fiyat_fark,
+        0.382: min_f + 0.382 * fiyat_fark,
+        0.5: min_f + 0.5 * fiyat_fark,
+        0.618: min_f + 0.618 * fiyat_fark,
+        0.786: min_f + 0.786 * fiyat_fark,
+        1.0: max_f,
+    }
+
     min_zaman, max_zaman_grafik = (
         t_df["timestamp"].min(),
         t_df["timestamp"].max() + pd.Timedelta(hours=1),
@@ -1373,10 +1383,41 @@ with col_orta_grafik:
         fiyat_fark * 0.05
     )
 
-    # İkinci Y eksenini aktif eden altyapı
     fig_total = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Fiyat çizgisi (Sol Eksen - secondary_y=False)
+    # Fibonacci Renkli Dolgu Bantları (Sol Eksen / Fiyat Üzerinde)
+    for b_alt, b_ust, renk in [
+        (0.0, 0.236, "rgba(180, 20, 50, 0.35)"),
+        (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
+        (0.382, 0.5, "rgba(255, 200, 0, 0.35)"),
+        (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
+        (0.618, 0.786, "rgba(40, 180, 80, 0.32)"),
+        (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
+    ]:
+      x_coords = (
+          list(t_df["timestamp"])
+          + [max_zaman_grafik, max_zaman_grafik]
+          + list(t_df["timestamp"][::-1])
+      )
+      y_coords = (
+          [fib_levels[b_ust]] * len(t_df)
+          + [fib_levels[b_ust], fib_levels[b_alt]]
+          + [fib_levels[b_alt]] * len(t_df)
+      )
+      fig_total.add_trace(
+          go.Scatter(
+              x=x_coords,
+              y=y_coords,
+              fill="toself",
+              fillcolor=renk,
+              line=dict(color="rgba(255,255,255,0)"),
+              showlegend=False,
+              hoverinfo="skip",
+          ),
+          secondary_y=False,
+      )
+
+    # Fiyat Çizgisi
     fig_total.add_trace(
         go.Scatter(
             x=t_df["timestamp"],
@@ -1388,7 +1429,7 @@ with col_orta_grafik:
         secondary_y=False,
     )
 
-    # RSI çizgisi (Sağ Eksen - secondary_y=True, 0-100 gerçek oran)
+    # RSI Çizgisi (Sağ Eksen - 0-100)
     fig_total.add_trace(
         go.Scatter(
             x=t_df["timestamp"],
@@ -1400,7 +1441,19 @@ with col_orta_grafik:
         secondary_y=True,
     )
 
-    # RSI seviye referans çizgileri (70 aşırı alım, 50 orta hat, 30 aşırı satım)
+    # Fibonacci Çizgileri ve Etiketleri
+    for oran, val in fib_levels.items():
+      fig_total.add_hline(
+          y=val,
+          line_dash="dash",
+          line_color="#CCCC00"
+          if oran == 0.5
+          else ("#006400" if oran > 0.5 else "#800020"),
+          line_width=1,
+          secondary_y=False,
+      )
+
+    # RSI Eşik Çizgileri (70, 50, 30)
     fig_total.add_hline(
         y=70,
         line_dash="dash",
@@ -1447,7 +1500,6 @@ with col_orta_grafik:
         ),
     )
 
-    # Sol eksen ayarları (Fiyat)
     fig_total.update_yaxes(
         title_text="",
         showticklabels=False,
@@ -1455,7 +1507,6 @@ with col_orta_grafik:
         gridcolor="rgba(255,255,255,0.05)",
         secondary_y=False,
     )
-    # Sağ eksen ayarları (RSI için sabit 0-100 aralığı)
     fig_total.update_yaxes(
         title_text="",
         showticklabels=True,

@@ -273,32 +273,23 @@ def calculate_coin_metrics_by_score(matris_puani):
     if matris_puani < min_esik:
         return 1.20, 1.30 / 1.20, "Nötr"
 
-    if not hsonu:
-        if 55.0 <= matris_puani < 57.50:
-            stop_uzde, hedef_uzde = 1.20, 1.30
-        elif 57.50 <= matris_puani < 62.50:
-            stop_uzde, hedef_uzde = 1.13, 1.51
-        elif 62.50 <= matris_puani < 66.25:
-            stop_uzde, hedef_uzde = 1.06, 1.72
-        elif 66.25 <= matris_puani < 70.00:
-            stop_uzde, hedef_uzde = 0.99, 1.93
-        elif 70.00 <= matris_puani < 73.75:
-            stop_uzde, hedef_uzde = 0.92, 2.14
-        else:
-            stop_uzde, hedef_uzde = 0.86, 2.35
+    # Puan bazlı akışkan lineer interpolasyon hesaplaması
+    # 55/60 puan (alt sınır) -> Risk: 0.87, Hedef: 1.30
+    # 65 puan (Güvenli Trend merkezi) -> Risk: 1.00, Hedef: 2.00
+    # 100 puan (Zirve / Boğa) -> Risk: 0.80, Hedef: 2.21
+    
+    puan = max(min_esik, min(100.0, matris_puani))
+    
+    if puan <= 65.0:
+        # 55/60 ile 65 arasında geçiş
+        oran = (puan - min_esik) / (65.0 - min_esik)
+        stop_uzde = 0.87 + (1.00 - 0.87) * oran
+        hedef_uzde = 1.30 + (2.00 - 1.30) * oran
     else:
-        if 60.0 <= matris_puani < 63.75:
-            stop_uzde, hedef_uzde = 1.20, 1.30
-        elif 63.75 <= matris_puani < 67.50:
-            stop_uzde, hedef_uzde = 1.13, 1.51
-        elif 67.50 <= matris_puani < 71.25:
-            stop_uzde, hedef_uzde = 1.06, 1.72
-        elif 71.25 <= matris_puani < 75.00:
-            stop_uzde, hedef_uzde = 0.99, 1.93
-        elif 75.00 <= matris_puani < 78.75:
-            stop_uzde, hedef_uzde = 0.92, 2.14
-        else:
-            stop_uzde, hedef_uzde = 0.86, 2.35
+        # 65 ile 100 arasında geçiş
+        oran = (puan - 65.0) / (100.0 - 65.0)
+        stop_uzde = 1.00 + (0.80 - 1.00) * oran
+        hedef_uzde = 2.00 + (2.21 - 2.00) * oran
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
@@ -953,9 +944,9 @@ def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
 
     if not hsonu:
         # Hafta İçi Kademeleri (1-3 Yıldız, 4-6 Alev)
-        if 55.0 <= puan < 57.50:
+        if 55.0 <= puan < 58.75:
             return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
-        elif 57.50 <= puan < 62.50:
+        elif 58.75 <= puan < 62.50:
             return "⭐⭐ 2. Aşama (Orta Trend)", 3.0, False, False
         elif 62.50 <= puan < 66.25:
             return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", 3.0, False, False
@@ -1044,7 +1035,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
 mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
-st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Sabit Risk/Hedef Kademeleri · 1-3 Yıldız / 4-6 Alev İkonları | ⚙️ **{mod_bilgi_metni}**")
+st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Puana Duyarlı Akışkan Risk/Hedef Kademeleri | ⚙️ **{mod_bilgi_metni}**")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1342,7 +1333,7 @@ with col_sol_panel:
     if acik_pozisyon_var:
         st.markdown("""<div style="background:linear-gradient(145deg,#1f2b3e,#162234); color:#e8eef8; border:1px solid #3b82f6; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#60a5fa; margin-bottom:4px;">🔄 Açık Pozisyona Ekleme Modu</div><div style="color:#dce6f5;">Bu coin için açık bir pozisyonunuz var. Girilen tutar ağırlıklı ortalama ile maliyete eklenecektir.</div></div>""", unsafe_allow_html=True)
     elif secilen_coin:
-        st.markdown(f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Sabit Kademeli R/H)</div><div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div><div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Akışkan R/H)</div><div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div><div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div></div>""", unsafe_allow_html=True)
 
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 

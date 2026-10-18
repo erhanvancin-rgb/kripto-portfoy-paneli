@@ -271,27 +271,19 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 1.20, 1.30 / 1.20, "Nötr"
+        return 0.90, 0.90 / 0.90, "Nötr"
 
-    # Puan bazlı akışkan lineer interpolasyon hesaplaması
-    # 55/60 puan (alt sınır) -> Risk: 0.87, Hedef: 1.30
-    # 65 puan (Güvenli Trend merkezi) -> Risk: 1.00, Hedef: 2.00
-    # 100 puan (Zirve / Boğa) -> Risk: 0.80, Hedef: 2.21
+    # Yeni Akışkan Lineer İnterpolasyon Kurgusu:
+    # 55/60 Puan (Taban / Zayıf Trend) -> Risk: 0.90, Hedef: 0.90
+    # 100 Puan (Zirve / Boğa Vuruşu veya Ayı Pençesi) -> Risk: 0.60, Hedef: 2.00
     
     puan = max(min_esik, min(100.0, matris_puani))
+    oran = (puan - min_esik) / (100.0 - min_esik)
     
-    if puan <= 65.0:
-        # 55/60 ile 65 arasında geçiş
-        oran = (puan - min_esik) / (65.0 - min_esik)
-        stop_uzde = 0.87 + (1.00 - 0.87) * oran
-        hedef_uzde = 1.30 + (2.00 - 1.30) * oran
-    else:
-        # 65 ile 100 arasında geçiş
-        oran = (puan - 65.0) / (100.0 - 65.0)
-        stop_uzde = 1.00 + (0.80 - 1.00) * oran
-        hedef_uzde = 2.00 + (2.21 - 2.00) * oran
+    stop_uzde = 0.90 + (0.60 - 0.90) * oran
+    hedef_uzde = 0.90 + (2.00 - 0.90) * oran
 
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.8
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
     str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
     risk_hedef_metin = f"{str_stop} / {str_hedef}"
@@ -1035,7 +1027,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
 mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
-st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Puana Duyarlı Akışkan Risk/Hedef Kademeleri | ⚙️ **{mod_bilgi_metni}**")
+st.caption(f"Fibonacci ağırlıklı sinyal matrisi · Akışkan Risk/Hedef (0.90/0.90 -> 0.60/2.00) | ⚙️ **{mod_bilgi_metni}**")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1317,7 +1309,7 @@ with col_sol_panel:
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
     secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi) if coin_listesi else None
 
-    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "1,20 / 1,30", None
+    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,90 / 0,90", None
     if secilen_coin:
         coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii["Sepet_Orani"]), float(coin_verisii["Skor"]), coin_verisii["Risk_Hedef_Metin"]

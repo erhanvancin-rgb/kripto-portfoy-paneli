@@ -273,9 +273,6 @@ def calculate_coin_metrics_by_score(matris_puani):
     if matris_puani < min_esik:
         return 0.90, 1.0, "Nötr"
 
-    # Yeni Orantılı Risk / Hedef Kurgusu:
-    # 55/60 Puan (Zayıf Trend) -> Risk: 0.90 / Hedef: 0.90
-    # 100 Puan (Boğa Vuruşu veya Ayı Pençesi) -> Risk: 0.60 / Hedef: 2.00
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
@@ -289,133 +286,110 @@ def calculate_coin_metrics_by_score(matris_puani):
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
-def rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df, max_puan):
-    if df.empty or len(df) < 20:
-        return 0.0, 0.0
+def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
+    if df.empty or len(df) < 10:
+        return max_puan / 2.0, max_puan / 2.0, 0, 0
 
+    df["Body"] = df["Close"] - df["Open"]
+    toplam_yesil_boy = df[df["Body"] > 0]["Body"].sum()
+    toplam_kirmizi_boy = abs(df[df["Body"] < 0]["Body"].sum())
+    toplam_boy = toplam_yesil_boy + toplam_kirmizi_boy
+
+    if toplam_boy > 0:
+        yesil_oran = toplam_yesil_boy / toplam_boy
+        kirmizi_oran = toplam_kirmizi_boy / toplam_boy
+    else:
+        yesil_oran, kirmizi_oran = 0.5, 0.5
+
+    baz_long_puan = max_puan * yesil_oran
+    baz_short_puan = max_puan * kirmizi_oran
+
+    # EMA Katkısı
     df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
     anlik_fiyat = float(df["Close"].iloc[-1])
     anlik_ema = float(df["EMA20"].iloc[-1])
-
     fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
     ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
     max_ema_bonus = max_puan * 0.04
+    ema_l = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
+    ema_s = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
 
-    ema_bonus_long = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
-    ema_bonus_short = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
-
+    # RSI Mıknatısı
     delta = df["Close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     rsi_serisi = 100 - (100 / (1 + rs))
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
-
     fark_rsi = abs(rsi_anlik - 50.0)
     rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
     max_rsi_bonus = max_puan * 0.03
+    rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
+    rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
 
-    rsi_bonus_long = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
-    rsi_bonus_short = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
-
+    # Fibonacci Katkısı
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
-
-    fib_bonus_long, fib_bonus_short = 0.0, 0.0
+    fib_l, fib_s = 0.0, 0.0
     if fiyat_fark > 0:
         fib_050 = min_f + (fiyat_fark * 0.5)
         fib_618 = min_f + (fiyat_fark * 0.618)
-
         mesafe_050 = abs(anlik_fiyat - fib_050) / fiyat_fark
         mesafe_618 = abs(anlik_fiyat - fib_618) / fiyat_fark
         min_mesafe = min(mesafe_050, mesafe_618)
-
         if min_mesafe < 0.05:
             yaklasim = (0.05 - min_mesafe) / 0.05
             fib_log_carpan = np.log1p(yaklasim * 10) / np.log1p(10)
             max_fib_bonus = max_puan * 0.03
-
             if anlik_fiyat >= anlik_ema:
-                fib_bonus_long = max_fib_bonus * fib_log_carpan
+                fib_l = max_fib_bonus * fib_log_carpan
             else:
-                fib_bonus_short = max_fib_bonus * fib_log_carpan
+                fib_s = max_fib_bonus * fib_log_carpan
 
-    long_bonus = ema_bonus_long + rsi_bonus_long + fib_bonus_long
-    short_bonus = ema_bonus_short + rsi_bonus_short + fib_bonus_short
-    return long_bonus, short_bonus
+    final_long = baz_long_puan + ema_l + rsi_l + fib_l
+    final_short = baz_short_puan + ema_s + rsi_s + fib_s
+
+    grup_toplam = final_long + final_short
+    if grup_toplam > 0 and grup_toplam > max_puan:
+        final_long = (final_long / grup_toplam) * max_puan
+        final_short = (final_short / grup_toplam) * max_puan
+
+    y_adet = len(df[df["Body"] > 0])
+    k_adet = len(df[df["Body"] < 0])
+    return round(final_long, 2), round(final_short, 2), y_adet, k_adet
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
 
-    # Yeni Zaman Dilimi Omurgası ve Ağırlıkları
-    # 16 Saat (%9,5) -> 15m (64 adet)
-    # 8 Saat (%15,5) -> 5m (96 adet)
-    # 4 Saat (%50) -> 5m (48 adet)
-    # 2 Saat (%15,5) -> 1m (120 adet)
-    # 1 Saat (%9,5) -> 1m (60 adet)
     df_16s = kline_cek_binance(sembol_istek, "15m", 64)
     df_8s = kline_cek_binance(sembol_istek, "5m", 96)
     df_4s = kline_cek_binance(sembol_istek, "5m", 48)
     df_2s = kline_cek_binance(sembol_istek, "1m", 120)
     df_1s = kline_cek_binance(sembol_istek, "1m", 60)
 
-    y16 = len(df_16s[df_16s["Close"] > df_16s["Open"]]) if not df_16s.empty else 32
-    k16 = len(df_16s[df_16s["Close"] < df_16s["Open"]]) if not df_16s.empty else 32
-
-    y8 = len(df_8s[df_8s["Close"] > df_8s["Open"]]) if not df_8s.empty else 48
-    k8 = len(df_8s[df_8s["Close"] < df_8s["Open"]]) if not df_8s.empty else 48
-
-    y4 = len(df_4s[df_4s["Close"] > df_4s["Open"]]) if not df_4s.empty else 24
-    k4 = len(df_4s[df_4s["Close"] < df_4s["Open"]]) if not df_4s.empty else 24
-
-    y2 = len(df_2s[df_2s["Close"] > df_2s["Open"]]) if not df_2s.empty else 60
-    k2 = len(df_2s[df_2s["Close"] < df_2s["Open"]]) if not df_2s.empty else 60
-
-    y1 = len(df_1s[df_1s["Close"] > df_1s["Open"]]) if not df_1s.empty else 30
-    k1 = len(df_1s[df_1s["Close"] < df_1s["Open"]]) if not df_1s.empty else 30
-
     dilimler = [
-        (y16, k16, 64, 9.5, df_16s),
-        (y8, k8, 96, 15.5, df_8s),
-        (y4, k4, 48, 50.0, df_4s),
-        (y2, k2, 120, 15.5, df_2s),
-        (y1, k1, 60, 9.5, df_1s),
+        (df_16s, 9.5, "16 S"),
+        (df_8s, 15.5, "8 S"),
+        (df_4s, 50.0, "4 S"),
+        (df_2s, 15.5, "2 S"),
+        (df_1s, 9.5, "1 S"),
     ]
 
     toplam_long_puan = 0.0
     toplam_short_puan = 0.0
     zaman_katkilari = {}
-    zaman_isimleri = ["16 S", "8 S", "4 S", "2 S", "1 S"]
 
-    for idx, (y, k, toplam_led, max_puan, df_zaman) in enumerate(dilimler):
-        if toplam_led > 0:
-            sl = (y / toplam_led) * max_puan
-            ss = (k / toplam_led) * max_puan
-        else:
-            sl, ss = max_puan / 2.0, max_puan / 2.0
-
-        ek_lb, ek_sb = rsi_momentum_fib_ve_ema_katkisi_hesapla_logaritmik(df_zaman, max_puan)
-
-        sl_gecici = sl + ek_lb
-        ss_gecici = ss + ek_sb
-
-        grup_toplam = sl_gecici + ss_gecici
-        if grup_toplam > 0 and grup_toplam > max_puan:
-            sl_yeni = (sl_gecici / grup_toplam) * max_puan
-            ss_yeni = (ss_gecici / grup_toplam) * max_puan
-        else:
-            sl_yeni, ss_yeni = sl_gecici, ss_gecici
-
-        toplam_long_puan += sl_yeni
-        toplam_short_puan += ss_yeni
-
-        zaman_katkilari[zaman_isimleri[idx]] = {
-            "sl": round(sl_yeni, 2),
-            "ss": round(ss_yeni, 2),
-            "y_adet": y,
-            "k_adet": k,
+    for df_zaman, max_puan, isim in dilimler:
+        sl, ss, y_ad, k_ad = oransal_matris_ve_teknik_faktorler_hesapla(df_zaman, max_puan)
+        toplam_long_puan += sl
+        toplam_short_puan += ss
+        zaman_katkilari[isim] = {
+            "sl": sl,
+            "ss": ss,
+            "y_adet": y_ad,
+            "k_adet": k_ad,
         }
 
     nihai_long = round(toplam_long_puan, 2)
@@ -940,7 +914,6 @@ def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
         return "Nötr (Beklemede)", 1.0, False, False
 
     if not hsonu:
-        # Hafta İçi Kademeleri (1-3 Yıldız, 4-6 Alev)
         if 55.0 <= puan < 58.75:
             return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
         elif 58.75 <= puan < 62.50:
@@ -954,7 +927,6 @@ def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
         else:
             return "🔥🔥🔥 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", 5.0, False, True
     else:
-        # Hafta Sonu Kademeleri (1-3 Yıldız, 4-6 Alev)
         if 60.0 <= puan < 63.75:
             return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
         elif 63.75 <= puan < 67.50:
@@ -1032,7 +1004,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
 mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
-st.caption(f"Yeni Zaman Dilimi Matrisi (16S:%9.5, 8S:%15.5, 4S:%50, 2S:%15.5, 1S:%9.5) + RSI, EMA & Fib Katkıları | ⚙️ **{mod_bilgi_metni}**")
+st.caption(f"Oransal Matris Omurgası + EMA, RSI Mıknatısı & Fib Katkıları | ⚙️ **{mod_bilgi_metni}**")
 elli_islem_arsiv_kontrol()
 
 if "kasa_islem_acik" not in st.session_state:
@@ -1330,7 +1302,7 @@ with col_sol_panel:
     if acik_pozisyon_var:
         st.markdown("""<div style="background:linear-gradient(145deg,#1f2b3e,#162234); color:#e8eef8; border:1px solid #3b82f6; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#60a5fa; margin-bottom:4px;">🔄 Açık Pozisyona Ekleme Modu</div><div style="color:#dce6f5;">Bu coin için açık bir pozisyonunuz var. Girilen tutar ağırlıklı ortalama ile maliyete eklenecektir.</div></div>""", unsafe_allow_html=True)
     elif secilen_coin:
-        st.markdown(f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Akışkan R/H)</div><div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div><div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Oransal & Akışkan)</div><div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div><div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div></div>""", unsafe_allow_html=True)
 
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
@@ -1363,7 +1335,7 @@ with col_sol_panel:
                 if not secilen_coin or coin_listesi == []:
                     st.error("⚠️ Geçerli bir coin seçmelisiniz!")
                 elif coin_verisii is not None:
-                    basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii["Aktif_Yon"], coin_verisii["Fiyat"], manuel_girilen_tutar, coin_verisii["Stopla"], coin_verisii["Kar_Al"], "Matris_Kurgusu", anlik_matris_puani, anlik_risk_hedef_metin)
+                    basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii["Aktif_Yon"], coin_verisii["Fiyat"], manuel_girilen_tutar, coin_verisii["Stopla"], coin_verisii["Kar_Al"], "Oransal_Matris", anlik_matris_puani, anlik_risk_hedef_metin)
                     if basari:
                         st.session_state["islem_emri_kilit_acik"] = False
                         st.success(mesaj)
@@ -1374,7 +1346,7 @@ with col_sol_panel:
                         st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Top 5 Coin (Yeni Zaman Dilimi Omurgası & Logaritmik Teyit)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin (Oransal Omurga & Teknik Mıknatıs)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(192).reset_index(drop=True)
 
@@ -1439,7 +1411,7 @@ with col_sag_endeks:
         sl, ss = veri["sl"], veri["ss"]
         y_ad, k_ad = veri["y_adet"], veri["k_adet"]
         kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
-        boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p ({y_ad}) | S: {ss:.2f}p ({k_ad})</div>')
+        boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
     boxes_birlestirilmis = "".join(boxes_listesi)
 
     st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)

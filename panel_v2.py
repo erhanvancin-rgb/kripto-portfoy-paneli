@@ -276,7 +276,7 @@ def calculate_coin_metrics_by_score(matris_puani):
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
-    # Taban (0.65 / 0.65) ile Tavan (0.60 / 2.00) arası kademeli ölçeklendirme
+    # Taban (0.65 / 0.65) ile Tavan (6. Aşama: 0.60 / 2.00) arası ölçeklendirme
     stop_uzde = 0.65 + (0.60 - 0.65) * oran
     hedef_uzde = 0.65 + (2.00 - 0.65) * oran
 

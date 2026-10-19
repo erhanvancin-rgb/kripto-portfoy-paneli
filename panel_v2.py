@@ -146,7 +146,7 @@ def mail_log_yaz(mesaj):
 
 def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
-    uygulama_sifresi = "jkef zgaf zwtg qyom"
+    uygulama_sifresi = os.environ.get("GMAIL_PASSWORD", "jkef zgaf zwtg qyom")
     alici_mail = "erhanvancin@gmail.com"
 
     try:
@@ -249,7 +249,7 @@ def load_15min_market_data(coin_symbol: str):
                 df_btc["High"] = df_btc["High"] * carpan
                 df_btc["Low"] = df_btc["Low"] * carpan
                 df_btc["Close"] = df_btc["Close"] * carpan
-                return df_btc
+        return df_btc
 
     if coin_symbol != "TOTAL":
         df = kline_cek_binance(coin_symbol, "5m", limit)
@@ -271,16 +271,13 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 0.70, 1.0, "Nötr"
+        return 0.90, 1.0, "Nötr"
 
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
-    # Tam İstediğiniz Kurgu:
-    # Risk: 0,70'ten başlar, puan büyüdükçe 0,50'ye düşer.
-    # Hedef: 0,70'ten başlar, puan büyüdükçe 2,00'ye büyür.
-    stop_uzde = 0.70 - (0.20 * oran)     # 0,70 -> 0,50
-    hedef_uzde = 0.70 + (1.30 * oran)    # 0,70 -> 2,00 (0,70 + 1,30 = 2,00)
+    stop_uzde = 0.70 + (0.50 - 0.70) * oran
+    hedef_uzde = 0.95 + (2.00 - 0.95) * oran
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
@@ -307,7 +304,6 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     baz_long_puan = max_puan * yesil_oran
     baz_short_puan = max_puan * kirmizi_oran
 
-    # EMA Katkısı
     df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
     anlik_fiyat = float(df["Close"].iloc[-1])
     anlik_ema = float(df["EMA20"].iloc[-1])
@@ -317,7 +313,6 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     ema_l = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
     ema_s = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
 
-    # RSI Mıknatısı
     delta = df["Close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -330,7 +325,6 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
     rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
 
-    # Fibonacci Katkısı
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
@@ -465,18 +459,18 @@ def islem_gecmisi_getir(sheet_guncelle=True):
             & (df["Islem_ID"] != "")
             & (df["Islem_ID"].astype(str) != "Islem_ID")
         ]
-        df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
-        df = df.drop_duplicates(subset=["Islem_ID"], keep="last").sort_values(by="Islem_ID").reset_index(drop=True)
-        sayisal_kolonlar = [
-            "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-            "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati"
-        ]
-        for col in sayisal_kolonlar:
-            if col in df.columns:
-                df[col] = pd.to_numeric(
-                    df[col].astype(str).str.replace(",", ".").str.strip(),
-                    errors="coerce",
-                ).fillna(0.0).astype(float)
+    df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
+    df = df.drop_duplicates(subset=["Islem_ID"], keep="last").sort_values(by="Islem_ID").reset_index(drop=True)
+    sayisal_kolonlar = [
+        "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
+        "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati"
+    ]
+    for col in sayisal_kolonlar:
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col].astype(str).str.replace(",", ".").str.strip(),
+                errors="coerce",
+            ).fillna(0.0).astype(float)
     return df
 
 def dataframe_guncelle_gsheets(df):
@@ -489,7 +483,7 @@ def dataframe_guncelle_gsheets(df):
                 sheet.append_row(list(row.values))
         except:
             pass
-        st.cache_data.clear()
+    st.cache_data.clear()
 
 @st.cache_data(ttl=15)
 def kasa_defteri_getir():
@@ -525,11 +519,11 @@ def kasa_defteri_getir():
             & (df["Islem_ID"] != "")
             & (df["Islem_ID"].astype(str) != "Islem_ID")
         ]
-        df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
-        df["Tutar"] = pd.to_numeric(
-            df["Tutar"].astype(str).str.replace(",", ".").str.strip(),
-            errors="coerce",
-        ).fillna(0.0).astype(float)
+    df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
+    df["Tutar"] = pd.to_numeric(
+        df["Tutar"].astype(str).str.replace(",", ".").str.strip(),
+        errors="coerce",
+    ).fillna(0.0).astype(float)
     return df
 
 def kasa_defteri_guncelle_gsheets(df):
@@ -542,7 +536,7 @@ def kasa_defteri_guncelle_gsheets(df):
                 sheet.append_row(list(row.values))
         except:
             pass
-        st.cache_data.clear()
+    st.cache_data.clear()
 
 def kasa_islem_ekle(islem_turu, tutar, aciklama):
     df_kasa = kasa_defteri_getir()
@@ -797,7 +791,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             else:
                 bek_kar_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Kar_Al"])) / giris_fiyat)
                 olasi_stop_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Stop"])) / giris_fiyat)
-                
+            
             df.at[idx[0], "Beklenen_Kar"] = round(bek_kar_yeni, 2)
             df.at[idx[0], "Olasi_Stop"] = round(olasi_stop_yeni, 2)
             
@@ -1139,7 +1133,7 @@ for item in gecici_islenen_liste:
         "Kar_Al": round(hedef_fiyat, basamak), "Stopla": round(stop_fiyat, basamak),
         "Skor": nihai_puan, "Sepet_Orani": sepet_orani, "Basamak": basamak,
         "Notr": is_notr, "Ham_Yon": trend, "Aktif_Yon": aktif_yon_turu,
-        "Risk_Hedef_Metin": item["risk_hedef_metin"], "Ham_Agirlik": item["ham_agirlik"],
+        "Risk_Hedef_Metin": item['risk_hedef_metin'], "Ham_Agirlik": item["ham_agirlik"],
     })
 
 islenen_veriler = sorted(islenen_veriler, key=lambda x: (1 if x["Notr"] else 0, -x["Ham_Agirlik"], -x["Skor"]))
@@ -1188,7 +1182,7 @@ with col_ust5:
 
 toplam_kasa_renk = "#00FF00" if toplam_kasa >= BASLANGIC_BAKIYE else "rgb(255, 75, 0)"
 with col_ust6:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💱 Toplam Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{toplam_kasa_renk}; font-size:22px; font-weight:800;">{toplam_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(toplam_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💼 Toplam Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{toplam_kasa_renk}; font-size:22px; font-weight:800;">{toplam_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(toplam_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
 
 with col_kasa_buton:
     st.markdown(
@@ -1219,7 +1213,7 @@ if st.session_state.get("kasa_islem_acik", False):
                 st.session_state["kasa_islem_turu"] = "Para Yatır"
                 st.rerun()
         with h_btn_col2:
-            if st.button("🏧 Çek", use_container_width=True, key="btn_mod_cek"):
+            if st.button("🏦 Çek", use_container_width=True, key="btn_mod_cek"):
                 st.session_state["kasa_islem_turu"] = "Para Çek"
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1258,13 +1252,13 @@ for v in islenen_veriler:
         stopla_str = f"{v['Stopla']:,.4f}&nbsp;$" if v["Basamak"] == 4 else f"{v['Stopla']:,.2f}&nbsp;$"
         risk_hedef_gosterim = v['Risk_Hedef_Metin']
 
-    val_str = f"%{v['Sepet_Orani']:.1f}" if v["Sepet_Orani"] != int(v["Sepet_Orani"]) else f"%{int(v['Sepet_Orani'])}"
-    renk_yon = "#00FF00" if v["Aktif_Yon"] == "Long" else "rgb(255, 75, 0)"
+    val_str = f"%{v['Sepet_Orani']:.1f}" if v['Sepet_Orani'] != int(v['Sepet_Orani']) else f"%{int(v['Sepet_Orani'])}"
+    renk_yon = "#00FF00" if v['Aktif_Yon'] == "Long" else "rgb(255, 75, 0)"
 
     if v["Notr"]:
         oran_html = '<div style="background-color: rgba(255, 235, 59, 0.2); color: #e8eef8; padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
     else:
-        oran_html = f'<div style="background-color: {renk_yon}; color: #000000; padding: 5px; font-weight: bold;">{val_str}<br>({v["Aktif_Yon"]})</div>'
+        oran_html = f'<div style="background-color: {renk_yon}; color: #000000; padding: 5px; font-weight: bold;">{val_str}<br>({v['Aktif_Yon']})</div>'
 
     table_html += f"<tr><td>{v['Logo']}</td><td>{v['Coin']}</td><td style='font-weight: bold; color: #5b8cff; background-color: rgba(91, 140, 255, 0.08);'>{fiyat_str}</td><td>{v['Yon']}</td><td>{v['Teyit_Sunumu']}</td><td>{v['Dom_Sunumu']}</td><td style='background-color: rgba(0,0,0,0.02);'>{v['Matris_Puan_Sunumu']}</td><td>{v['Gunluk_Oran']}</td><td>{oran_html}</td><td>{v['Yatırım_Bedeli']}</td><td>{kar_al_str}</td><td>{stopla_str}</td><td style='font-weight: bold; color: #ff79c6;'>{risk_hedef_gosterim}</td></tr>"
 table_html += "</tbody></table>"
@@ -1289,7 +1283,7 @@ with col_sol_panel:
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
     secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi) if coin_listesi else None
 
-    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,90 / 0,90", None
+    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,70 / 0,95", None
     if secilen_coin:
         coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii["Sepet_Orani"]), float(coin_verisii["Skor"]), coin_verisii["Risk_Hedef_Metin"]
@@ -1330,9 +1324,9 @@ with col_sol_panel:
                 submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", use_container_width=True)
             with col_kapat_kilit:
                 kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", use_container_width=True)
-                if kapat_kilit_tik:
-                    st.session_state["islem_emri_kilit_acik"] = False
-                    st.rerun()
+            if kapat_kilit_tik:
+                st.session_state["islem_emri_kilit_acik"] = False
+                st.rerun()
 
             if submit_islem:
                 if not secilen_coin or coin_listesi == []:
@@ -1349,7 +1343,7 @@ with col_sol_panel:
                         st.error(mesaj)
 
 with col_orta_grafik:
-    st.markdown("<h3>🌐 Top 5 Coin (Tek Tablo: Fiyat-Fib & Hizalanmış RSI)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>🌐 Top 5 Coin (Oransal Omurga & Teknik Mıknatıs)</h3>", unsafe_allow_html=True)
     t_df_ham = total_ham_veri["df_market"]
     t_df = t_df_ham.tail(192).reset_index(drop=True)
 
@@ -1363,76 +1357,40 @@ with col_orta_grafik:
             min_f, max_f = min_f * 0.999, max_f * 1.001
 
         fiyat_fark = max_f - min_f
-        
-        # Fibonacci genişletilmiş aralık (-0.250 ile 1.250)
-        genis_min = min_f - (fiyat_fark * 0.25)
-        genis_max = max_f + (fiyat_fark * 0.25)
-        genis_fark = genis_max - genis_min
+        t_df["RSI_Norm"] = min_f + (t_df["RSI"] / 100.0) * fiyat_fark
 
         fib_levels = {
-            -0.250: genis_min,
-            0.0: min_f, 
-            0.236: min_f + 0.236 * fiyat_fark, 
-            0.382: min_f + 0.382 * fiyat_fark,
-            0.5: min_f + 0.5 * fiyat_fark, 
-            0.618: min_f + 0.618 * fiyat_fark,
-            0.786: min_f + 0.786 * fiyat_fark, 
-            1.0: max_f,
-            1.250: genis_max
+            0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark,
+            0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark,
+            0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f,
         }
 
-        # RSI'ı Fiyatın bu genişletilmiş Fib gridine tam hizalıyoruz (0-100 RSI -> genis_min - genis_max aralığı)
-        t_df["RSI_Hizali"] = genis_min + (t_df["RSI"] / 100.0) * genis_fark
-
         min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(hours=1)
-        
-        # TEK TABLO (TEK Y EKSENİ) - Subplot yok, doğrudan tek grafik
-        fig_total = go.Figure()
+        alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.05), max_f + (fiyat_fark * 0.05)
 
-        # --- ZEYADAN GELEN AZALAN OPASİTELİ UÇ BANTLAR VE NORMAL BANTLAR ---
-        fib_bantlar = [
-            (-0.250, 0.0, "rgba(120, 10, 30, 0.12)"), # Zeyadan azalan opasiteyle
-            (0.0, 0.236, "rgba(180, 20, 50, 0.35)"), 
-            (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
-            (0.382, 0.5, "rgba(255, 200, 0, 0.35)"), 
-            (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
-            (0.618, 0.786, "rgba(40, 180, 80, 0.32)"), 
-            (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
-            (1.0, 1.250, "rgba(0, 120, 50, 0.12)")  # Zeyadan azalan opasiteyle
-        ]
-        
-        for b_alt, b_ust, renk in fib_bantlar:
+        fig_total = make_subplots(specs=[[{"secondary_y": True}]])
+        for b_alt, b_ust, renk in [
+            (0.0, 0.236, "rgba(180, 20, 50, 0.35)"), (0.236, 0.382, "rgba(220, 90, 0, 0.32)"),
+            (0.382, 0.5, "rgba(255, 200, 0, 0.35)"), (0.5, 0.618, "rgba(255, 200, 0, 0.35)"),
+            (0.618, 0.786, "rgba(40, 180, 80, 0.32)"), (0.786, 1.0, "rgba(0, 200, 90, 0.38)"),
+        ]:
             x_coords = list(t_df["timestamp"]) + [max_zaman_grafik, max_zaman_grafik] + list(t_df["timestamp"][::-1])
             y_coords = [fib_levels[b_ust]] * len(t_df) + [fib_levels[b_ust], fib_levels[b_alt]] + [fib_levels[b_alt]] * len(t_df)
-            fig_total.add_trace(go.Scatter(x=x_coords, y=y_coords, fill="toself", fillcolor=renk, line=dict(color="rgba(255,255,255,0)"), showlegend=False, hoverinfo="skip"))
+            fig_total.add_trace(go.Scatter(x=x_coords, y=y_coords, fill="toself", fillcolor=renk, line=dict(color="rgba(255,255,255,0)"), showlegend=False, hoverinfo="skip"), secondary_y=False)
 
-        # --- FİYAT ÇİZGİSİ ---
-        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market (Fiyat)", line=dict(color="#5b8cff", width=2.5)))
+        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market", line=dict(color="#5b8cff", width=2.5)), secondary_y=False)
+        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI (0-1)", line=dict(color="#FF9900", width=1.5, dash="solid")), secondary_y=False)
 
-        # --- HİZALANMIŞ RSI ÇİZGİSİ (Fibonacci 0.50=50, 0.382=38.2, 0.618=61.8 Eşleşmesi) ---
-        fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["RSI_Hizali"], mode="lines", name="RSI (Hizalanmış)", line=dict(color="#FF9900", width=1.5, dash="solid")))
-
-        # --- FİBONACCİ ÇİZGİLERİ VE RİSK/TETİK SEVİYELERİ ---
         for oran, val in fib_levels.items():
-            fig_total.add_hline(y=val, line_dash="dash", line_color="#CCCC00" if oran == 0.5 else ("#006400" if 0.5 < oran <= 1.0 else ("#00FF00" if oran > 1.0 else "#800020")), line_width=1)
-
-        # RSI'ın kritik eşiklerini Fib seviyelerine denk gelecek şekilde yatay çizgilerle işaretliyoruz
-        rsi_esik_oranlar = {70: min_f + 0.70 * fiyat_fark, 50: min_f + 0.50 * fiyat_fark, 30: min_f + 0.30 * fiyat_fark}
-        for r_val, f_val in rsi_esik_oranlar.items():
-            fig_total.add_hline(y=f_val, line_dash="dot", line_color="rgba(255,153,0,0.4)", line_width=1)
+            fig_total.add_hline(y=val, line_dash="dash", line_color="#CCCC00" if oran == 0.5 else ("#006400" if oran > 0.5 else "#800020"), line_width=1)
 
         fig_total.update_layout(
-            template="plotly_dark", 
-            margin=dict(t=15, b=25, l=10, r=10), 
-            height=390,
+            template="plotly_dark", margin=dict(t=15, b=25, l=10, r=0), height=340,
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=25, gridcolor="rgba(255,255,255,0.05)"),
-            yaxis=dict(range=[genis_min, genis_max], gridcolor="rgba(255,255,255,0.05)"),
-            xaxis_rangeslider_visible=False, 
-            paper_bgcolor="rgba(0,0,0,0)", 
-            plot_bgcolor="rgba(0,0,0,0)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8"))
+            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], gridcolor="rgba(255,255,255,0.05)"),
+            xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8")),
         )
-        
         st.plotly_chart(fig_total, use_container_width=True)
 
 with col_sag_endeks:
@@ -1635,9 +1593,5 @@ if os.path.exists(ARSIV_KLASORU):
         arsiv_dosyalari = sorted(os.listdir(ARSIV_KLASORU))
         if secilen_arsiv := (st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50") if arsiv_dosyalari else None):
             st.write(pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=";").to_html(escape=False, index=False), unsafe_allow_html=True)
-        elif not arsiv_dosyalari:
-            st.info("Henüz 50 işleme ulaşılmadı.")
     except:
-        st.info("Arşiv yüklenirken bilgi alınamadı.")
-else:
-    st.info("Arşiv klasörü henüz oluşturulmadı.")
+        pass

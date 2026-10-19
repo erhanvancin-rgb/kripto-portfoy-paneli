@@ -271,13 +271,15 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 0.65, 1.0, "Nötr"
+        return 0.70, 1.0, "Nötr"
 
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
-    # Yeni Kurgu: Risk 0,65'ten 0,50'ye düşer, Hedef 0,70'ten 2,00'ye büyür
-    stop_uzde = 0.65 - (0.15 * oran)     # 0,65 -> 0,50
+    # Tam İstediğiniz Kurgu:
+    # Risk: 0,70'ten başlar, puan büyüdükçe 0,50'ye düşer.
+    # Hedef: 0,70'ten başlar, puan büyüdükçe 2,00'ye büyür.
+    stop_uzde = 0.70 - (0.20 * oran)     # 0,70 -> 0,50
     hedef_uzde = 0.70 + (1.30 * oran)    # 0,70 -> 2,00 (0,70 + 1,30 = 2,00)
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5

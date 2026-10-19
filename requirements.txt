@@ -1,9 +1,9 @@
-streamlit
-pandas
-requests
-plotly
 gspread
 google-auth
-pytz
-streamlit-autorefresh
 numpy
+pandas
+plotly
+pytz
+requests
+streamlit
+streamlit-autorefresh

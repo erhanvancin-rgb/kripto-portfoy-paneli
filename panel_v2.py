@@ -267,19 +267,23 @@ def load_15min_market_data(coin_symbol: str):
     })
 
 def calculate_coin_metrics_by_score(matris_puani):
-    # Puana göre dinamik risk ve hedef oranları
-    if matris_puani >= 70.0:
-        stop_uzde = 0.60
-        hedef_uzde = 1.10
-    elif matris_puani >= 62.5:
-        stop_uzde = 0.70
-        hedef_uzde = 0.95
-    else:
-        stop_uzde = 0.80
-        hedef_uzde = 0.85
+    hsonu = hafta_sonu_mu()
+    min_esik = 60.0 if hsonu else 55.0
 
-    hedef_carpan = hedef_uzde / stop_uzde
-    risk_hedef_metin = f"risk {stop_uzde:.2f}".replace(".", ",") + f" / hedef {hedef_uzde:.2f}".replace(".", ",")
+    if matris_puani < min_esik:
+        return 0.90, 1.0, "Nötr"
+
+    puan = max(min_esik, min(100.0, matris_puani))
+    oran = (puan - min_esik) / (100.0 - min_esik)
+    
+    stop_uzde = 0.70 + (0.50 - 0.70) * oran
+    hedef_uzde = 0.95 + (2.00 - 0.95) * oran
+
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
+    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
+    risk_hedef_metin = f"{str_stop} / {str_hedef}"
+
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
@@ -649,16 +653,6 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         if not acik_df.empty and coin in acik_df["Coin"].values:
             acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
 
-    # Yeni eklenen matris puanına göre o anki risk ve hedef yüzdelerini hesapla
-    yeni_stop_yuzde, _, _ = calculate_coin_metrics_by_score(matris_puan)
-    # Hedef yüzdesini de puan fonksiyonundan türetelim veya oranlayalım
-    if matris_puan >= 70.0:
-        yeni_hedef_yuzde = 1.10
-    elif matris_puan >= 62.5:
-        yeni_hedef_yuzde = 0.95
-    else:
-        yeni_hedef_yuzde = 0.85
-
     if acik_islem_idx is not None:
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
@@ -670,36 +664,29 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         except:
             eski_puan = matris_puan
 
-        # Eski işlemdeki risk ve hedef yüzdelerini metinden veya puandan çıkaralım
-        eski_stop_uzde, _, _ = calculate_coin_metrics_by_score(eski_puan)
-        if eski_puan >= 70.0:
-            eski_hedef_uzde = 1.10
-        elif eski_puan >= 62.5:
-            eski_hedef_uzde = 0.95
-        else:
-            eski_hedef_uzde = 0.85
-
         yeni_toplam_miktar = eski_miktar + islem_miktari
         yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
         yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
 
-        # SERMAYE AĞIRLIKLI RİSK VE HEDEF ORANLARI HESABI
-        agirlikli_stop_yuzde = ((eski_miktar * eski_stop_uzde) + (islem_miktari * yeni_stop_yuzde)) / yeni_toplam_miktar
-        agirlikli_hedef_yuzde = ((eski_miktar * eski_hedef_uzde) + (islem_miktari * yeni_hedef_yuzde)) / yeni_toplam_miktar
+        if eski_giris > 0:
+            stop_oran = abs(stop - giris_fiyat) / giris_fiyat
+            kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
+        else:
+            stop_oran, kar_al_oran = 0.01, 0.02
 
         if "Long" in eski_yon:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 - agirlikli_stop_yuzde / 100.0)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + agirlikli_hedef_yuzde / 100.0)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_oran)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + kar_al_oran)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
         else:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 + agirlikli_stop_yuzde / 100.0)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - agirlikli_hedef_yuzde / 100.0)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_oran)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - kar_al_oran)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
-        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} (risk {agirlikli_stop_yuzde:.2f} / hedef {agirlikli_hedef_yuzde:.2f})".replace(".", ",")
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(yeni_agirlikli_ortalama, basamak)
@@ -730,6 +717,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
 
         basamak = 4 if giris_fiyat < 10 else 2
+        matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
         yeni_kayit = pd.DataFrame([{
             "Islem_ID": yeni_id,
@@ -742,7 +730,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             "Stop": round(stop, basamak),
             "Kar_Al": round(kar_al, basamak),
             "Beklenen_Kar": round(beklenen_kar, 2),
-            "Matris_Puan_RH": f"{matris_puan} ({risk_hedef_metin})",
+            "Matris_Puan_RH": matris_rh_metin,
             "Olasi_Stop": round(olasi_stop, 2),
             "Durum": "Acik",
             "Net_Kar_Zarar": 0.0,
@@ -1295,7 +1283,7 @@ with col_sol_panel:
     coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
     secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi) if coin_listesi else None
 
-    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "risk 0,70 / hedef 0,95", None
+    onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,70 / 0,95", None
     if secilen_coin:
         coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii["Sepet_Orani"]), float(coin_verisii["Skor"]), coin_verisii["Risk_Hedef_Metin"]
@@ -1581,7 +1569,7 @@ if not df_gosterilecek.empty:
 
         kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
-        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (risk 0,70 / hedef 0,95)'))
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
         islem_miktari_val = float(row['Islem_Miktari'])
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"

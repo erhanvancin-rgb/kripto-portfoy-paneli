@@ -267,23 +267,10 @@ def load_15min_market_data(coin_symbol: str):
     })
 
 def calculate_coin_metrics_by_score(matris_puani):
-    hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 55.0
-
-    if matris_puani < min_esik:
-        return 0.90, 1.0, "Nötr"
-
-    puan = max(min_esik, min(100.0, matris_puani))
-    oran = (puan - min_esik) / (100.0 - min_esik)
-    
-    stop_uzde = 0.70 + (0.50 - 0.70) * oran
-    hedef_uzde = 0.95 + (2.00 - 0.95) * oran
-
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
-    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
-    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
-    risk_hedef_metin = f"{str_stop} / {str_hedef}"
-
+    stop_uzde = 0.70
+    hedef_uzde = 0.95
+    hedef_carpan = hedef_uzde / stop_uzde
+    risk_hedef_metin = "0,70 / 0,95"
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
@@ -668,25 +655,19 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
         yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
 
-        if eski_giris > 0:
-            stop_oran = abs(stop - giris_fiyat) / giris_fiyat
-            kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
-        else:
-            stop_oran, kar_al_oran = 0.01, 0.02
-
         if "Long" in eski_yon:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_oran)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + kar_al_oran)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 - 0.0070)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + 0.0095)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
         else:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_oran)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - kar_al_oran)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 + 0.0070)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - 0.0095)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
-        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} (0,70 / 0,95)"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(yeni_agirlikli_ortalama, basamak)

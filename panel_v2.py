@@ -276,9 +276,9 @@ def calculate_coin_metrics_by_score(matris_puani):
     puan = max(min_esik, min(100.0, matris_puani))
     oran = (puan - min_esik) / (100.0 - min_esik)
     
-    # Doğru Orantı: Puan arttıkça risk 0,65'ten 0,60'a azalır, hedef 0,65'ten 2,00'ye artar
-    stop_uzde = 0.65 - (0.05 * oran)      # 0,65 -> 0,60
-    hedef_uzde = 0.65 + (1.35 * oran)     # 0,65 -> 2,00 (0,65 + 1,35 = 2,00)
+    # Yeni Kurgu: Risk 0,65'ten 0,50'ye düşer, Hedef 0,70'ten 2,00'ye büyür
+    stop_uzde = 0.65 - (0.15 * oran)     # 0,65 -> 0,50
+    hedef_uzde = 0.70 + (1.30 * oran)    # 0,70 -> 2,00 (0,70 + 1,30 = 2,00)
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")

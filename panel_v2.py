@@ -918,6 +918,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
+                # Hafıza ve mail kontrolü (Her kapanışta garanti bildirim için güncellendi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 

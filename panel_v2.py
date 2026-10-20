@@ -252,17 +252,45 @@ def kline_cek_binance(coin_symbol, interval, limit):
 def load_15min_market_data(coin_symbol: str):
     limit = 192
     if coin_symbol == "TOTAL":
-        anlik_total = fiyat_cek_binance("TOTAL")
         df_btc = kline_cek_binance("BTC/USDT", "5m", limit)
-        if not df_btc.empty:
-            current_btc = float(df_btc["Close"].iloc[-1])
-            if current_btc > 0:
-                carpan = anlik_total / current_btc
-                df_btc["Open"] = df_btc["Open"] * carpan
-                df_btc["High"] = df_btc["High"] * carpan
-                df_btc["Low"] = df_btc["Low"] * carpan
-                df_btc["Close"] = df_btc["Close"] * carpan
-        return df_btc
+        df_eth = kline_cek_binance("ETH/USDT", "5m", limit)
+        df_bnb = kline_cek_binance("BNB/USDT", "5m", limit)
+        df_sol = kline_cek_binance("SOL/USDT", "5m", limit)
+        df_xrp = kline_cek_binance("XRP/USDT", "5m", limit)
+        
+        if not (df_btc.empty or df_eth.empty or df_bnb.empty or df_sol.empty or df_xrp.empty):
+            df_tot = df_btc[["timestamp"]].copy()
+            # 5 coinin anlık dominans / market cap ağırlıklı toplam seri hesaplaması
+            mc_series = (
+                df_btc["Close"] * 19700000 +
+                df_eth["Close"] * 120000000 +
+                df_bnb["Close"] * 145000000 +
+                df_sol["Close"] * 470000000 +
+                df_xrp["Close"] * 5700000000
+            )
+            df_tot["Open"] = (
+                df_btc["Open"] * 19700000 +
+                df_eth["Open"] * 120000000 +
+                df_bnb["Open"] * 145000000 +
+                df_sol["Open"] * 470000000 +
+                df_xrp["Open"] * 5700000000
+            )
+            df_tot["High"] = (
+                df_btc["High"] * 19700000 +
+                df_eth["High"] * 120000000 +
+                df_bnb["High"] * 145000000 +
+                df_sol["High"] * 470000000 +
+                df_xrp["High"] * 5700000000
+            )
+            df_tot["Low"] = (
+                df_btc["Low"] * 19700000 +
+                df_eth["Low"] * 120000000 +
+                df_bnb["Low"] * 145000000 +
+                df_sol["Low"] * 470000000 +
+                df_xrp["Low"] * 5700000000
+            )
+            df_tot["Close"] = mc_series
+            return df_tot
 
     if coin_symbol != "TOTAL":
         df = kline_cek_binance(coin_symbol, "5m", limit)
@@ -279,113 +307,58 @@ def load_15min_market_data(coin_symbol: str):
         "Close": [base_p] * limit,
     })
 
-# --- LOGARİTMİK RİSK / HEDEF HESAPLAMA MİMARİSİ ---
-def calculate_coin_metrics_by_score(matris_puani):
-    hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 55.0
-
-    if matris_puani < min_esik:
-        return 0.70, 1.0, "Nötr"
-
-    x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    
-    # 1. RİSK HESAPLAMA (0.70 -> 0.50 arası kademeli düşüş)
-    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
-    risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
-    
-    # 2. HEDEF HESAPLAMA (0.70 -> 1.50 arası kademeli artış)
-    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
-    hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
-
-    puan = max(min_esik, min(100.0, matris_puani))
-
-    stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
-    hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
-
-    stop_uzde = max(0.40, min(0.70, stop_uzde))
-    hedef_uzde = max(0.60, min(2.50, hedef_uzde))
-
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
-
-    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
-    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
-    risk_hedef_metin = f"{str_stop} / {str_hedef}"
-
-    return stop_uzde, hedef_carpan, risk_hedef_metin
-
-def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
-    if df.empty or len(df) < 10:
-        return max_puan / 2.0, max_puan / 2.0, 0, 0
-
-    df["Body"] = df["Close"] - df["Open"]
-    toplam_yesil_boy = df[df["Body"] > 0]["Body"].sum()
-    toplam_kirmizi_boy = abs(df[df["Body"] < 0]["Body"].sum())
-    toplam_boy = toplam_yesil_boy + toplam_kirmizi_boy
-
-    if toplam_boy > 0:
-        yesil_oran = toplam_yesil_boy / toplam_boy
-        kirmizi_oran = toplam_kirmizi_boy / toplam_boy
-    else:
-        yesil_oran, kirmizi_oran = 0.5, 0.5
-
-    baz_long_puan = max_puan * yesil_oran
-    baz_short_puan = max_puan * kirmizi_oran
-
-    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-    anlik_fiyat = float(df["Close"].iloc[-1])
-    anlik_ema = float(df["EMA20"].iloc[-1])
-    fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
-    ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
-    max_ema_bonus = max_puan * 0.04
-    ema_l = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
-    ema_s = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
-
-    delta = df["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    rsi_serisi = 100 - (100 / (1 + rs))
-    rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
-    fark_rsi = abs(rsi_anlik - 50.0)
-    rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
-    max_rsi_bonus = max_puan * 0.03
-    rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
-    rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
-
-    max_f = float(df["High"].max())
-    min_f = float(df["Low"].min())
-    fiyat_fark = max_f - min_f
-    fib_l, fib_s = 0.0, 0.0
-    if fiyat_fark > 0:
-        fib_050 = min_f + (fiyat_fark * 0.5)
-        fib_618 = min_f + (fiyat_fark * 0.618)
-        mesafe_050 = abs(anlik_fiyat - fib_050) / fiyat_fark
-        mesafe_618 = abs(anlik_fiyat - fib_618) / fiyat_fark
-        min_mesafe = min(mesafe_050, mesafe_618)
-        if min_mesafe < 0.05:
-            yaklasim = (0.05 - min_mesafe) / 0.05
-            fib_log_carpan = np.log1p(yaklasim * 10) / np.log1p(10)
-            max_fib_bonus = max_puan * 0.03
-            if anlik_fiyat >= anlik_ema:
-                fib_l = max_fib_bonus * fib_log_carpan
-            else:
-                fib_s = max_fib_bonus * fib_log_carpan
-
-    final_long = baz_long_puan + ema_l + rsi_l + fib_l
-    final_short = baz_short_puan + ema_s + rsi_s + fib_s
-
-    grup_toplam = final_long + final_short
-    if grup_toplam > 0 and grup_toplam > max_puan:
-        final_long = (final_long / grup_toplam) * max_puan
-        final_short = (final_short / grup_toplam) * max_puan
-
-    y_adet = len(df[df["Body"] > 0])
-    k_adet = len(df[df["Body"] < 0])
-    return round(final_long, 2), round(final_short, 2), y_adet, k_adet
-
 def kurgusal_matris_hesapla(coin_symbol):
+    if coin_symbol == "TOTAL":
+        c_list = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
+        supplies = [19700000, 120000000, 145000000, 470000000, 5700000000]
+        
+        prices = [fiyat_cek_binance(c) for c in c_list]
+        market_caps = [p * s for p, s in zip(prices, supplies)]
+        total_mc = sum(market_caps)
+        if total_mc <= 0:
+            weights = [0.2, 0.2, 0.2, 0.2, 0.2]
+        else:
+            weights = [mc / total_mc for mc in market_caps]
+            
+        toplam_long = 0.0
+        toplam_short = 0.0
+        zaman_katkilari_tot = {
+            "16 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "8 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "4 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "2 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+        }
+        
+        for c, w in zip(c_list, weights):
+            _, _, _, l_p, s_p, z_kat = kurgusal_matris_hesapla(c)
+            toplam_long += l_p * w
+            toplam_short += s_p * w
+            for dilim, veri in z_kat.items():
+                zaman_katkilari_tot[dilim]["sl"] += veri["sl"] * w
+                zaman_katkilari_tot[dilim]["ss"] += veri["ss"] * w
+                zaman_katkilari_tot[dilim]["y_adet"] += veri["y_adet"]
+                zaman_katkilari_tot[dilim]["k_adet"] += veri["k_adet"]
+                
+        nihai_long = round(toplam_long, 2)
+        nihai_short = round(toplam_short, 2)
+        min_esik_degeri = aktif_min_puan_esigi_getir()
+        
+        if nihai_long >= min_esik_degeri:
+            nihai_puan = nihai_long
+            aktif_yon = "Long"
+        elif nihai_short >= min_esik_degeri:
+            nihai_puan = nihai_short
+            aktif_yon = "Short"
+        else:
+            nihai_puan = round(max(nihai_long, nihai_short), 2)
+            aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
+            
+        anlik_total_fiyat = sum(market_caps)
+        return anlik_total_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari_tot
+
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
-    sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
+    sembol_istek = coin_symbol
 
     df_16s = kline_cek_binance(sembol_istek, "15m", 64)
     df_8s = kline_cek_binance(sembol_istek, "5m", 96)
@@ -393,13 +366,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     df_2s = kline_cek_binance(sembol_istek, "1m", 120)
     df_1s = kline_cek_binance(sembol_istek, "1m", 60)
 
-    # Yeni Oransal Ağırlık Dağılımı (Toplam: 100 Puan)
+    # Güncellenmiş Ağırlık Dağılımı: 7, 12, 50, 19, 12 (Toplam: 100)
     dilimler = [
-        (df_16s, 7, "16 S"),
-        (df_8s, 12, "8 S"),
-        (df_4s, 50, "4 S"),
-        (df_2s, 19, "2 S"),
-        (df_1s, 12, "1 S"),
+        (df_16s, 7.0, "16 S"),
+        (df_8s, 12.0, "8 S"),
+        (df_4s, 50.0, "4 S"),
+        (df_2s, 19.0, "2 S"),
+        (df_1s, 12.0, "1 S"),
     ]
 
     toplam_long_puan = 0.0

@@ -36,7 +36,7 @@ jobs:
         env:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
-        run: python trade_check_bot.py
+        run: python panel_v2.py
 
       - name: Persist alert memory and log
         if: always()

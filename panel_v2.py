@@ -870,6 +870,7 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
 
     for idx, row in df.iterrows():
         durum_str = str(row["Durum"]).lower()
+        # Aktif olan (henüz kapanmamış) işlemleri kontrol et
         if not ("kapandi" in durum_str or "kar" in durum_str or "zarar" in durum_str or "kısmi" in durum_str):
             islem_id = int(row["Islem_ID"])
             coin = row["Coin"]
@@ -919,15 +920,21 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
+                # Hafıza ve mail kontrolü (GitHub Actions döngülerinde kaçırmaması için güncellendi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
+                
+                # Eğer daha önce mail atılmamışsa VEYA tablodaki durum yeni güncellendiyse mail at
                 if not hafiza.get(islem_mail_anahtari, False):
                     hafiza[islem_mail_anahtari] = True
                     hafizayi_kaydet(hafiza)
 
                     konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
                     icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
-                    gmail_bildirim_gonder(konu_mail, icerik_mail)
+                    
+                    # Mail gönderimini tetikle ve sonucunu logla
+                    basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
+                    print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
 
                 degisiklik_oldu = True
 
@@ -989,26 +996,29 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         elif nihai_puan >= 78.75:
             asama_6_sart = True
 
-    if coin_mi and asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
+    # Aşama 5 Kontrolü ve Mail Tetiklemesi
+    if asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
         konu = f"🔥🔥 Çok Güçlü Trend Sinyali (5. Aşama): {sembol} (Puan: {nihai_puan:.1f})"
-        icerik = f"<h3>Coin 5. Aşama Çok Güçlü Trende Ulaştı!</h3><p><b>Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
-        gmail_bildirim_gonder(konu, icerik)
-    elif coin_mi and not asama_5_sart and hafiza[sembol]["asama_5_tetiklendi"]:
+        icerik = f"<h3>Çok Güçlü Trende Ulaşıldı!</h3><p><b>Sembol/Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
+        basari, sonuc_mesaji = gmail_bildirim_gonder(konu, icerik)
+        print(f"Aşama 5 Mail Durumu ({sembol}): {sonuc_mesaji}")
+    elif not asama_5_sart and hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-    if not coin_mi and asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
+    # Aşama 6 Kontrolü ve Mail Tetiklemesi (coin_mi kısıtlaması kaldırıldı)
+    if asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
-        konu = f"🔥🔥🔥 Top 5 Endeks Zirvede (6. Aşama - Boğa/Ayı Vuruşu): Puan {nihai_puan:.1f}"
-        icerik = f"<h3>Top 5 Endeks 6. Aşama Zirveye Ulaştı!</h3><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Durum:</b> Boğa Vuruşu / Ayı Pençesi</p>"
-        gmail_bildirim_gonder(konu, icerik)
-    elif not coin_mi and not asama_6_sart and hafiza[sembol]["asama_6_tetiklendi"]:
+        konu = f"🔥🔥🔥 Zirve Sinyali (6. Aşama - Boğa/Ayı Vuruşu): {sembol} (Puan: {nihai_puan:.1f})"
+        icerik = f"<h3>6. Aşama Zirveye Ulaşıldı!</h3><p><b>Sembol/Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Durum:</b> Boğa Vuruşu / Ayı Pençesi</p><p><b>Yön:</b> {aktif_yon}</p>"
+        basari, sonuc_mesaji = gmail_bildirim_gonder(konu, icerik)
+        print(f"Aşama 6 Mail Durumu ({sembol}): {sonuc_mesaji}")
+    elif not asama_6_sart and hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
-
 # --- ARKA PLAN DİNLEYİCİSİ (TOPLU FİYAT HAVUZU İLE) ---
 def arka_plan_dinleyicisi():
     while True:

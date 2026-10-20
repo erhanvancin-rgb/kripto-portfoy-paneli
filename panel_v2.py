@@ -4,6 +4,7 @@ import json
 import os
 import smtplib
 import math
+import sys  # <-- sys modülü buraya açıkça eklenmeli
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText

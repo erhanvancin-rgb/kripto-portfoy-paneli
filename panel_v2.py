@@ -285,16 +285,16 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 0.90, 1.0, "Nötr"
+        return 0.70, 1.0, "Nötr"
 
     x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
     
-    # 1. RISK HESAPLAMA (0.70 -> 0.50)
-    y_risk = np.array([0.70, 0.62, 0.58, 0.55, 0.52, 0.50])
+    # 1. RİSK HESAPLAMA (0.70 -> 0.50 arası kademeli düşüş)
+    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
     
-    # 2. HEDEF HESAPLAMA (0.70 -> 2.00)
-    y_hedef = np.array([0.70, 1.20, 1.50, 1.70, 1.87, 2.00])
+    # 2. HEDEF HESAPLAMA (0.70 -> 1.50 arası kademeli artış)
+    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
     puan = max(min_esik, min(100.0, matris_puani))

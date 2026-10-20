@@ -393,12 +393,13 @@ def kurgusal_matris_hesapla(coin_symbol):
     df_2s = kline_cek_binance(sembol_istek, "1m", 120)
     df_1s = kline_cek_binance(sembol_istek, "1m", 60)
 
+    # Yeni Oransal Ağırlık Dağılımı (Toplam: 100 Puan)
     dilimler = [
-        (df_16s, 9.5, "16 S"),
-        (df_8s, 15.5, "8 S"),
-        (df_4s, 50.0, "4 S"),
-        (df_2s, 15.5, "2 S"),
-        (df_1s, 9.5, "1 S"),
+        (df_16s, 7, "16 S"),
+        (df_8s, 12, "8 S"),
+        (df_4s, 50, "4 S"),
+        (df_2s, 19, "2 S"),
+        (df_1s, 12, "1 S"),
     ]
 
     toplam_long_puan = 0.0

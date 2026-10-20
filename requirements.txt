@@ -1,9 +1,6 @@
-gspread
-google-auth
-numpy
-pandas
-plotly
-pytz
-requests
-streamlit
-streamlit-autorefresh
+gspread>=6.0.0
+google-auth>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+pytz>=2023.3
+requests>=2.31.0

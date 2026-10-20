@@ -335,10 +335,11 @@ def kurgusal_matris_hesapla(coin_symbol):
             toplam_long += l_p * w
             toplam_short += s_p * w
             for dilim, veri in z_kat.items():
-                zaman_katkilari_tot[dilim]["sl"] += veri["sl"] * w
-                zaman_katkilari_tot[dilim]["ss"] += veri["ss"] * w
-                zaman_katkilari_tot[dilim]["y_adet"] += veri["y_adet"]
-                zaman_katkilari_tot[dilim]["k_adet"] += veri["k_adet"]
+                if dilim in zaman_katkilari_tot:
+                    zaman_katkilari_tot[dilim]["sl"] += veri["sl"] * w
+                    zaman_katkilari_tot[dilim]["ss"] += veri["ss"] * w
+                    zaman_katkilari_tot[dilim]["y_adet"] += veri.get("y_adet", 0)
+                    zaman_katkilari_tot[dilim]["k_adet"] += veri.get("k_adet", 0)
                 
         nihai_long = round(toplam_long, 2)
         nihai_short = round(toplam_short, 2)
@@ -354,8 +355,8 @@ def kurgusal_matris_hesapla(coin_symbol):
             nihai_puan = round(max(nihai_long, nihai_short), 2)
             aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
             
-        anlik_total_fiyat = sum(market_caps)
-        return anlik_total_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari_tot
+        anlik_total_fiyat = total_mc
+        return float(anlik_total_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari_tot
 
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     sembol_istek = coin_symbol
@@ -404,7 +405,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         nihai_puan = round(max(nihai_long, nihai_short), 2)
         aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
 
-    return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
+    return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari
 
 @st.cache_resource
 def google_sheets_baglan(sayfa_adi):

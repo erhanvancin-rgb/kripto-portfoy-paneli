@@ -146,7 +146,6 @@ def mail_log_yaz(mesaj):
 
 def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
-    # Gmail uygulama şifresi kaynak kodunda tutulmaz; ortam değişkeninden okunur.
     uygulama_sifresi = os.environ.get("GMAIL_PASSWORD", "").strip()
     alici_mail = "erhanvancin@gmail.com"
 
@@ -505,7 +504,6 @@ def dataframe_guncelle_gsheets(df):
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is not None:
         try:
-            # Tek tek append_row yapmak yerine tüm tabloyu tek seferde güncelliyoruz (Hızlı & Güvenli)[cite: 1]
             df["Islem_ID"] = df["Islem_ID"].astype(int)
             df = df.sort_values(by="Islem_ID").reset_index(drop=True)
             veri_listesi = [df.columns.tolist()] + df.values.tolist()
@@ -870,7 +868,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
 
     for idx, row in df.iterrows():
         durum_str = str(row["Durum"]).lower()
-        # Aktif olan (henüz kapanmamış) işlemleri kontrol et
         if not ("kapandi" in durum_str or "kar" in durum_str or "zarar" in durum_str or "kısmi" in durum_str):
             islem_id = int(row["Islem_ID"])
             coin = row["Coin"]
@@ -920,11 +917,9 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
-                # Hafıza ve mail kontrolü (GitHub Actions döngülerinde kaçırmaması için güncellendi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 
-                # Eğer daha önce mail atılmamışsa VEYA tablodaki durum yeni güncellendiyse mail at
                 if not hafiza.get(islem_mail_anahtari, False):
                     hafiza[islem_mail_anahtari] = True
                     hafizayi_kaydet(hafiza)
@@ -932,7 +927,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
                     icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
                     
-                    # Mail gönderimini tetikle ve sonucunu logla
                     basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
                     print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
 
@@ -996,7 +990,6 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         elif nihai_puan >= 78.75:
             asama_6_sart = True
 
-    # Aşama 5 Kontrolü ve Mail Tetiklemesi
     if asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
@@ -1008,7 +1001,6 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_5_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-    # Aşama 6 Kontrolü ve Mail Tetiklemesi (coin_mi kısıtlaması kaldırıldı)
     if asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
@@ -1019,7 +1011,8 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
     elif not asama_6_sart and hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
-# --- ARKA PLAN DİNLEYİCİSİ (TOPLU FİYAT HAVUZU İLE) ---
+
+# --- ARKA PLAN DİNLEYİCİSİ VEYA TEK SEFERLİK ÇALIŞTIRMA (GİTHUB ACTIONS DESTEĞİ) ---
 def arka_plan_dinleyicisi():
     while True:
         try:
@@ -1035,6 +1028,24 @@ def arka_plan_dinleyicisi():
         except Exception as e:
             print(f"Arka plan hata: {e}")
         time.sleep(60)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-only":
+        print("GitHub Actions üzerinden tek seferlik piyasa ve mail kontrolü başlatılıyor...")
+        try:
+            tum_semboller = coinler + ["TOTAL"]
+            anlik_fiyat_havuzu = {}
+            for s in tum_semboller:
+                anlik_fiyat_havuzu[s] = fiyat_cek_binance(s)
+            for s in tum_semboller:
+                _, puan, yon, _, _, _ = kurgusal_matris_hesapla(s)
+                trend_metni, _, _, _ = trend_asamasini_ve_ikon_belirle(puan, yon)
+                sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
+            otomatik_stop_kar_kontrolu(anlik_fiyat_havuzu)
+            print("Kontroller başarıyla tamamlandı.")
+        except Exception as e:
+            print(f"Tek seferlik kontrol hatası: {e}")
+        sys.exit(0)
 
 @st.cache_resource
 def botu_baslat_bir_kez():

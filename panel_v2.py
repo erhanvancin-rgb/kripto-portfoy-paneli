@@ -4,7 +4,7 @@ import json
 import os
 import smtplib
 import math
-import sys  # <-- sys modülü buraya açıkça eklenmeli
+import sys
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -260,7 +260,6 @@ def load_15min_market_data(coin_symbol: str):
         
         if not (df_btc.empty or df_eth.empty or df_bnb.empty or df_sol.empty or df_xrp.empty):
             df_tot = df_btc[["timestamp"]].copy()
-            # 5 coinin anlık dominans / market cap ağırlıklı toplam seri hesaplaması
             mc_series = (
                 df_btc["Close"] * 19700000 +
                 df_eth["Close"] * 120000000 +
@@ -306,6 +305,107 @@ def load_15min_market_data(coin_symbol: str):
         "Low": [base_p] * limit,
         "Close": [base_p] * limit,
     })
+
+# --- LOGARİTMİK RİSK / HEDEF HESAPLAMA MİMARİSİ ---
+def calculate_coin_metrics_by_score(matris_puani):
+    hsonu = hafta_sonu_mu()
+    min_esik = 60.0 if hsonu else 55.0
+
+    if matris_puani < min_esik:
+        return 0.70, 1.0, "Nötr"
+
+    x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
+    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
+    risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
+    
+    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
+    hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
+
+    puan = max(min_esik, min(100.0, matris_puani))
+
+    stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
+    hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
+
+    stop_uzde = max(0.40, min(0.70, stop_uzde))
+    hedef_uzde = max(0.60, min(2.50, hedef_uzde))
+
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
+
+    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
+    risk_hedef_metin = f"{str_stop} / {str_hedef}"
+
+    return stop_uzde, hedef_carpan, risk_hedef_metin
+
+def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
+    if df.empty or len(df) < 10:
+        return max_puan / 2.0, max_puan / 2.0, 0, 0
+
+    df["Body"] = df["Close"] - df["Open"]
+    toplam_yesil_boy = df[df["Body"] > 0]["Body"].sum()
+    toplam_kirmizi_boy = abs(df[df["Body"] < 0]["Body"].sum())
+    toplam_boy = toplam_yesil_boy + toplam_kirmizi_boy
+
+    if toplam_boy > 0:
+        yesil_oran = toplam_yesil_boy / toplam_boy
+        kirmizi_oran = toplam_kirmizi_boy / toplam_boy
+    else:
+        yesil_oran, kirmizi_oran = 0.5, 0.5
+
+    baz_long_puan = max_puan * yesil_oran
+    baz_short_puan = max_puan * kirmizi_oran
+
+    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+    anlik_fiyat = float(df["Close"].iloc[-1])
+    anlik_ema = float(df["EMA20"].iloc[-1])
+    fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
+    ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
+    max_ema_bonus = max_puan * 0.04
+    ema_l = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
+    ema_s = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
+
+    delta = df["Close"].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi_serisi = 100 - (100 / (1 + rs))
+    rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
+    fark_rsi = abs(rsi_anlik - 50.0)
+    rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
+    max_rsi_bonus = max_puan * 0.03
+    rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
+    rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
+
+    max_f = float(df["High"].max())
+    min_f = float(df["Low"].min())
+    fiyat_fark = max_f - min_f
+    fib_l, fib_s = 0.0, 0.0
+    if fiyat_fark > 0:
+        fib_050 = min_f + (fiyat_fark * 0.5)
+        fib_618 = min_f + (fiyat_fark * 0.618)
+        mesafe_050 = abs(anlik_fiyat - fib_050) / fiyat_fark
+        mesafe_618 = abs(anlik_fiyat - fib_618) / fiyat_fark
+        min_mesafe = min(mesafe_050, mesafe_618)
+        if min_mesafe < 0.05:
+            yaklasim = (0.05 - min_mesafe) / 0.05
+            fib_log_carpan = np.log1p(yaklasim * 10) / np.log1p(10)
+            max_fib_bonus = max_puan * 0.03
+            if anlik_fiyat >= anlik_ema:
+                fib_l = max_fib_bonus * fib_log_carpan
+            else:
+                fib_s = max_fib_bonus * fib_log_carpan
+
+    final_long = baz_long_puan + ema_l + rsi_l + fib_l
+    final_short = baz_short_puan + ema_s + rsi_s + fib_s
+
+    grup_toplam = final_long + final_short
+    if grup_toplam > 0 and grup_toplam > max_puan:
+        final_long = (final_long / grup_toplam) * max_puan
+        final_short = (final_short / grup_toplam) * max_puan
+
+    y_adet = len(df[df["Body"] > 0])
+    k_adet = len(df[df["Body"] < 0])
+    return round(final_long, 2), round(final_short, 2), y_adet, k_adet
 
 def kurgusal_matris_hesapla(coin_symbol):
     if coin_symbol == "TOTAL":
@@ -475,7 +575,6 @@ def islem_gecmisi_getir(sheet_guncelle=True):
             ).fillna(0.0).astype(float)
     return df
 
-# --- GOOGLE SHEETS HIZLI GÜNCELLEME (TOPLU UPDATE) ---
 def dataframe_guncelle_gsheets(df):
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is not None:
@@ -595,7 +694,6 @@ def elli_islem_arsiv_kontrol():
     except:
         pass
 
-# --- BAKİYE VE ORTAK FİYAT HAVUZU ---
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df_trade = islem_gecmisi_getir(sheet_guncelle=False)
     df_kasa = kasa_defteri_getir()
@@ -893,7 +991,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
-                # Hafıza ve mail kontrolü (Her kapanışta garanti bildirim için güncellendi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 
@@ -989,7 +1086,6 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-# --- ARKA PLAN DİNLEYİCİSİ VEYA TEK SEFERLİK ÇALIŞTIRMA (GİTHUB ACTIONS DESTEĞİ) ---
 def arka_plan_dinleyicisi():
     while True:
         try:

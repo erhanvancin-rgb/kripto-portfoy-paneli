@@ -387,10 +387,8 @@ def kurgusal_matris_hesapla(coin_symbol):
         prices = [fiyat_cek_binance(c) for c in c_list]
         market_caps = [p * s for p, s in zip(prices, supplies)]
         total_mc = sum(market_caps)
-        if total_mc <= 0:
-            weights = [0.2, 0.2, 0.2, 0.2, 0.2]
-        else:
-            weights = [mc / total_mc for mc in market_caps]
+        
+        weights = [0.2, 0.2, 0.2, 0.2, 0.2] if total_mc <= 0 else [mc / total_mc for mc in market_caps]
             
         toplam_long = 0.0
         toplam_short = 0.0

@@ -148,9 +148,9 @@ def gmail_bildirim_gonder(konu, icerik_html):
     gonderici_mail = "erhanvancin@gmail.com"
     uygulama_sifresi = os.environ.get("GMAIL_PASSWORD", "").strip()
     alici_mail = "erhanvancin@gmail.com"
-
+    
     if not uygulama_sifresi:
-        hata = "GMAIL_PASSWORD tanımlı değil."
+        hata = "GMAIL_PASSWORD tanımlı değil. Ortam değişkeni veya GitHub Actions Secret ekleyin."
         print(hata)
         mail_log_yaz(f"HATA ({konu}): GMAIL_PASSWORD tanımlı değil.")
         return False, hata
@@ -190,7 +190,7 @@ def fiyat_cek_binance(coin_symbol):
             bnb = fiyat_cek_binance("BNB/USDT")
             sol = fiyat_cek_binance("SOL/USDT")
             xrp = fiyat_cek_binance("XRP/USDT")
-
+            
             tahmini_total = (
                 (btc * 19700000)
                 + (eth * 120000000)
@@ -289,7 +289,7 @@ def calculate_coin_metrics_by_score(matris_puani):
     x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
     y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
-    
+
     y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
@@ -380,93 +380,55 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     return round(final_long, 2), round(final_short, 2), y_adet, k_adet
 
 def kurgusal_matris_hesapla(coin_symbol):
-    if coin_symbol == "TOTAL":
-        c_list = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
-        supplies = [19700000, 120000000, 145000000, 470000000, 5700000000]
-        
-        prices = [fiyat_cek_binance(c) for c in c_list]
-        market_caps = [p * s for p, s in zip(prices, supplies)]
-        total_mc = sum(market_caps)
-        if total_mc <= 0:
-            weights = [0.2, 0.2, 0.2, 0.2, 0.2]
-        else:
-            weights = [mc / total_mc for mc in market_caps]
-            
-        toplam_long = 0.0
-        toplam_short = 0.0
-        zaman_katkilari_tot = {
-            "16 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "8 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "4 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "2 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+    anlik_fiyat = fiyat_cek_binance(coin_symbol)
+    sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
+
+    df_16s = kline_cek_binance(sembol_istek, "15m", 64)
+    df_8s = kline_cek_binance(sembol_istek, "5m", 96)
+    df_4s = kline_cek_binance(sembol_istek, "5m", 48)
+    df_2s = kline_cek_binance(sembol_istek, "1m", 120)
+    df_1s = kline_cek_binance(sembol_istek, "1m", 60)
+
+    dilimler = [
+        (df_16s, 9.5, "16 S"),
+        (df_8s, 15.5, "8 S"),
+        (df_4s, 50.0, "4 S"),
+        (df_2s, 15.5, "2 S"),
+        (df_1s, 9.5, "1 S"),
+    ]
+
+    toplam_long_puan = 0.0
+    toplam_short_puan = 0.0
+    zaman_katkilari = {}
+
+    for df_zaman, max_puan, isim in dilimler:
+        sl, ss, y_ad, k_ad = oransal_matris_ve_teknik_faktorler_hesapla(df_zaman, max_puan)
+        toplam_long_puan += sl
+        toplam_short_puan += ss
+        zaman_katkilari[isim] = {
+            "sl": sl,
+            "ss": ss,
+            "y_adet": y_ad,
+            "k_adet": k_ad,
         }
-        
-        for c, w in zip(c_list, weights):
-            _, _, _, l_p, s_p, z_kat = kurgusal_matris_hesapla(c)
-            toplam_long += l_p * w
-            toplam_short += s_p * w
-            for dilim, veri in z_kat.items():
-                if dilim in zaman_katkilari_tot:
-                    zaman_katkilari_tot[dilim]["sl"] += veri["sl"] * w
-                    zaman_katkilari_tot[dilim]["ss"] += veri["ss"] * w
-                    zaman_katkilari_tot[dilim]["y_adet"] += veri.get("y_adet", 0)
-                    zaman_katkilari_tot[dilim]["k_adet"] += veri.get("k_adet", 0)
-                
-        nihai_long = round(toplam_long, 2)
-        nihai_short = round(toplam_short, 2)
-        min_esik_degeri = aktif_min_puan_esigi_getir()
-        
-        if nihai_long >= min_esik_degeri:
-            nihai_puan = nihai_long
-            aktif_yon = "Long"
-        elif nihai_short >= min_esik_degeri:
-            nihai_puan = nihai_short
-            aktif_yon = "Short"
-        else:
-            nihai_puan = round(max(nihai_long, nihai_short), 2)
-            aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
-            
-        anlik_total_fiyat = total_mc
-        return float(anlik_total_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari_tot
+
+    nihai_long = round(toplam_long_puan, 2)
+    nihai_short = round(toplam_short_puan, 2)
+    min_esik_degeri = aktif_min_puan_esigi_getir()
+
+    if nihai_long >= min_esik_degeri:
+        nihai_puan = nihai_long
+        aktif_yon = "Long"
+    elif nihai_short >= min_esik_degeri:
+        nihai_puan = nihai_short
+        aktif_yon = "Short"
     else:
-        df_15m = load_15min_market_data(coin_symbol)
-        zaman_dilimleri = {
-            "16 S": 96,
-            "8 S": 48,
-            "4 S": 24,
-            "2 S": 12,
-            "1 S": 6,
-        }
-        toplam_l, toplam_s = 0.0, 0.0
-        agirliklar = {"16 S": 0.35, "8 S": 0.25, "4 S": 0.20, "2 S": 0.12, "1 S": 0.08}
-        zaman_katkilari = {}
+        nihai_puan = round(max(nihai_long, nihai_short), 2)
+        aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
 
-        for dilim, bar_sayisi in zaman_dilimleri.items():
-            df_parca = df_15m.tail(bar_sayisi) if not df_15m.empty else pd.DataFrame()
-            parca_agirlik = agirliklar[dilim]
-            l_p, s_p, y_ad, k_ad = oransal_matris_ve_teknik_faktorler_hesapla(df_parca, parca_agirlik * 100.0)
-            toplam_l += l_p
-            toplam_s += s_p
-            zaman_katkilari[dilim] = {"sl": l_p, "ss": s_p, "y_adet": y_ad, "k_adet": k_ad}
+    return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
-        nihai_long = round(toplam_l, 2)
-        nihai_short = round(toplam_s, 2)
-        min_esik_degeri = aktif_min_puan_esigi_getir()
-
-        if nihai_long >= min_esik_degeri and nihai_long > nihai_short:
-            nihai_puan = nihai_long
-            aktif_yon = "Long"
-        elif nihai_short >= min_esik_degeri and nihai_short > nihai_long:
-            nihai_puan = nihai_short
-            aktif_yon = "Short"
-        else:
-            nihai_puan = round(max(nihai_long, nihai_short), 2)
-            aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
-
-        anlik_fiyat = fiyat_cek_binance(coin_symbol)
-        return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari
-        
+@st.cache_resource
 def google_sheets_baglan(sayfa_adi):
     try:
         if "gcp_service_account" in st.secrets:
@@ -653,7 +615,6 @@ def elli_islem_arsiv_kontrol():
     except:
         pass
 
-# --- BAKİYE VE ORTAK FİYAT HAVUZU ---
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     df_trade = islem_gecmisi_getir(sheet_guncelle=False)
     df_kasa = kasa_defteri_getir()
@@ -855,7 +816,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
             else:
                 bek_kar_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Kar_Al"])) / giris_fiyat)
                 olasi_stop_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Stop"])) / giris_fiyat)
-            
+                
             df.at[idx[0], "Beklenen_Kar"] = round(bek_kar_yeni, 2)
             df.at[idx[0], "Olasi_Stop"] = round(olasi_stop_yeni, 2)
             
@@ -954,21 +915,15 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 
-                konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
-                icerik_mail = f"""
-                <h3>Otomatik İşlem Kapatıldı</h3>
-                <p><b>Coin:</b> {coin}</p>
-                <p><b>Yön:</b> {yon}</p>
-                <p><b>Sebep:</b> {islem_turu_etiket}</p>
-                <p><b>Net K/Z:</b> {net_kar:,.2f} $</p>
-                <p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>
-                """
-                
-                basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
-                print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
-                
-                hafiza[islem_mail_anahtari] = True
-                hafizayi_kaydet(hafiza)
+                if not hafiza.get(islem_mail_anahtari, False):
+                    hafiza[islem_mail_anahtari] = True
+                    hafizayi_kaydet(hafiza)
+
+                    konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
+                    icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
+                    
+                    basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
+                    print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
 
                 degisiklik_oldu = True
 
@@ -1052,7 +1007,7 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-# --- ARKA PLAN DİNLEYİCİSİ (Doğru Sıralama: Önce tanımlandı) ---
+# --- ARKA PLAN DİNLEYİCİSİ (Hata Çözümü için Önce Tanımlandı) ---
 def arka_plan_dinleyicisi():
     while True:
         try:
@@ -1071,9 +1026,9 @@ def arka_plan_dinleyicisi():
 
 @st.cache_resource
 def botu_baslat_bir_kez():
-    import threading
     t = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
     t.start()
+    return t
 
 arka_plan_thread = botu_baslat_bir_kez()
 
@@ -1273,7 +1228,7 @@ with col_kasa_buton:
         </style>""",
         unsafe_allow_html=True,
     )
-    if st.button("🏦 Kasa İşlemleri", width="stretch", key="ana_kasa_butonu"):
+    if st.button("🏦 Kasa İşlemleri", width='stretch', key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 
@@ -1288,11 +1243,11 @@ if st.session_state.get("kasa_islem_acik", False):
     with col_header_sag:
         h_btn_col1, h_btn_col2 = st.columns(2)
         with h_btn_col1:
-            if st.button("💵 Ekle", width="stretch", key="btn_mod_ekle"):
+            if st.button("💵 Ekle", width='stretch', key="btn_mod_ekle"):
                 st.session_state["kasa_islem_turu"] = "Para Yatır"
                 st.rerun()
         with h_btn_col2:
-            if st.button("🏦 Çek", width="stretch", key="btn_mod_cek"):
+            if st.button("🏦 Çek", width='stretch', key="btn_mod_cek"):
                 st.session_state["kasa_islem_turu"] = "Para Çek"
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1304,7 +1259,7 @@ if st.session_state.get("kasa_islem_acik", False):
         kasa_aciklama = st.text_input("Açıklama", value="Ekstra sermaye" if islem_yatir else "Kasa çekimi", key="k_acik")
     with col_onay:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("💾 Onayla", width="stretch", key="kasa_onayla"):
+        if st.button("💾 Onayla", width='stretch', key="kasa_onayla"):
             basarili, mesaj = kasa_islem_ekle("Para_Yatir" if islem_yatir else "Para_Cek", kasa_tutar, kasa_aciklama)
             if basarili:
                 st.success(mesaj)
@@ -1315,7 +1270,7 @@ if st.session_state.get("kasa_islem_acik", False):
                 st.error(mesaj)
     with col_kapat:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("✖ Kapat", width="stretch", key="kasa_kapat"):
+        if st.button("✖ Kapat", width='stretch', key="kasa_kapat"):
             st.session_state["kasa_islem_acik"] = False
             st.rerun()
 
@@ -1383,7 +1338,7 @@ with col_sol_panel:
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
     if not st.session_state.get("islem_emri_kilit_acik", False):
-        if st.button("🔓 İşlem Açma Kilidini Aç", width="stretch", key="btn_islem_kilidi_ac"):
+        if st.button("🔓 İşlem Açma Kilidini Aç", width='stretch', key="btn_islem_kilidi_ac"):
             if coin_listesi:
                 st.session_state["islem_emri_kilit_acik"] = True
                 st.rerun()
@@ -1400,26 +1355,26 @@ with col_sol_panel:
             
             col_islem_yap, col_kapat_kilit = st.columns(2)
             with col_islem_yap:
-                submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", width="stretch")
+                submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", width='stretch')
             with col_kapat_kilit:
-                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", width="stretch")
+                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", width='stretch')
             if kapat_kilit_tik:
                 st.session_state["islem_emri_kilit_acik"] = False
                 st.rerun()
 
-            if submit_islem:
-                if not secilen_coin or coin_listesi == []:
-                    st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-                elif coin_verisii is not None:
-                    basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii["Aktif_Yon"], coin_verisii["Fiyat"], manuel_girilen_tutar, coin_verisii["Stopla"], coin_verisii["Kar_Al"], "Oransal_Matris", anlik_matris_puani, anlik_risk_hedef_metin)
-                    if basari:
-                        st.session_state["islem_emri_kilit_acik"] = False
-                        st.success(mesaj)
-                        st.balloons()
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(mesaj)
+        if submit_islem:
+            if not secilen_coin or coin_listesi == []:
+                st.error("⚠️ Geçerli bir coin seçmelisiniz!")
+            elif coin_verisii is not None:
+                basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii["Aktif_Yon"], coin_verisii["Fiyat"], manuel_girilen_tutar, coin_verisii["Stopla"], coin_verisii["Kar_Al"], "Oransal_Matris", anlik_matris_puani, anlik_risk_hedef_metin)
+                if basari:
+                    st.session_state["islem_emri_kilit_acik"] = False
+                    st.success(mesaj)
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(mesaj)
 
 with col_orta_grafik:
     st.markdown("<h3>🌐 Top 5 Coin (Oransal Omurga & Teknik Mıknatıs)</h3>", unsafe_allow_html=True)
@@ -1470,7 +1425,7 @@ with col_orta_grafik:
             xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8")),
         )
-        st.plotly_chart(fig_total, width="stretch")
+        st.plotly_chart(fig_total, width='stretch')
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
@@ -1485,6 +1440,7 @@ with col_sag_endeks:
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():
         sl, ss = veri["sl"], veri["ss"]
+        y_ad, k_ad = veri["y_adet"], veri["k_adet"]
         kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
         boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
     boxes_birlestirilmis = "".join(boxes_listesi)
@@ -1528,7 +1484,7 @@ with col_sol_analiz:
             )
             fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13), margin=dict(t=10, b=10, l=10, r=10), height=210, showlegend=False)
             fig.update_traces(textfont_size=13, textinfo="percent", marker=dict(line=dict(width=0)))
-            st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False})
+            st.plotly_chart(fig, width='stretch', config={"responsive": True, "displayModeBar": False})
 
         with sub_p2:
             st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>""", unsafe_allow_html=True)
@@ -1542,10 +1498,10 @@ with col_sol_analiz:
 with col_orta_durum:
     st.markdown("<h3>👁️ İşlem Sunumu</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 40px;"></div>', unsafe_allow_html=True)
-    if st.button("Aktif İşlemler", width="stretch"):
+    if st.button("Aktif İşlemler", width='stretch'):
         st.session_state["sadece_aktifleri_goster"] = True
         st.rerun()
-    if st.button("Tüm İşlemler", width="stretch"):
+    if st.button("Tüm İşlemler", width='stretch'):
         st.session_state["sadece_aktifleri_goster"] = False
         st.rerun()
     st.info("ℹ️ Sadece Aktifler." if st.session_state["sadece_aktifleri_goster"] else "ℹ️ Tüm işlemler.")
@@ -1553,51 +1509,51 @@ with col_orta_durum:
 with col_sag_sonlandir:
     st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-    
+
     def paneli_kilitle():
         st.session_state["kapama_paneli_acik"] = False
 
     kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id_secim_en_yeni_kilitli", on_change=paneli_kilitle)
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
-    
-    if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("🔒 İşlem Kapatma Kilidini Aç", width="stretch", key="btn_kilit_ac_yeni"):
-            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                st.session_state["kapama_paneli_acik"] = True
-                st.rerun()
-            else:
-                st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
-    else:
-        secilen_islem_miktar, secilen_coin = 100.0, "BTC/USDT"
+
+if not st.session_state.get("kapama_paneli_acik", False):
+    if st.button("🔒 İşlem Kapatma Kilidini Aç", width='stretch', key="btn_kilit_ac_yeni"):
         if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-            secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
-            if not secilen_islem_satir.empty:
-                secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
-                secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
+            st.session_state["kapama_paneli_acik"] = True
+            st.rerun()
+        else:
+            st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
+else:
+    secilen_islem_miktar, secilen_coin = 100.0, "BTC/USDT"
+    if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
+        secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
+        if not secilen_islem_satir.empty:
+            secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
+            secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
 
-        st.markdown(f"""<div style="background:linear-gradient(145deg,#2b1111,#1a0b0b); color:#e8eef8; border:1px solid #5b3030; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;"><b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>Yatırım: <b style="color:#ff6b6b;">{secilen_islem_miktar:,.2f} $</b></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div style="background:linear-gradient(145deg,#2b1111,#1a0b0b); color:#e8eef8; border:1px solid #5b3030; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;"><b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>Yatırım: <b style="color:#ff6b6b;">{secilen_islem_miktar:,.2f} $</b></div>""", unsafe_allow_html=True)
 
-        girilen_tutar = st.number_input("Kapatılacak Tutar ($):", min_value=0.0, max_value=float(secilen_islem_miktar), value=float(secilen_islem_miktar), step=10.0, key="input_tek_tutar_en_yeni")
+    girilen_tutar = st.number_input("Kapatılacak Tutar ($):", min_value=0.0, max_value=float(secilen_islem_miktar), value=float(secilen_islem_miktar), step=10.0, key="input_tek_tutar_en_yeni")
 
-        col_islem_yap, col_iptal = st.columns(2)
-        with col_islem_yap:
-            if st.button("🛑 Emri Al", width="stretch", key="btn_emri_al_en_yeni"):
-                if girilen_tutar <= 0:
-                    st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
+    col_islem_yap, col_iptal = st.columns(2)
+    with col_islem_yap:
+        if st.button("🛑 Emri Al", width='stretch', key="btn_emri_al_en_yeni"):
+            if girilen_tutar <= 0:
+                st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
+            else:
+                hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
+                b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, ortak_fiyat_havuzu.get(secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)), kapatilacak_miktar=hedef_miktar)
+                if b_durum:
+                    st.session_state["kapama_paneli_acik"] = False
+                    st.success(b_mesaj)
+                    time.sleep(1.2)
+                    st.rerun()
                 else:
-                    hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
-                    b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, ortak_fiyat_havuzu.get(secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)), kapatilacak_miktar=hedef_miktar)
-                    if b_durum:
-                        st.session_state["kapama_paneli_acik"] = False
-                        st.success(b_mesaj)
-                        time.sleep(1.2)
-                        st.rerun()
-                    else:
-                        st.error(b_mesaj)
-        with col_iptal:
-            if st.button("İptal", width="stretch", key="btn_iptal_en_yeni"):
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
+                    st.error(b_mesaj)
+    with col_iptal:
+        if st.button("İptal", width='stretch', key="btn_iptal_en_yeni"):
+            st.session_state["kapama_paneli_acik"] = False
+            st.rerun()
 
 st.markdown("---")
 
@@ -1669,10 +1625,9 @@ st.markdown("<h3>📁 50'şerli İşlem Arşivleri (Analiz Klasörü)</h3>", uns
 if os.path.exists(ARSIV_KLASORU):
     try:
         arsiv_dosyalari = sorted(os.listdir(ARSIV_KLASORU))
-        if arsiv_dosyalari:
-            secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="archiv_select_50")
-            if secilen_arsiv:
-                df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=";")
-                st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
-    except Exception:
+        if secilen_arsiv := (st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50") if arsiv_dosyalari else None):
+            yol_arsiv = os.path.join(ARSIV_KLASORU, secilen_arsiv)
+            df_arsiv_goster = pd.read_csv(yol_arsiv, sep=";")
+            st.dataframe(df_arsiv_goster, width='stretch')
+    except:
         pass

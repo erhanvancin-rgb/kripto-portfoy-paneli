@@ -427,23 +427,22 @@ def kurgusal_matris_hesapla(coin_symbol):
             nihai_puan = round(max(nihai_long, nihai_short), 2)
             aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
             
-       anlik_total_fiyat = total_mc
+        anlik_total_fiyat = total_mc
         return float(anlik_total_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari_tot
     else:
-      # Eğer coin "TOTAL" değilse (normal bir coinse) burası çalışır:
-    anlik_fiyat = fiyat_cek_binance(coin_symbol)
-    nihai_puan = 0.0
-    aktif_yon = "Nötr"
-    l_puan = 0.0
-    s_puan = 0.0
-    zaman_katkilari = {
-        "16 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-        "8 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-        "4 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-        "2 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-        "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-    }
-    return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(l_puan), float(s_puan), zaman_katkilari
+        anlik_fiyat = fiyat_cek_binance(coin_symbol)
+        nihai_puan = 0.0
+        aktif_yon = "Nötr"
+        l_puan = 0.0
+        s_puan = 0.0
+        zaman_katkilari = {
+            "16 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "8 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "4 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "2 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+            "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+        }
+        return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(l_puan), float(s_puan), zaman_katkilari
         
 def google_sheets_baglan(sayfa_adi):
     try:

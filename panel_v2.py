@@ -17,8 +17,29 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pytz
 import requests
+import logging
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+
+try:
+    from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+except Exception:  # eski/yeni Streamlit sürümlerinde yol değişebilir
+    add_script_run_ctx = None
+    get_script_run_ctx = None
+
+
+class _ScriptRunCtxFiltresi(logging.Filter):
+    """Arka plan thread'inden gelen 'missing ScriptRunContext' uyarılarının log'u doldurmasını engeller."""
+
+    def filter(self, record):
+        return "missing ScriptRunContext" not in record.getMessage()
+
+
+for _logger_adi in (
+    "streamlit.runtime.scriptrunner_utils.script_run_context",
+    "streamlit.runtime.scriptrunner.script_run_context",
+):
+    logging.getLogger(_logger_adi).addFilter(_ScriptRunCtxFiltresi())
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(
@@ -1007,27 +1028,51 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-# --- ARKA PLAN DİNLEYİCİSİ (Hata Çözümü için Önce Tanımlandı) ---
-def arka_plan_dinleyicisi():
-    while True:
+# --- ARKA PLAN DİNLEYİCİSİ ---
+# Not: Thread içinde st.* çağrısı yapan fonksiyonlar (cache_data vb.) kullanıldığı için
+# thread'e ana oturumun ScriptRunContext'i bağlanır (aşağıda botu_baslat_bir_kez).
+def arka_plan_dinleyicisi(durdur_olayi):
+    while not durdur_olayi.is_set():
+        bekleme = 60
         try:
             tum_semboller = coinler + ["TOTAL"]
             anlik_fiyat_havuzu = {}
             for s in tum_semboller:
                 anlik_fiyat_havuzu[s] = fiyat_cek_binance(s)
             for s in tum_semboller:
+                if durdur_olayi.is_set():
+                    return
                 _, puan, yon, _, _, _ = kurgusal_matris_hesapla(s)
                 trend_metni, _, _, _ = trend_asamasini_ve_ikon_belirle(puan, yon)
                 sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
             otomatik_stop_kar_kontrolu(anlik_fiyat_havuzu)
-            time.sleep(60)
         except Exception as e:
             print(f"Arka plan hata: {e}")
-            time.sleep(10)
+            bekleme = 10
+        durdur_olayi.wait(bekleme)  # time.sleep yerine: durdurma sinyalinde hemen uyanır
+
 
 @st.cache_resource
 def botu_baslat_bir_kez():
-    thread = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
+    # Kod güncellemesinde (redeploy) cache_resource temizlenir ve bu fonksiyon yeniden çalışır;
+    # eski thread'ler yaşamaya devam ettiği için önce onlara durma sinyali gönderilir.
+    onceki_olay = getattr(threading, "_kripto_bot_durdur_olayi", None)
+    if onceki_olay is not None:
+        onceki_olay.set()
+
+    yeni_olay = threading.Event()
+    threading._kripto_bot_durdur_olayi = yeni_olay
+
+    thread = threading.Thread(
+        target=arka_plan_dinleyicisi,
+        args=(yeni_olay,),
+        name="arka_plan_dinleyicisi",
+        daemon=True,
+    )
+    if add_script_run_ctx is not None and get_script_run_ctx is not None:
+        ctx = get_script_run_ctx()
+        if ctx is not None:
+            add_script_run_ctx(thread, ctx)
     thread.start()
     return thread
 
@@ -1055,7 +1100,10 @@ islenen_ham_veriler = []
 ortak_fiyat_havuzu = {}
 
 for sembol in tum_takip_edilenler:
-    anlik_fiyat, nihai_puan, aktif_yon, l_puan, s_puan, zaman_katkilari = kurgusal_matris_hesapla(sembol)
+    matris_sonuc = kurgusal_matris_hesapla(sembol)
+    if matris_sonuc is None:
+        matris_sonuc = (fiyat_cek_binance(sembol), 0.0, "Long", 0.0, 0.0, {})
+    anlik_fiyat, nihai_puan, aktif_yon, l_puan, s_puan, zaman_katkilari = matris_sonuc
     if sembol == "TOTAL":
         anlik_fiyat = fiyat_cek_binance("TOTAL")
     ortak_fiyat_havuzu[sembol] = anlik_fiyat

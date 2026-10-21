@@ -1071,9 +1071,9 @@ def arka_plan_dinleyicisi():
 
 @st.cache_resource
 def botu_baslat_bir_kez():
+    import threading
     t = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
     t.start()
-    return t
 
 arka_plan_thread = botu_baslat_bir_kez()
 

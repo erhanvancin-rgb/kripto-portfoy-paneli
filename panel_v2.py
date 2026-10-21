@@ -1683,7 +1683,25 @@ st.markdown("<h3>📁 50'şerli İşlem Arşivleri (Analiz Klasörü)</h3>", uns
 if os.path.exists(ARSIV_KLASORU):
     try:
         arsiv_dosyalari = sorted(os.listdir(ARSIV_KLASORU))
-        if secilen_arsiv := (st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="arsiv_select_50") if arsiv_dosyalari else None):
-            st.write(pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=";").to_html(escape=False, index=False), unsafe_allow_html=True)
-    except:
+        if arsiv_dosyalari:
+            secilen_arsiv = st.selectbox("Geçmiş 50'li Blok Dönemini Seçin:", arsiv_dosyalari, key="archiv_select_50")
+            if secilen_arsiv:
+                df_arsiv = pd.read_csv(os.path.join(ARSIV_KLASORU, secilen_arsiv), delimiter=";")
+                st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
+    except Exception:
         pass
+ 
+def arka_plan_dinleyicisi():
+    while True:
+        try:
+            time.sleep(60)
+        except Exception:
+            pass
+
+def botu_baslat_bir_kez():
+    if "thread_started" not in st.session_state:
+        t = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
+        t.start()
+        st.session_state["thread_started"] = True
+
+botu_baslat_bir_kez()

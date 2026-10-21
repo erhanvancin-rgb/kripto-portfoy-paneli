@@ -430,19 +430,42 @@ def kurgusal_matris_hesapla(coin_symbol):
         anlik_total_fiyat = total_mc
         return float(anlik_total_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari_tot
     else:
-        anlik_fiyat = fiyat_cek_binance(coin_symbol)
-        nihai_puan = 0.0
-        aktif_yon = "Nötr"
-        l_puan = 0.0
-        s_puan = 0.0
-        zaman_katkilari = {
-            "16 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "8 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "4 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "2 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
-            "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
+        df_15m = load_15min_market_data(coin_symbol)
+        zaman_dilimleri = {
+            "16 S": 96,
+            "8 S": 48,
+            "4 S": 24,
+            "2 S": 12,
+            "1 S": 6,
         }
-        return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(l_puan), float(s_puan), zaman_katkilari
+        toplam_l, toplam_s = 0.0, 0.0
+        agirliklar = {"16 S": 0.35, "8 S": 0.25, "4 S": 0.20, "2 S": 0.12, "1 S": 0.08}
+        zaman_katkilari = {}
+
+        for dilim, bar_sayisi in zaman_dilimleri.items():
+            df_parca = df_15m.tail(bar_sayisi) if not df_15m.empty else pd.DataFrame()
+            parca_agirlik = agirliklar[dilim]
+            l_p, s_p, y_ad, k_ad = oransal_matris_ve_teknik_faktorler_hesapla(df_parca, parca_agirlik * 100.0)
+            toplam_l += l_p
+            toplam_s += s_p
+            zaman_katkilari[dilim] = {"sl": l_p, "ss": s_p, "y_adet": y_ad, "k_adet": k_ad}
+
+        nihai_long = round(toplam_l, 2)
+        nihai_short = round(toplam_s, 2)
+        min_esik_degeri = aktif_min_puan_esigi_getir()
+
+        if nihai_long >= min_esik_degeri and nihai_long > nihai_short:
+            nihai_puan = nihai_long
+            aktif_yon = "Long"
+        elif nihai_short >= min_esik_degeri and nihai_short > nihai_long:
+            nihai_puan = nihai_short
+            aktif_yon = "Short"
+        else:
+            nihai_puan = round(max(nihai_long, nihai_short), 2)
+            aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
+
+        anlik_fiyat = fiyat_cek_binance(coin_symbol)
+        return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari
         
 def google_sheets_baglan(sayfa_adi):
     try:
@@ -928,7 +951,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
-                # Hafıza ve mail kontrolü (Güvenceli ve anında tetikleme mimarisi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 
@@ -942,7 +964,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 <p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>
                 """
                 
-                # Mail gönderimini doğrudan tetikle ve hafızaya kaydet
                 basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
                 print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
                 
@@ -1031,7 +1052,7 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-# --- ARKA PLAN DİNLEYİCİSİ ---
+# --- ARKA PLAN DİNLEYİCİSİ (Doğru Sıralama: Önce tanımlandı) ---
 def arka_plan_dinleyicisi():
     while True:
         try:
@@ -1252,7 +1273,7 @@ with col_kasa_buton:
         </style>""",
         unsafe_allow_html=True,
     )
-    if st.button("🏦 Kasa İşlemleri", use_container_width=True, key="ana_kasa_butonu"):
+    if st.button("🏦 Kasa İşlemleri", width="stretch", key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 
@@ -1267,11 +1288,11 @@ if st.session_state.get("kasa_islem_acik", False):
     with col_header_sag:
         h_btn_col1, h_btn_col2 = st.columns(2)
         with h_btn_col1:
-            if st.button("💵 Ekle", use_container_width=True, key="btn_mod_ekle"):
+            if st.button("💵 Ekle", width="stretch", key="btn_mod_ekle"):
                 st.session_state["kasa_islem_turu"] = "Para Yatır"
                 st.rerun()
         with h_btn_col2:
-            if st.button("🏦 Çek", use_container_width=True, key="btn_mod_cek"):
+            if st.button("🏦 Çek", width="stretch", key="btn_mod_cek"):
                 st.session_state["kasa_islem_turu"] = "Para Çek"
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1283,7 +1304,7 @@ if st.session_state.get("kasa_islem_acik", False):
         kasa_aciklama = st.text_input("Açıklama", value="Ekstra sermaye" if islem_yatir else "Kasa çekimi", key="k_acik")
     with col_onay:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("💾 Onayla", use_container_width=True, key="kasa_onayla"):
+        if st.button("💾 Onayla", width="stretch", key="kasa_onayla"):
             basarili, mesaj = kasa_islem_ekle("Para_Yatir" if islem_yatir else "Para_Cek", kasa_tutar, kasa_aciklama)
             if basarili:
                 st.success(mesaj)
@@ -1294,7 +1315,7 @@ if st.session_state.get("kasa_islem_acik", False):
                 st.error(mesaj)
     with col_kapat:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("✖ Kapat", use_container_width=True, key="kasa_kapat"):
+        if st.button("✖ Kapat", width="stretch", key="kasa_kapat"):
             st.session_state["kasa_islem_acik"] = False
             st.rerun()
 
@@ -1362,7 +1383,7 @@ with col_sol_panel:
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
     if not st.session_state.get("islem_emri_kilit_acik", False):
-        if st.button("🔓 İşlem Açma Kilidini Aç", use_container_width=True, key="btn_islem_kilidi_ac"):
+        if st.button("🔓 İşlem Açma Kilidini Aç", width="stretch", key="btn_islem_kilidi_ac"):
             if coin_listesi:
                 st.session_state["islem_emri_kilit_acik"] = True
                 st.rerun()
@@ -1379,9 +1400,9 @@ with col_sol_panel:
             
             col_islem_yap, col_kapat_kilit = st.columns(2)
             with col_islem_yap:
-                submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", use_container_width=True)
+                submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", width="stretch")
             with col_kapat_kilit:
-                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", use_container_width=True)
+                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", width="stretch")
             if kapat_kilit_tik:
                 st.session_state["islem_emri_kilit_acik"] = False
                 st.rerun()
@@ -1449,7 +1470,7 @@ with col_orta_grafik:
             xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#e8eef8")),
         )
-        st.plotly_chart(fig_total, use_container_width=True)
+        st.plotly_chart(fig_total, width="stretch")
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
@@ -1507,7 +1528,7 @@ with col_sol_analiz:
             )
             fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13), margin=dict(t=10, b=10, l=10, r=10), height=210, showlegend=False)
             fig.update_traces(textfont_size=13, textinfo="percent", marker=dict(line=dict(width=0)))
-            st.plotly_chart(fig, use_container_width=True, config={"responsive": True, "displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False})
 
         with sub_p2:
             st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>""", unsafe_allow_html=True)
@@ -1521,10 +1542,10 @@ with col_sol_analiz:
 with col_orta_durum:
     st.markdown("<h3>👁️ İşlem Sunumu</h3>", unsafe_allow_html=True)
     st.markdown('<div style="height: 40px;"></div>', unsafe_allow_html=True)
-    if st.button("Aktif İşlemler", use_container_width=True):
+    if st.button("Aktif İşlemler", width="stretch"):
         st.session_state["sadece_aktifleri_goster"] = True
         st.rerun()
-    if st.button("Tüm İşlemler", use_container_width=True):
+    if st.button("Tüm İşlemler", width="stretch"):
         st.session_state["sadece_aktifleri_goster"] = False
         st.rerun()
     st.info("ℹ️ Sadece Aktifler." if st.session_state["sadece_aktifleri_goster"] else "ℹ️ Tüm işlemler.")
@@ -1540,7 +1561,7 @@ with col_sag_sonlandir:
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
     
     if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("🔒 İşlem Kapatma Kilidini Aç", use_container_width=True, key="btn_kilit_ac_yeni"):
+        if st.button("🔒 İşlem Kapatma Kilidini Aç", width="stretch", key="btn_kilit_ac_yeni"):
             if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
                 st.session_state["kapama_paneli_acik"] = True
                 st.rerun()
@@ -1560,7 +1581,7 @@ with col_sag_sonlandir:
 
         col_islem_yap, col_iptal = st.columns(2)
         with col_islem_yap:
-            if st.button("🛑 Emri Al", use_container_width=True, key="btn_emri_al_en_yeni"):
+            if st.button("🛑 Emri Al", width="stretch", key="btn_emri_al_en_yeni"):
                 if girilen_tutar <= 0:
                     st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
                 else:
@@ -1574,7 +1595,7 @@ with col_sag_sonlandir:
                     else:
                         st.error(b_mesaj)
         with col_iptal:
-            if st.button("İptal", use_container_width=True, key="btn_iptal_en_yeni"):
+            if st.button("İptal", width="stretch", key="btn_iptal_en_yeni"):
                 st.session_state["kapama_paneli_acik"] = False
                 st.rerun()
 
@@ -1655,26 +1676,3 @@ if os.path.exists(ARSIV_KLASORU):
                 st.write(df_arsiv.to_html(escape=False, index=False), unsafe_allow_html=True)
     except Exception:
         pass
- 
-import time
-import threading
-
-def arka_plan_dinleyicisi():
-    """
-    Arka planda çalışan ve belirli görevleri / olayları dinleyen ana döngü.
-    """
-    print("Arka plan dinleyicisi başlatıldı...")
-    try:
-        while True:
-            # Buraya arka planda sürekli yapılması gereken işlemleri ekleyebilirsiniz
-            time.sleep(60)
-    except Exception as e:
-        print(f"Arka plan dinleyicisinde hata oluştu: {e}")
-
-def botu_baslat_bir_kez():
-    if "thread_started" not in st.session_state:
-        t = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
-        t.start()
-        st.session_state["thread_started"] = True
-
-botu_baslat_bir_kez()

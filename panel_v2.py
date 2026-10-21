@@ -757,6 +757,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
+        eski_zaman_str = str(df.loc[acik_islem_idx, "Acilis_Zamani"])
 
         eski_matris_rh = str(df.loc[acik_islem_idx, "Matris_Puan_RH"])
         try:
@@ -764,7 +765,24 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         except:
             eski_puan = matris_puan
 
+        # --- ZAMAN VE SERMAYE AĞIRLIKLI ORTALAMA HESAPLAMA ---
+        try:
+            eski_zaman_obj = datetime.strptime(eski_zaman_str, "%d.%m.%Y %H:%M").replace(tzinfo=TR_TZ)
+            simdi_zaman_obj = tr_zaman()
+            gecen_dakika = max(0.0, (simdi_zaman_obj - eski_zaman_obj).total_seconds() / 60.0)
+        except:
+            gecen_dakika = 0.0
+
         yeni_toplam_miktar = eski_miktar + islem_miktari
+
+        # Sermayenin büyüklüğüne göre zamanın ağırlıklı kayması
+        if yeni_toplam_miktar > 0:
+            agirlikli_dakika = ((eski_miktar * 0.0) + (islem_miktari * gecen_dakika)) / yeni_toplam_miktar
+            yeni_zaman_obj = eski_zaman_obj + timedelta(minutes=agirlikli_dakika)
+            yeni_acilis_zamani_str = yeni_zaman_obj.strftime("%d.%m.%Y %H:%M")
+        else:
+            yeni_acilis_zamani_str = suan_tr
+
         yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
         yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
 
@@ -793,7 +811,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
         df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
         df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
-        df.at[acik_islem_idx, "Acilis_Zamani"] = suan_tr
+        df.at[acik_islem_idx, "Acilis_Zamani"] = yeni_acilis_zamani_str  # Sermaye ağırlıklı doğru saat
         df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
@@ -842,7 +860,6 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
         return True, f"✅ {coin} emri başarıyla verildi!"
-
 def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     df = islem_gecmisi_getir()
     idx = df[df["Islem_ID"] == islem_id].index

@@ -446,6 +446,224 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     efektif_kasa = toplam_kasa + acik_kz_toplam
     bos_bakiye = toplam_kasa - aktif_marjin_toplami
     return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami), float(acik_kz_toplam)
+    # ==========================================
+# 3. ZAMAN VE SERMAYE AĞIRLIKLI İŞLEM EKLEME (DCA)
+# ==========================================
+def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
+    df = islem_gecmisi_getir()
+    _, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
+    
+    if round(islem_miktari, 2) > round(mevcut_bakiye, 2):
+        return False, f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen: {islem_miktari:.2f} $"
+    if islem_miktari <= 0:
+        return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
+
+    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    acik_islem_idx = None
+    
+    if not df.empty and "Durum" in df.columns:
+        acik_mask = ~df["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
+        acik_df = df[acik_mask]
+        if not acik_df.empty and coin in acik_df["Coin"].values:
+            acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
+
+    if acik_islem_idx is not None:
+        eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
+        eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
+        eski_yon = str(df.loc[acik_islem_idx, "Yon"])
+        eski_zaman_str = str(df.loc[acik_islem_idx, "Acilis_Zamani"])
+
+        eski_matris_rh = str(df.loc[acik_islem_idx, "Matris_Puan_RH"])
+        try:
+            eski_puan = float(eski_matris_rh.split()[0].replace(",", "."))
+        except:
+            eski_puan = matris_puan
+
+        # -- ZAMAN VE SERMAYE AĞIRLIĞI HESAPLAMASI --
+        try:
+            eski_zaman_obj = datetime.strptime(eski_zaman_str, "%d.%m.%Y %H:%M").replace(tzinfo=TR_TZ)
+            simdi_zaman_obj = tr_zaman()
+            gecen_dakika = max(0.0, (simdi_zaman_obj - eski_zaman_obj).total_seconds() / 60.0)
+        except:
+            gecen_dakika = 0.0
+
+        yeni_toplam_miktar = eski_miktar + islem_miktari
+
+        if yeni_toplam_miktar > 0:
+            agirlikli_dakika = ((eski_miktar * 0.0) + (islem_miktari * gecen_dakika)) / yeni_toplam_miktar
+            yeni_zaman_obj = eski_zaman_obj + timedelta(minutes=agirlikli_dakika)
+            yeni_acilis_zamani_str = yeni_zaman_obj.strftime("%d.%m.%Y %H:%M")
+        else:
+            yeni_acilis_zamani_str = suan_tr
+
+        yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
+        yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
+
+        if eski_giris > 0:
+            stop_oran = abs(stop - giris_fiyat) / giris_fiyat
+            kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
+        else:
+            stop_oran, kar_al_oran = 0.01, 0.02
+
+        if "Long" in eski_yon:
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_oran)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + kar_al_oran)
+            beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
+            olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
+        else:
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_oran)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - kar_al_oran)
+            beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
+            olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
+
+        # Matris puanı ve risk hedefini logaritmik güncelle
+        _, _, guncel_risk_hedef_metin = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
+        basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({guncel_risk_hedef_metin})"
+        toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
+
+        df.at[acik_islem_idx, "Giris_Fiyat"] = round(yeni_agirlikli_ortalama, basamak)
+        df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
+        df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
+        df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
+        df.at[acik_islem_idx, "Acilis_Zamani"] = yeni_acilis_zamani_str  
+        df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
+        df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
+        df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
+        df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa, 2)
+
+        dataframe_guncelle_gsheets(df)
+        elli_islem_arsiv_kontrol()
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Yeni Ort. Maliyet: {yeni_agirlikli_ortalama:,.{basamak}f} $"
+    
+    else:
+        min_esik_kontrol = aktif_min_puan_esigi_getir()
+        if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
+            return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
+
+        yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
+
+        if "Long" in yon:
+            beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
+            olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
+        else:
+            beklenen_kar = islem_miktari * KALDIRAC * ((giris_fiyat - kar_al) / giris_fiyat)
+            olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
+
+        basamak = 4 if giris_fiyat < 10 else 2
+        matris_rh_metin = f"{matris_puan:.2f} ({risk_hedef_metin})"
+        toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
+        
+        yeni_kayit = pd.DataFrame([{
+            "Islem_ID": yeni_id,
+            "Acilis_Zamani": suan_tr,
+            "Coin": coin,
+            "Yon": yon,
+            "Zaman_Dilimi": zaman_dilimi,
+            "Giris_Fiyat": round(giris_fiyat, basamak),
+            "Islem_Miktari": round(islem_miktari, 2),
+            "Stop": round(stop, basamak),
+            "Kar_Al": round(kar_al, basamak),
+            "Beklenen_Kar": round(beklenen_kar, 2),
+            "Matris_Puan_RH": matris_rh_metin,
+            "Olasi_Stop": round(olasi_stop, 2),
+            "Durum": "Acik",
+            "Net_Kar_Zarar": 0.0,
+            "Guncel_Kasa": round(toplam_kasa, 2),
+            "Kapanis_Zamani": "-",
+            "Kapanis_Fiyati": 0.0,
+        }])
+        
+        df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
+        dataframe_guncelle_gsheets(df)
+        elli_islem_arsiv_kontrol()
+        return True, f"✅ {coin} emri başarıyla verildi!"
+
+# ==========================================
+# 4. ENTEGRE EDİLMİŞ PANEL İŞLEM KAPATMA
+# ==========================================
+def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
+    df = islem_gecmisi_getir()
+    idx = df[df["Islem_ID"] == islem_id].index
+    if idx.empty:
+        return False, "İşlem bulunamadı!"
+    row = df.loc[idx[0]]
+    try:
+        giris_fiyat = float(row["Giris_Fiyat"])
+        mevcut_miktar = float(row["Islem_Miktari"])
+        suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+
+        if kapatilacak_miktar is not None and kapatilacak_miktar < mevcut_miktar:
+            fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if "Long" in row["Yon"] else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
+            kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
+            
+            yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
+            durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
+            
+            toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
+            yeni_kapali_kayit = pd.DataFrame([{
+                "Islem_ID": yeni_id,
+                "Acilis_Zamani": row["Acilis_Zamani"],
+                "Coin": row["Coin"],
+                "Yon": row["Yon"],
+                "Zaman_Dilimi": row["Zaman_Dilimi"],
+                "Giris_Fiyat": giris_fiyat,
+                "Islem_Miktari": round(kapatilacak_miktar, 2),
+                "Stop": float(row["Stop"]),
+                "Kar_Al": float(row["Kar_Al"]),
+                "Beklenen_Kar": float(row["Beklenen_Kar"]),
+                "Matris_Puan_RH": row["Matris_Puan_RH"],
+                "Olasi_Stop": float(row["Olasi_Stop"]),
+                "Durum": durum_metni,
+                "Net_Kar_Zarar": float(round(kismi_kar, 2)),
+                "Guncel_Kasa": float(round(toplam_kasa + kismi_kar, 2)),
+                "Kapanis_Zamani": suan_tr,
+                "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
+            }])
+            
+            kalan_miktar = mevcut_miktar - kapatilacak_miktar
+            df.at[idx[0], "Islem_Miktari"] = round(kalan_miktar, 2)
+            
+            if "Long" in row["Yon"]:
+                bek_kar_yeni = kalan_miktar * KALDIRAC * ((float(row["Kar_Al"]) - giris_fiyat) / giris_fiyat)
+                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((float(row["Stop"]) - giris_fiyat) / giris_fiyat)
+            else:
+                bek_kar_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Kar_Al"])) / giris_fiyat)
+                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Stop"])) / giris_fiyat)
+            
+            df.at[idx[0], "Beklenen_Kar"] = round(bek_kar_yeni, 2)
+            df.at[idx[0], "Olasi_Stop"] = round(olasi_stop_yeni, 2)
+            
+            df = pd.concat([df, yeni_kapali_kayit], ignore_index=True).sort_values(by="Islem_ID").reset_index(drop=True)
+            dataframe_guncelle_gsheets(df)
+            
+            kasa_islem_ekle_deftere("Trade_Sonuc", float(round(kismi_kar, 2)), f"Kısmi K/Z: #{islem_id} {row['Coin']} ({kapatilacak_miktar}$ kapatıldı)")
+            elli_islem_arsiv_kontrol()
+            
+            manuel_kapanis_maili_gonder(row['Coin'], row['Yon'], kapatilacak_miktar, kismi_kar, toplam_kasa + kismi_kar)
+            
+            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $"
+        else:
+            fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if "Long" in row["Yon"] else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
+            net_kar = mevcut_miktar * KALDIRAC * fark_yuzde
+            
+            durum_metni = "Kapandi (Zarar)" if net_kar < 0 else "Kapandi (Kar)"
+            df.at[idx[0], "Durum"] = durum_metni
+            df.at[idx[0], "Kapanis_Zamani"] = suan_tr
+            df.at[idx[0], "Net_Kar_Zarar"] = float(round(net_kar, 2))
+            df.at[idx[0], "Kapanis_Fiyati"] = float(round(anlik_kapatma_fiyati, 4))
+            
+            toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
+            df.at[idx[0], "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
+            dataframe_guncelle_gsheets(df)
+            kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})")
+            elli_islem_arsiv_kontrol()
+            
+            manuel_kapanis_maili_gonder(row['Coin'], row['Yon'], mevcut_miktar, net_kar, toplam_kasa + net_kar)
+            
+            return True, f"İşlem tamamen kapatıldı. K/Z: {net_kar:.2f} $"
+    except Exception as e:
+        return False, f"Hata: {str(e)}"
 
 # ==========================================
 # 3. ZAMAN VE SERMAYE AĞIRLIKLI İŞLEM EKLEME (DCA)

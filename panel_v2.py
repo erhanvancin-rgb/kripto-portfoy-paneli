@@ -455,7 +455,7 @@ def kurgusal_matris_hesapla(coin_symbol):
         "1 S": {"sl": 0.0, "ss": 0.0, "y_adet": 0, "k_adet": 0},
     }
     return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(l_puan), float(s_puan), zaman_katkilari
-    else:
+
         # Normal coinler için olan hesaplamalar
         anlik_fiyat = fiyat_cek_binance(coin_symbol)
         

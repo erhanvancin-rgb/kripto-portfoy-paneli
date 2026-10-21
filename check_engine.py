@@ -9,6 +9,7 @@ import gspread
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
+import numpy as np
 
 TR_TZ = pytz.timezone("Europe/Istanbul")
 GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
@@ -16,7 +17,6 @@ HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
 KALDIRAC = 3
 
-coinler = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
 baz_fiyatlar = {
     "BTC/USDT": 83750.0,
     "ETH/USDT": 2511.0,
@@ -112,7 +112,6 @@ def fiyat_cek_binance(coin_symbol):
 def google_sheets_baglan(sayfa_adi):
     try:
         if "GCP_SERVICE_ACCOUNT_JSON" in os.environ:
-            import json
             sec_dict = json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"])
             if "private_key" in sec_dict:
                 sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
@@ -121,8 +120,8 @@ def google_sheets_baglan(sayfa_adi):
             client = gspread.service_account(filename="credentials.json")
         return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     except Exception as e:
-            print(f"GSheets bağlantı hatası: {e}")
-            return None
+        print(f"GSheets bağlantı hatası: {e}")
+        return None
 
 def islem_gecmisi_getir():
     beklenen_kolonlar = [
@@ -181,13 +180,10 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     if sheet is not None:
         try:
             ham = sheet.get_all_values()
-            kolonlar = ["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"]
             if not ham or len(ham) == 0:
-                satirlar = []
                 yeni_id = 1
             else:
-                satirlar = ham[1:]
-                yeni_id = len(satirlar) + 1
+                yeni_id = len(ham[1:]) + 1
             suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
             sheet.append_row([yeni_id, suan_tr, islem_turu, round(tutar, 2), aciklama])
         except Exception as e:

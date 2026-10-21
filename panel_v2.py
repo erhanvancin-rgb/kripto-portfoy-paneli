@@ -963,18 +963,26 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
                 
+                # Hafıza ve mail kontrolü (Güvenceli ve anında tetikleme mimarisi)
                 hafiza = hafizayi_oku()
                 islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
                 
-                if not hafiza.get(islem_mail_anahtari, False):
-                    hafiza[islem_mail_anahtari] = True
-                    hafizayi_kaydet(hafiza)
-
-                    konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
-                    icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
-                    
-                    basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
-                    print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
+                konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
+                icerik_mail = f"""
+                <h3>Otomatik İşlem Kapatıldı</h3>
+                <p><b>Coin:</b> {coin}</p>
+                <p><b>Yön:</b> {yon}</p>
+                <p><b>Sebep:</b> {islem_turu_etiket}</p>
+                <p><b>Net K/Z:</b> {net_kar:,.2f} $</p>
+                <p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>
+                """
+                
+                # Mail gönderimini doğrudan tetikle ve hafızaya kaydet
+                basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
+                print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
+                
+                hafiza[islem_mail_anahtari] = True
+                hafizayi_kaydet(hafiza)
 
                 degisiklik_oldu = True
 

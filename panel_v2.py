@@ -1020,15 +1020,16 @@ def arka_plan_dinleyicisi():
                 trend_metni, _, _, _ = trend_asamasini_ve_ikon_belirle(puan, yon)
                 sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
             otomatik_stop_kar_kontrolu(anlik_fiyat_havuzu)
+            time.sleep(60)
         except Exception as e:
             print(f"Arka plan hata: {e}")
-        time.sleep(60)
+            time.sleep(10)
 
 @st.cache_resource
 def botu_baslat_bir_kez():
-    t = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
-    t.start()
-    return t
+    thread = threading.Thread(target=arka_plan_dinleyicisi, daemon=True)
+    thread.start()
+    return thread
 
 arka_plan_thread = botu_baslat_bir_kez()
 

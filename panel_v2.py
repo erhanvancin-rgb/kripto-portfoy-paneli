@@ -429,54 +429,10 @@ def kurgusal_matris_hesapla(coin_symbol):
             
         anlik_total_fiyat = total_mc
         return float(anlik_total_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari_tot
-
-    anlik_fiyat = fiyat_cek_binance(coin_symbol)
-    sembol_istek = coin_symbol
-
-    df_16s = kline_cek_binance(sembol_istek, "15m", 64)
-    df_8s = kline_cek_binance(sembol_istek, "5m", 96)
-    df_4s = kline_cek_binance(sembol_istek, "5m", 48)
-    df_2s = kline_cek_binance(sembol_istek, "1m", 120)
-    df_1s = kline_cek_binance(sembol_istek, "1m", 60)
-
-    dilimler = [
-        (df_16s, 9.5, "16 S"),
-        (df_8s, 15.5, "8 S"),
-        (df_4s, 50.0, "4 S"),
-        (df_2s, 15.5, "2 S"),
-        (df_1s, 9.5, "1 S"),
-    ]
-
-    toplam_long_puan = 0.0
-    toplam_short_puan = 0.0
-    zaman_katkilari = {}
-
-    for df_zaman, max_puan, isim in dilimler:
-        sl, ss, y_ad, k_ad = oransal_matris_ve_teknik_faktorler_hesapla(df_zaman, max_puan)
-        toplam_long_puan += sl
-        toplam_short_puan += ss
-        zaman_katkilari[isim] = {
-            "sl": sl,
-            "ss": ss,
-            "y_adet": y_ad,
-            "k_adet": k_ad,
-        }
-
-    nihai_long = round(toplam_long_puan, 2)
-    nihai_short = round(toplam_short_puan, 2)
-    min_esik_degeri = aktif_min_puan_esigi_getir()
-
-    if nihai_long >= min_esik_degeri:
-        nihai_puan = nihai_long
-        aktif_yon = "Long"
-    elif nihai_short >= min_esik_degeri:
-        nihai_puan = nihai_short
-        aktif_yon = "Short"
     else:
-        nihai_puan = round(max(nihai_long, nihai_short), 2)
-        aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
-
-    return float(anlik_fiyat), float(nihai_puan), str(aktif_yon), float(nihai_long), float(nihai_short), zaman_katkilari
+        # Normal coinler için olan kodlarınız buraya gelmeli
+        anlik_fiyat = fiyat_cek_binance(coin_symbol)
+        # ...
 
 @st.cache_resource
 def google_sheets_baglan(sayfa_adi):
@@ -1691,12 +1647,20 @@ if os.path.exists(ARSIV_KLASORU):
     except Exception:
         pass
  
+import time
+import threading
+
 def arka_plan_dinleyicisi():
-    while True:
-        try:
+    """
+    Arka planda çalışan ve belirli görevleri / olayları dinleyen ana döngü.
+    """
+    print("Arka plan dinleyicisi başlatıldı...")
+    try:
+        while True:
+            # Buraya arka planda sürekli yapılması gereken işlemleri ekleyebilirsiniz
             time.sleep(60)
-        except Exception:
-            pass
+    except Exception as e:
+        print(f"Arka plan dinleyicisinde hata oluştu: {e}")
 
 def botu_baslat_bir_kez():
     if "thread_started" not in st.session_state:

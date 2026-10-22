@@ -1570,7 +1570,6 @@ with col_sag_sonlandir:
         st.session_state["kapama_paneli_acik"] = False
 
     kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id_secim_en_yeni_kilitli", on_change=paneli_kilitle)
-    st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
     if not st.session_state.get("kapama_paneli_acik", False):
         if st.button("🔒 İşlem Kapatma Kilidini Aç", width='stretch', key="btn_kilit_ac_yeni"):

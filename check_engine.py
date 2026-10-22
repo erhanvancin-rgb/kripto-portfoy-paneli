@@ -120,7 +120,6 @@ def gmail_bildirim_gonder(konu, icerik_html, hizli=False):
             print(f"E-posta gönderildi ({mod}:{port}, deneme {no}): {konu}")
             return True
         except smtplib.SMTPAuthenticationError as e:
-            # Şifre hatalıysa tekrar denemenin anlamı yok
             print(f"HATA ({konu}): Gmail kimlik doğrulama başarısız. Uygulama şifresini kontrol edin: {e}")
             _MAIL_ENGELLI = True
             return False
@@ -161,7 +160,6 @@ def telegram_bildirim_gonder(konu, icerik_html):
             if r.status_code == 200 and r.json().get("ok"):
                 print(f"Telegram bildirimi gönderildi (deneme {no}): {konu}")
                 return True
-            # Yanlış token / chat id gibi kalıcı hatalarda tekrar denemenin anlamı yok
             if r.status_code in (400, 401, 403, 404):
                 print(f"Telegram HATA ({konu}): HTTP {r.status_code} {r.text[:150]}")
                 return False
@@ -177,7 +175,7 @@ def bildirim_gonder(konu, icerik_html):
     """Telegram ve Gmail'den en az biri başarılıysa True döner (tekrar mail olmasın diye 'gönderildi' sayılır)."""
     telegram_ok = telegram_bildirim_gonder(konu, icerik_html)
     if telegram_ok:
-        gmail_bildirim_gonder(konu, icerik_html, hizli=True)  # ek olarak mail; sonucu önemsenmez
+        gmail_bildirim_gonder(konu, icerik_html, hizli=True)
         return True
     return gmail_bildirim_gonder(konu, icerik_html)
 
@@ -225,7 +223,7 @@ def kline_cek_binance(coin_symbol, interval, limit):
 
 
 # ----------------------------------------------------------------------------
-# MATRİS PUANI (panel_v2.py ile birebir aynı hesap)
+# MATRİS PUANI (Dinamik RSI Boşluk & Fiyat Momentum Uyumlu)
 # ----------------------------------------------------------------------------
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     if df.empty or len(df) < 10:
@@ -260,15 +258,32 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rs = gain / loss
     rsi_serisi = 100 - (100 / (1 + rs))
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
-    fark_rsi = abs(rsi_anlik - 50.0)
-    rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
-    max_rsi_bonus = max_puan * 0.03
-    rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
-    rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
 
+    # --- DİNAMİK RSI & FİYAT BOŞLUK (MOMENTUM UYUMU) MANTIĞI ---
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
+
+    rsi_l, rsi_s = 0.0, 0.0
+    if fiyat_fark > 0 and not rsi_serisi.isna().all():
+        df["RSI_Norm"] = min_f + (rsi_serisi / 100.0) * fiyat_fark
+        anlik_rsi_norm = float(df["RSI_Norm"].iloc[-1])
+
+        # Fiyat ile RSI arasındaki dinamik mesafe (boşluk) yüzdesi
+        bosluk_yuzde = (anlik_rsi_norm - anlik_fiyat) / anlik_fiyat * 100.0
+        dinamik_rsi_bonus = min(max_puan * 0.12, abs(bosluk_yuzde) * (max_puan * 0.025))
+
+        if anlik_rsi_norm > anlik_fiyat:
+            rsi_l = dinamik_rsi_bonus
+        else:
+            rsi_s = dinamik_rsi_bonus
+    else:
+        fark_rsi = abs(rsi_anlik - 50.0)
+        rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
+        max_rsi_bonus = max_puan * 0.03
+        rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
+        rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
+
     fib_l, fib_s = 0.0, 0.0
     if fiyat_fark > 0:
         fib_050 = min_f + (fiyat_fark * 0.5)
@@ -378,7 +393,7 @@ def islem_gecmisi_getir():
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
-        return None  # bağlantı hatası ile "işlem yok" ayrılsın
+        return None
     try:
         ham = sheet.get_all_values()
     except Exception as e:
@@ -575,7 +590,6 @@ def acik_islemleri_kontrol_et():
         print("Kapatılması gereken yeni işlem yok.")
         return
 
-    # Önce Sheets yazılır; başarısızsa kasa kaydı/mail atılmaz, sonraki turda aynı işlem yeniden denenir.
     if not dataframe_guncelle_gsheets(df):
         print("İşlem tablosu yazılamadı; kapanışlar sonraki tura bırakıldı.")
         return
@@ -588,7 +602,7 @@ def acik_islemleri_kontrol_et():
 
 
 # ----------------------------------------------------------------------------
-# 2) KAPANIŞ MAİLLERİ (kasa defterinden; panel veya motor kapatmış olması fark etmez)
+# 2) KAPANIŞ MAİLLERİ
 # ----------------------------------------------------------------------------
 KAPANIS_DESEN = re.compile(r"^(Hedef Kâr|Otomatik Stop): #(\d+)\s*(.*)$")
 
@@ -622,7 +636,6 @@ def kapanis_maillerini_gonder(durum):
         if durum.al(anahtar)["aktif"] == 1:
             continue
 
-        # İlk çalışmada geçmiş kapanışlar için mail atma, sadece işaretle.
         if durum.ilk_calisma:
             durum.ayarla(anahtar, 1, tr_zaman().isoformat())
             degisti = True
@@ -651,7 +664,7 @@ def kapanis_maillerini_gonder(durum):
         if bildirim_gonder(konu, icerik):
             durum.ayarla(anahtar, 1, tr_zaman().isoformat())
             degisti = True
-            durum.kaydet()  # her başarılı mailden hemen sonra kaydet
+            durum.kaydet()
 
     if degisti:
         durum.kaydet()
@@ -685,7 +698,7 @@ def sinyal_maillerini_gonder(durum):
                 continue
 
             if mevcut["aktif"] == 1:
-                continue  # bu girişte zaten mail atıldı
+                continue
 
             if durum.ilk_calisma:
                 durum.ayarla(anahtar, 1, tr_zaman().isoformat())

@@ -41,6 +41,25 @@ COINLER = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
 GMAIL_ADRES = "erhanvancin@gmail.com"
 
 
+# --- DURUM (KAPALI/AÇIK) KONTROLÜ ---
+# Türkçe harf farklarından (ı/i, â/a, İ/i) ve pandas/pyarrow regex davranışından bağımsız çalışır.
+# Örn. "Kısmi Kapandı (Kâr)" ve "Kapandi (Kar)" aynı şekilde kapalı sayılır.
+_TR_ASCII = str.maketrans({
+    "ı": "i", "İ": "i", "I": "i", "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
+    "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
+})
+
+
+def durum_kapali_mi(durum):
+    t = str(durum).translate(_TR_ASCII).lower()
+    return any(k in t for k in ("kapandi", "kar", "zarar", "kismi"))
+
+
+def durum_kapali_maskesi(seri):
+    return seri.map(durum_kapali_mi).astype(bool)
+
+
+
 def tr_zaman():
     return datetime.now(TR_TZ)
 
@@ -434,7 +453,7 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
 def bakiye_hesapla(df_trade):
     toplam = BASLANGIC_BAKIYE
     if df_trade is not None and not df_trade.empty:
-        kap = df_trade[df_trade["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi|Kısmi", case=False, na=False)]
+        kap = df_trade[durum_kapali_maskesi(df_trade["Durum"])]
         toplam += pd.to_numeric(kap["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
     return float(toplam)
 
@@ -517,8 +536,7 @@ def acik_islemleri_kontrol_et():
     kapananlar = []  # (islem_id, coin, etiket, net_kar)
 
     for idx, row in df.iterrows():
-        durum = str(row["Durum"]).lower()
-        if "kapandi" in durum or "kar" in durum or "zarar" in durum or "kısmi" in durum:
+        if durum_kapali_mi(row["Durum"]):
             continue
 
         islem_id, coin, yon = int(row["Islem_ID"]), row["Coin"], str(row["Yon"])

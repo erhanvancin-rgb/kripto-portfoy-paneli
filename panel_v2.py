@@ -112,6 +112,24 @@ MAIL_LOG_DOSYASI = "mail_log.txt"
 # Panelden de mail göndermek isterseniz True yapın (çift mail riskine dikkat).
 MAIL_PANELDEN_GONDER = False
 
+# --- DURUM (KAPALI/AÇIK) KONTROLÜ ---
+# Türkçe harf farklarından (ı/i, â/a, İ/i) ve pandas/pyarrow regex davranışından bağımsız çalışır.
+# Örn. "Kısmi Kapandı (Kâr)" ve "Kapandi (Kar)" aynı şekilde kapalı sayılır.
+_TR_ASCII = str.maketrans({
+    "ı": "i", "İ": "i", "I": "i", "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
+    "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
+})
+
+
+def durum_kapali_mi(durum):
+    t = str(durum).translate(_TR_ASCII).lower()
+    return any(k in t for k in ("kapandi", "kar", "zarar", "kismi"))
+
+
+def durum_kapali_maskesi(seri):
+    return seri.map(durum_kapali_mi).astype(bool)
+
+
 def tr_zaman():
     return datetime.now(TR_TZ)
 
@@ -650,7 +668,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         net_kasa_hareketleri += pd.to_numeric(df_kasa["Tutar"], errors="coerce").fillna(0.0).sum()
 
     if not df_trade.empty:
-        kap_trades = df_trade[df_trade["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)]
+        kap_trades = df_trade[durum_kapali_maskesi(df_trade["Durum"])]
         if not kap_trades.empty:
             trade_sonuc_defterde = 0.0
             if not df_kasa.empty and "Islem_Turu" in df_kasa.columns:
@@ -664,7 +682,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     toplam_kasa = net_kasa_hareketleri
     acik_df = pd.DataFrame()
     if not df_trade.empty and "Durum" in df_trade.columns:
-        kapali_mask = df_trade["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
+        kapali_mask = durum_kapali_maskesi(df_trade["Durum"])
         acik_df = df_trade[~kapali_mask]
 
     aktif_marjin_toplami = 0.0
@@ -699,7 +717,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
     acik_islem_idx = None
     if not df.empty and "Durum" in df.columns:
-        acik_mask = ~df["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
+        acik_mask = ~durum_kapali_maskesi(df["Durum"])
         acik_df = df[acik_mask]
         if not acik_df.empty and coin in acik_df["Coin"].values:
             acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
@@ -1237,7 +1255,7 @@ col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6, col_kasa_buton = st.
 df_metrik_trade = islem_gecmisi_getir(sheet_guncelle=False)
 realize_kar = 0.0
 if not df_metrik_trade.empty and "Durum" in df_metrik_trade.columns:
-    kapananlar_mask = df_metrik_trade["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)
+    kapananlar_mask = durum_kapali_maskesi(df_metrik_trade["Durum"])
     realize_kar = pd.to_numeric(df_metrik_trade[kapananlar_mask]["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
 
 aktif_oran = (aktif_yatirim_tutari / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
@@ -1362,7 +1380,7 @@ with col_sol_panel:
     df_gecmis_temp = islem_gecmisi_getir(sheet_guncelle=False)
     acik_coinler = []
     if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
-        acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
+        acik_mask = ~durum_kapali_maskesi(df_gecmis_temp["Durum"])
         acik_coinler = df_gecmis_temp[acik_mask]["Coin"].unique().tolist()
 
     if not df_gosterge.empty:
@@ -1380,7 +1398,7 @@ with col_sol_panel:
 
     acik_pozisyon_var = False
     if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
-        acik_mask = ~df_gecmis_temp["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)
+        acik_mask = ~durum_kapali_maskesi(df_gecmis_temp["Durum"])
         if secilen_coin and secilen_coin in df_gecmis_temp[acik_mask]["Coin"].values:
             acik_pozisyon_var = True
 
@@ -1506,13 +1524,13 @@ with col_sag_endeks:
 st.markdown("---")
 
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
-acik_islem_listesi = df_gecmis[~df_gecmis["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)]["Islem_ID"].tolist() if not df_gecmis.empty and "Durum" in df_gecmis.columns else []
+acik_islem_listesi = df_gecmis[~durum_kapali_maskesi(df_gecmis["Durum"])]["Islem_ID"].tolist() if not df_gecmis.empty and "Durum" in df_gecmis.columns else []
 
 col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.5, 1, 1], gap="medium")
 
 with col_sol_analiz:
     st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)
-    kapananlar_df = pd.DataFrame() if df_gecmis.empty or "Durum" not in df_gecmis.columns else df_gecmis[df_gecmis["Durum"].astype(str).str.contains("Kapandi|Kar|Zarar|Kismi", case=False, na=False)]
+    kapananlar_df = pd.DataFrame() if df_gecmis.empty or "Durum" not in df_gecmis.columns else df_gecmis[durum_kapali_maskesi(df_gecmis["Durum"])]
 
     if not kapananlar_df.empty:
         karli_sayisi, zararli_sayisi = 0, 0
@@ -1543,11 +1561,15 @@ with col_sol_analiz:
             st.plotly_chart(fig, width='stretch', config={"responsive": True, "displayModeBar": False})
 
         with sub_p2:
-            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p>""", unsafe_allow_html=True)
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {'#00FF00' if kar_yuzde >= 50 else 'rgb(255, 75, 0)'};">🎯 Başarı Oranı: %{kar_yuzde:.1f}</p>""", unsafe_allow_html=True)
 
         with sub_p3:
+            # Sol sütun (Strateji Metrikleri) ile satır satır aynı iskelet: başlık / etiket / büyük değer / 2 satır / başarı oranı
             net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
-            st.markdown(f"""<div style="display: flex; flex-direction: column; justify-content: center; height: 100%; padding-top: 15px;"><div style="font-size: 14px; font-weight: bold; color: #00FF00; margin-bottom: 8px;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</div><div style="font-size: 14px; font-weight: bold; color: rgb(255, 75, 0); margin-bottom: 8px;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</div><div style="font-size: 15px; font-weight: bold; color: {net_renk}; margin-top: 4px; border-top: 1px solid #30415b; padding-top: 8px;">Net Fark: {net_fark_dolar:+,.2f} $</div></div>""", unsafe_allow_html=True)
+            toplam_hareket_dolar = toplam_kazanc_dolar + toplam_kayip_dolar
+            parasal_basari_yuzde = (toplam_kazanc_dolar / toplam_hareket_dolar * 100.0) if toplam_hareket_dolar > 0 else 0.0
+            parasal_renk = "#00FF00" if parasal_basari_yuzde >= 50 else "rgb(255, 75, 0)"
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">💰 Finansal Metrikler</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Net Fark</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: {net_renk};">{net_fark_dolar:+,.2f} $</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {parasal_renk};">💵 Parasal Başarı Oranı: %{parasal_basari_yuzde:.1f}</p>""", unsafe_allow_html=True)
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
@@ -1615,7 +1637,7 @@ st.markdown("---")
 df_gecmisile_goster = islem_gecmisi_getir(sheet_guncelle=False)
 df_gosterilecek = pd.DataFrame()
 if not df_gecmisile_goster.empty:
-    df_gosterilecek = df_gecmisile_goster[~df_gecmisile_goster["Durum"].astype(str).str.contains("kapandi|kar|zarar|kısmi", case=False, na=False)] if st.session_state["sadece_aktifleri_goster"] else df_gecmisile_goster.copy()
+    df_gosterilecek = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if st.session_state["sadece_aktifleri_goster"] else df_gecmisile_goster.copy()
 
 anlik_fiyat_sozluk, anlik_kz_sozluk, hedef_kar_sozluk, olasi_stop_sozluk = {}, {}, {}, {}
 if not df_gecmisile_goster.empty:

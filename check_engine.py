@@ -16,6 +16,7 @@ başarıyla gittikten sonra kaydedilir; başarısızsa sonraki turda yeniden den
 import os
 import re
 import json
+import time
 from datetime import datetime, timedelta
 import pytz
 import requests
@@ -55,34 +56,63 @@ def aktif_min_puan_esigi_getir():
 # ----------------------------------------------------------------------------
 # MAIL
 # ----------------------------------------------------------------------------
+_MAIL_ENGELLI = False  # Bu çalıştırmada tüm denemeler başarısız olduysa kalan mailler sonraki tura bırakılır
+
+
 def gmail_bildirim_gonder(konu, icerik_html):
-    sifre = os.environ.get("GMAIL_PASSWORD", "").strip()
+    """Başarılıysa True döner. Bağlantı kopmalarına karşı 3 deneme (465 SSL, 587 STARTTLS, 465 SSL)."""
+    global _MAIL_ENGELLI
+    if _MAIL_ENGELLI:
+        print(f"ATLANDI ({konu}): bu turda Gmail bağlantısı kurulamadı, sonraki turda denenecek.")
+        return False
+
+    # Uygulama şifresi Google'da "abcd efgh ijkl mnop" gibi boşluklu gösterilir; boşluklar temizlenir.
+    sifre = "".join(os.environ.get("GMAIL_PASSWORD", "").split())
     if not sifre:
         print(f"HATA ({konu}): GMAIL_PASSWORD tanımlı değil (GitHub Secret kontrol edin).")
         return False
 
-    server = None
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = GMAIL_ADRES
-        msg["To"] = GMAIL_ADRES
-        msg["Subject"] = konu
-        msg.attach(MIMEText(icerik_html, "html", "utf-8"))
+    msg = MIMEMultipart()
+    msg["From"] = GMAIL_ADRES
+    msg["To"] = GMAIL_ADRES
+    msg["Subject"] = konu
+    msg.attach(MIMEText(icerik_html, "html", "utf-8"))
+    govde = msg.as_string()
 
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20)
-        server.login(GMAIL_ADRES, sifre)
-        server.sendmail(GMAIL_ADRES, [GMAIL_ADRES], msg.as_string())
-        print(f"E-posta gönderildi: {konu}")
-        return True
-    except Exception as e:
-        print(f"HATA ({konu}): {type(e).__name__}: {e}")
-        return False
-    finally:
-        if server is not None:
-            try:
-                server.quit()
-            except Exception:
-                pass
+    denemeler = [("ssl", 465), ("starttls", 587), ("ssl", 465)]
+    for no, (mod, port) in enumerate(denemeler, start=1):
+        server = None
+        try:
+            if mod == "ssl":
+                server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30)
+            else:
+                server = smtplib.SMTP("smtp.gmail.com", port, timeout=30)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            server.login(GMAIL_ADRES, sifre)
+            server.sendmail(GMAIL_ADRES, [GMAIL_ADRES], govde)
+            print(f"E-posta gönderildi ({mod}:{port}, deneme {no}): {konu}")
+            return True
+        except smtplib.SMTPAuthenticationError as e:
+            # Şifre hatalıysa tekrar denemenin anlamı yok
+            print(f"HATA ({konu}): Gmail kimlik doğrulama başarısız. Uygulama şifresini kontrol edin: {e}")
+            _MAIL_ENGELLI = True
+            return False
+        except Exception as e:
+            print(f"Deneme {no}/{len(denemeler)} başarısız ({mod}:{port}) ({konu}): {type(e).__name__}: {e}")
+            if no < len(denemeler):
+                time.sleep(4 * no)
+        finally:
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+
+    print(f"HATA ({konu}): tüm denemeler başarısız; sonraki turda yeniden denenecek.")
+    _MAIL_ENGELLI = True
+    return False
 
 
 # ----------------------------------------------------------------------------

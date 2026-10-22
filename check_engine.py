@@ -10,6 +10,7 @@ Mail koşulları:
       aynı coin+aşama için en az SINYAL_BEKLEME_DK dakika arayla)
   3) Otomatik kapanış : stop veya kâr hedefi (panel veya bu motor kapatsa da, işlem başına 1 kez)
 
+Bildirim kanalları: Telegram (öncelikli) ve Gmail. Biri başarılıysa olay 'gönderildi' sayılır.
 Mail durumu Google Sheets'te "MailDurumu" sayfasında tutulur. Mail yalnızca
 başarıyla gittikten sonra kaydedilir; başarısızsa sonraki turda yeniden denenir.
 """
@@ -17,6 +18,7 @@ import os
 import re
 import json
 import time
+import html
 from datetime import datetime, timedelta
 import pytz
 import requests
@@ -59,8 +61,9 @@ def aktif_min_puan_esigi_getir():
 _MAIL_ENGELLI = False  # Bu çalıştırmada tüm denemeler başarısız olduysa kalan mailler sonraki tura bırakılır
 
 
-def gmail_bildirim_gonder(konu, icerik_html):
-    """Başarılıysa True döner. Bağlantı kopmalarına karşı 3 deneme (465 SSL, 587 STARTTLS, 465 SSL)."""
+def gmail_bildirim_gonder(konu, icerik_html, hizli=False):
+    """Başarılıysa True döner. Bağlantı kopmalarına karşı 3 deneme (465 SSL, 587 STARTTLS, 465 SSL).
+    hizli=True: tek deneme, kısa zaman aşımı (Telegram zaten gittiyse mail ek olarak denenir)."""
     global _MAIL_ENGELLI
     if _MAIL_ENGELLI:
         print(f"ATLANDI ({konu}): bu turda Gmail bağlantısı kurulamadı, sonraki turda denenecek.")
@@ -80,13 +83,16 @@ def gmail_bildirim_gonder(konu, icerik_html):
     govde = msg.as_string()
 
     denemeler = [("ssl", 465), ("starttls", 587), ("ssl", 465)]
+    zaman_asimi = 30
+    if hizli:
+        denemeler, zaman_asimi = denemeler[:1], 12
     for no, (mod, port) in enumerate(denemeler, start=1):
         server = None
         try:
             if mod == "ssl":
-                server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30)
+                server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=zaman_asimi)
             else:
-                server = smtplib.SMTP("smtp.gmail.com", port, timeout=30)
+                server = smtplib.SMTP("smtp.gmail.com", port, timeout=zaman_asimi)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
@@ -113,6 +119,48 @@ def gmail_bildirim_gonder(konu, icerik_html):
     print(f"HATA ({konu}): tüm denemeler başarısız; sonraki turda yeniden denenecek.")
     _MAIL_ENGELLI = True
     return False
+
+
+def html_to_metin(icerik_html):
+    metin = re.sub(r"</(p|h\d|div)>|<br\s*/?>", "\n", icerik_html)
+    metin = re.sub(r"<[^>]+>", "", metin)
+    return html.unescape(metin).strip()
+
+
+def telegram_bildirim_gonder(konu, icerik_html):
+    """Başarılıysa True döner. Token/chat id tanımlı değilse False döner (sessizce)."""
+    token = "".join(os.environ.get("TELEGRAM_BOT_TOKEN", "").split())
+    chat_id = "".join(os.environ.get("TELEGRAM_CHAT_ID", "").split())
+    if not token or not chat_id:
+        return False
+
+    metin = f"{konu}\n\n{html_to_metin(icerik_html)}"[:4000]
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    for no in range(1, 4):
+        try:
+            r = requests.post(url, data={"chat_id": chat_id, "text": metin}, timeout=15)
+            if r.status_code == 200 and r.json().get("ok"):
+                print(f"Telegram bildirimi gönderildi (deneme {no}): {konu}")
+                return True
+            # Yanlış token / chat id gibi kalıcı hatalarda tekrar denemenin anlamı yok
+            if r.status_code in (400, 401, 403, 404):
+                print(f"Telegram HATA ({konu}): HTTP {r.status_code} {r.text[:150]}")
+                return False
+            print(f"Telegram deneme {no}/3 başarısız ({konu}): HTTP {r.status_code}")
+        except Exception as e:
+            print(f"Telegram deneme {no}/3 başarısız ({konu}): {type(e).__name__}: {e}")
+        if no < 3:
+            time.sleep(2 * no)
+    return False
+
+
+def bildirim_gonder(konu, icerik_html):
+    """Telegram ve Gmail'den en az biri başarılıysa True döner (tekrar mail olmasın diye 'gönderildi' sayılır)."""
+    telegram_ok = telegram_bildirim_gonder(konu, icerik_html)
+    if telegram_ok:
+        gmail_bildirim_gonder(konu, icerik_html, hizli=True)  # ek olarak mail; sonucu önemsenmez
+        return True
+    return gmail_bildirim_gonder(konu, icerik_html)
 
 
 # ----------------------------------------------------------------------------
@@ -582,7 +630,7 @@ def kapanis_maillerini_gonder(durum):
             f"<p><b>Sebep:</b> {etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p>"
             f"<p><b>Güncel Kasa:</b> {kasa}</p>"
         )
-        if gmail_bildirim_gonder(konu, icerik):
+        if bildirim_gonder(konu, icerik):
             durum.ayarla(anahtar, 1, tr_zaman().isoformat())
             degisti = True
             durum.kaydet()  # her başarılı mailden hemen sonra kaydet
@@ -638,7 +686,7 @@ def sinyal_maillerini_gonder(durum):
                 f"<p><b>Matris Puanı:</b> {puan:.1f} / 100</p><p><b>Yön:</b> {yon}</p>"
                 f"<p><b>Mod:</b> {'Hafta sonu' if hafta_sonu_mu() else 'Hafta içi'}</p>"
             )
-            if gmail_bildirim_gonder(konu, icerik):
+            if bildirim_gonder(konu, icerik):
                 durum.ayarla(anahtar, 1, tr_zaman().isoformat())
                 durum.kaydet()
                 degisti = True
@@ -651,6 +699,13 @@ def sinyal_maillerini_gonder(durum):
 def motoru_calistir():
     print(f"Trade Kontrol Motoru başladı: {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')} "
           f"({'hafta sonu' if hafta_sonu_mu() else 'hafta içi'} modu)")
+
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        ok = telegram_bildirim_gonder(
+            "✅ Bot test mesajı",
+            f"<p>Trade kontrol motoru elle çalıştırıldı.</p><p>Zaman: {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>",
+        )
+        print("Telegram test mesajı:", "gönderildi" if ok else "GÖNDERİLEMEDİ (secret'ları kontrol edin)")
 
     acik_islemleri_kontrol_et()
 

@@ -23,14 +23,12 @@ from streamlit_autorefresh import st_autorefresh
 
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
-except Exception:  # eski/yeni Streamlit sürümlerinde yol değişebilir
+except Exception:
     add_script_run_ctx = None
     get_script_run_ctx = None
 
 
 class _ScriptRunCtxFiltresi(logging.Filter):
-    """Arka plan thread'inden gelen 'missing ScriptRunContext' uyarılarının log'u doldurmasını engeller."""
-
     def filter(self, record):
         return "missing ScriptRunContext" not in record.getMessage()
 
@@ -108,13 +106,8 @@ KALDIRAC = 3
 TR_TZ = pytz.timezone("Europe/Istanbul")
 HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
-# Mailleri GitHub Actions'taki check_engine.py gönderir (uygulama uyusa da çalışır).
-# Panelden de mail göndermek isterseniz True yapın (çift mail riskine dikkat).
 MAIL_PANELDEN_GONDER = False
 
-# --- DURUM (KAPALI/AÇIK) KONTROLÜ ---
-# Türkçe harf farklarından (ı/i, â/a, İ/i) ve pandas/pyarrow regex davranışından bağımsız çalışır.
-# Örn. "Kısmi Kapandı (Kâr)" ve "Kapandi (Kar)" aynı şekilde kapalı sayılır.
 _TR_ASCII = str.maketrans({
     "ı": "i", "İ": "i", "I": "i", "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
     "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
@@ -194,9 +187,7 @@ def gmail_bildirim_gonder(konu, icerik_html):
     alici_mail = "erhanvancin@gmail.com"
     
     if not uygulama_sifresi:
-        hata = "GMAIL_PASSWORD tanımlı değil. Ortam değişkeni veya GitHub Actions Secret ekleyin."
-        print(hata)
-        mail_log_yaz(f"HATA ({konu}): GMAIL_PASSWORD tanımlı değil.")
+        hata = "GMAIL_PASSWORD tanımlı değil."
         return False, hata
 
     server = None
@@ -210,13 +201,9 @@ def gmail_bildirim_gonder(konu, icerik_html):
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
         server.login(gonderici_mail, uygulama_sifresi)
         server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
-        mail_log_yaz(f"BAŞARILI: {konu}")
         return True, "E-posta başarıyla gönderildi."
     except Exception as e:
-        hata_detayi = f"HATA ({konu}): {type(e).__name__}: {e}"
-        print(hata_detayi)
-        mail_log_yaz(hata_detayi)
-        return False, hata_detayi
+        return False, str(e)
     finally:
         if server is not None:
             try:
@@ -353,6 +340,7 @@ def calculate_coin_metrics_by_score(matris_puani):
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
+# --- DİNAMİK RSI & FİYAT BOŞLUK (MOMENTUM UYUMU) ENTEGRELİ MATRİS ---
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     if df.empty or len(df) < 10:
         return max_puan / 2.0, max_puan / 2.0, 0, 0
@@ -386,15 +374,31 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rs = gain / loss
     rsi_serisi = 100 - (100 / (1 + rs))
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
-    fark_rsi = abs(rsi_anlik - 50.0)
-    rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
-    max_rsi_bonus = max_puan * 0.03
-    rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
-    rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
 
+    # --- DİNAMİK RSI & FİYAT BOŞLUK (MOMENTUM UYUMU) MANTIĞI ---
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
+
+    rsi_l, rsi_s = 0.0, 0.0
+    if fiyat_fark > 0 and not rsi_serisi.isna().all():
+        df["RSI_Norm"] = min_f + (rsi_serisi / 100.0) * fiyat_fark
+        anlik_rsi_norm = float(df["RSI_Norm"].iloc[-1])
+
+        bosluk_yuzde = (anlik_rsi_norm - anlik_fiyat) / anlik_fiyat * 100.0
+        dinamik_rsi_bonus = min(max_puan * 0.12, abs(bosluk_yuzde) * (max_puan * 0.025))
+
+        if anlik_rsi_norm > anlik_fiyat:
+            rsi_l = dinamik_rsi_bonus
+        else:
+            rsi_s = dinamik_rsi_bonus
+    else:
+        fark_rsi = abs(rsi_anlik - 50.0)
+        rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
+        max_rsi_bonus = max_puan * 0.03
+        rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
+        rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
+
     fib_l, fib_s = 0.0, 0.0
     if fiyat_fark > 0:
         fib_050 = min_f + (fiyat_fark * 0.5)
@@ -955,20 +959,6 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                     float(round(net_kar, 2)),
                     f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
                 )
-                
-                hafiza = hafizayi_oku()
-                islem_mail_anahtari = f"otomatik_kapanma_{islem_id}"
-                
-                if MAIL_PANELDEN_GONDER and not hafiza.get(islem_mail_anahtari, False):
-                    hafiza[islem_mail_anahtari] = True
-                    hafizayi_kaydet(hafiza)
-
-                    konu_mail = f"⚡ {islem_turu_etiket}: #{islem_id} {coin} ({durum_metni})"
-                    icerik_mail = f"<h3>Otomatik İşlem Kapatıldı</h3><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p><p><b>Sebep:</b> {islem_turu_etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p><p><b>Güncel Kasa:</b> {toplam_kasa + net_kar:,.2f} $</p>"
-                    
-                    basari, sonuc_mesaji = gmail_bildirim_gonder(konu_mail, icerik_mail)
-                    print(f"Mail Bildirim Durumu (#{islem_id}): {sonuc_mesaji}")
-
                 degisiklik_oldu = True
 
     if degisiklik_oldu:
@@ -1034,10 +1024,6 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
     if asama_5_sart and not hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
-        konu = f"🔥🔥 Çok Güçlü Trend Sinyali (5. Aşama): {sembol} (Puan: {nihai_puan:.1f})"
-        icerik = f"<h3>Çok Güçlü Trende Ulaşıldı!</h3><p><b>Sembol/Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Yön:</b> {aktif_yon}</p>"
-        basari, sonuc_mesaji = gmail_bildirim_gonder(konu, icerik)
-        print(f"Aşama 5 Mail Durumu ({sembol}): {sonuc_mesaji}")
     elif not asama_5_sart and hafiza[sembol]["asama_5_tetiklendi"]:
         hafiza[sembol]["asama_5_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
@@ -1045,17 +1031,10 @@ def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, co
     if asama_6_sart and not hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = True
         hafizayi_kaydet(hafiza)
-        konu = f"🔥🔥🔥 Zirve Sinyali (6. Aşama - Boğa/Ayı Vuruşu): {sembol} (Puan: {nihai_puan:.1f})"
-        icerik = f"<h3>6. Aşama Zirveye Ulaşıldı!</h3><p><b>Sembol/Coin:</b> {sembol}</p><p><b>Matris Puanı:</b> {nihai_puan:.1f} / 100</p><p><b>Durum:</b> Boğa Vuruşu / Ayı Pençesi</p><p><b>Yön:</b> {aktif_yon}</p>"
-        basari, sonuc_mesaji = gmail_bildirim_gonder(konu, icerik)
-        print(f"Aşama 6 Mail Durumu ({sembol}): {sonuc_mesaji}")
     elif not asama_6_sart and hafiza[sembol]["asama_6_tetiklendi"]:
         hafiza[sembol]["asama_6_tetiklendi"] = False
         hafizayi_kaydet(hafiza)
 
-# --- ARKA PLAN DİNLEYİCİSİ ---
-# Not: Thread içinde st.* çağrısı yapan fonksiyonlar (cache_data vb.) kullanıldığı için
-# thread'e ana oturumun ScriptRunContext'i bağlanır (aşağıda botu_baslat_bir_kez).
 def arka_plan_dinleyicisi(durdur_olayi):
     while not durdur_olayi.is_set():
         bekleme = 60
@@ -1074,13 +1053,10 @@ def arka_plan_dinleyicisi(durdur_olayi):
         except Exception as e:
             print(f"Arka plan hata: {e}")
             bekleme = 10
-        durdur_olayi.wait(bekleme)  # time.sleep yerine: durdurma sinyalinde hemen uyanır
-
+        durdur_olayi.wait(bekleme)
 
 @st.cache_resource
 def botu_baslat_bir_kez():
-    # Kod güncellemesinde (redeploy) cache_resource temizlenir ve bu fonksiyon yeniden çalışır;
-    # eski thread'ler yaşamaya devam ettiği için önce onlara durma sinyali gönderilir.
     onceki_olay = getattr(threading, "_kripto_bot_durdur_olayi", None)
     if onceki_olay is not None:
         onceki_olay.set()
@@ -1564,7 +1540,6 @@ with col_sol_analiz:
             st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {'#00FF00' if kar_yuzde >= 50 else 'rgb(255, 75, 0)'};">🎯 Başarı Oranı: %{kar_yuzde:.1f}</p>""", unsafe_allow_html=True)
 
         with sub_p3:
-            # Sol sütun (Strateji Metrikleri) ile satır satır aynı iskelet: başlık / etiket / büyük değer / 2 satır / başarı oranı
             net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
             toplam_hareket_dolar = toplam_kazanc_dolar + toplam_kayip_dolar
             parasal_basari_yuzde = (toplam_kazanc_dolar / toplam_hareket_dolar * 100.0) if toplam_hareket_dolar > 0 else 0.0

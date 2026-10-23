@@ -555,11 +555,15 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     ]
     for col in sayisal_kolonlar:
         if col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(",", ".").str.strip(),
-                errors="coerce",
-            ).fillna(0.0).astype(float)
-    return df
+            # Binlik ayırıcı noktaları kaldır, virgülü noktaya çevir
+            temiz_seri = (
+                df[col]
+                .astype(str)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+                .str.strip()
+            )
+            df[col] = pd.to_numeric(temiz_seri, errors="coerce").fillna(0.0).astype(float)
 
 def dataframe_guncelle_gsheets(df):
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")

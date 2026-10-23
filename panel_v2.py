@@ -735,7 +735,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     if islem_miktari <= 0:
         return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
 
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    suan_tr = tr_zaman()
+    suan_tr_str = suan_tr.strftime("%d.%m.%Y %H:%M")
+    
     acik_islem_idx = None
     if not df.empty and "Durum" in df.columns:
         acik_mask = ~durum_kapali_maskesi(df["Durum"])
@@ -747,6 +749,37 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
+        
+        eski_zaman_str = str(df.loc[acik_islem_idx, "Acilis_Zamani"])
+
+        gercek_zaman_str = eski_zaman_str
+        try:
+            df_market_filtre = load_15min_market_data(coin)
+            if not df_market_filtre.empty and "timestamp" in df_market_filtre.columns and "Close" in df_market_filtre.columns:
+                df_market_filtre["Fark"] = (df_market_filtre["Close"] - giris_fiyat).abs()
+                en_yakin_satir = df_market_filtre.loc[df_market_filtre["Fark"].idxmin()]
+                bulunan_zaman = en_yakin_satir["timestamp"]
+                if isinstance(bulunan_zaman, pd.Timestamp):
+                    gercek_zaman_str = bulunan_zaman.strftime("%d.%m.%Y %H:%M")
+        except Exception as e:
+            print(f"Binance zaman filtreleme hatası: {e}")
+
+        try:
+            eski_dt = datetime.strptime(eski_zaman_str.strip(), "%d.%m.%Y %H:%M")
+            yeni_dt = datetime.strptime(gercek_zaman_str.strip(), "%d.%m.%Y %H:%M")
+        except:
+            eski_dt = suan_tr.replace(tzinfo=None)
+            yeni_dt = suan_tr.replace(tzinfo=None)
+
+        dakika_farki_yeni = (yeni_dt - eski_dt).total_seconds() / 60.0
+        if dakika_farki_yeni < 0:
+            dakika_farki_yeni = 0.0
+
+        yeni_toplam_miktar = eski_miktar + islem_miktari
+        agirlikli_dakika = ((0.0 * eski_miktar) + (dakika_farki_yeni * islem_miktari)) / yeni_toplam_miktar
+        
+        hesaplanan_yeni_dt = eski_dt + timedelta(minutes=agirlikli_dakika)
+        yeni_acilis_zamani_str = hesaplanan_yeni_dt.strftime("%d.%m.%Y %H:%M")
 
         eski_matris_rh = str(df.loc[acik_islem_idx, "Matris_Puan_RH"])
         try:
@@ -754,24 +787,19 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         except:
             eski_puan = matris_puan
 
-        yeni_toplam_miktar = eski_miktar + islem_miktari
         yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
         yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
 
-        if eski_giris > 0:
-            stop_oran = abs(stop - giris_fiyat) / giris_fiyat
-            kar_al_oran = abs(kar_al - giris_fiyat) / giris_fiyat
-        else:
-            stop_oran, kar_al_oran = 0.01, 0.02
+        stop_uzde_guncel, hedef_carpan_guncel, _ = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
 
         if "Long" in eski_yon:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_oran)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + kar_al_oran)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_uzde_guncel / 100.0)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
         else:
-            yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_oran)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - kar_al_oran)
+            yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_uzde_guncel / 100.0)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
             beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
             olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
 
@@ -783,7 +811,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
         df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
         df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
-        df.at[acik_islem_idx, "Acilis_Zamani"] = suan_tr
+        df.at[acik_islem_idx, "Acilis_Zamani"] = yeni_acilis_zamani_str
         df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
@@ -791,7 +819,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
 
         dataframe_guncelle_gsheets(df)
         elli_islem_arsiv_kontrol()
-        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Yeni Ort. Maliyet: {yeni_agirlikli_ortalama:,.{basamak}f} $"
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Binance Verisiyle Eşleşen Zaman ({yeni_acilis_zamani_str}) ve Maliyet Güncellendi."
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
@@ -811,7 +839,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
         yeni_kayit = pd.DataFrame([{
             "Islem_ID": yeni_id,
-            "Acilis_Zamani": suan_tr,
+            "Acilis_Zamani": suan_tr.strftime("%d.%m.%Y %H:%M"),
             "Coin": coin,
             "Yon": yon,
             "Zaman_Dilimi": zaman_dilimi,

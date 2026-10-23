@@ -108,6 +108,14 @@ HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
 MAIL_PANELDEN_GONDER = False
 
+# --- RSI BONUS AYARLARI (panel_v2.py ve check_engine.py'de AYNI olmalı) ---
+# "momentum": RSI ve fiyat konumu aynı tarafta ise o yönde bonus (trend yönlü, eski kalibrasyonla uyumlu)
+# "sapma"   : RSI ile fiyat konumu arasındaki fark yönüne bonus (trend karşıtı / uyumsuzluk)
+RSI_MODU = "momentum"
+RSI_MOMENTUM_TAVAN = 0.03   # momentum modunda bonus tavanı (max_puanın oranı)
+RSI_SAPMA_TAVAN = 0.12      # sapma modunda bonus tavanı (max_puanın oranı)
+
+
 _TR_ASCII = str.maketrans({
     "ı": "i", "İ": "i", "I": "i", "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
     "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
@@ -340,7 +348,7 @@ def calculate_coin_metrics_by_score(matris_puani):
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
-# --- DİNAMİK RSI & FİYAT BOŞLUK (MOMENTUM UYUMU) ENTEGRELİ MATRİS ---
+# --- MATRİS (RSI bonusu: RSI_MODU ayarına göre momentum veya sapma) ---
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     if df.empty or len(df) < 10:
         return max_puan / 2.0, max_puan / 2.0, 0, 0
@@ -375,23 +383,32 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rsi_serisi = 100 - (100 / (1 + rs))
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
 
-    # --- DİNAMİK RSI & FİYAT BOŞLUK (MOMENTUM UYUMU) MANTIĞI ---
+    # --- RSI BONUSU (mod: RSI_MODU) ---
+    # Fark, pencerenin fiyat aralığına göre 0-1 arası ölçülür; böylece zaman dilimi ve coin'den bağımsızdır.
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
 
     rsi_l, rsi_s = 0.0, 0.0
     if fiyat_fark > 0 and not rsi_serisi.isna().all():
-        df["RSI_Norm"] = min_f + (rsi_serisi / 100.0) * fiyat_fark
-        anlik_rsi_norm = float(df["RSI_Norm"].iloc[-1])
+        rsi_oran = rsi_anlik / 100.0
+        fiyat_konum = (anlik_fiyat - min_f) / fiyat_fark  # 0 = pencere dibi, 1 = pencere tepesi
 
-        bosluk_yuzde = (anlik_rsi_norm - anlik_fiyat) / anlik_fiyat * 100.0
-        dinamik_rsi_bonus = min(max_puan * 0.12, abs(bosluk_yuzde) * (max_puan * 0.025))
-
-        if anlik_rsi_norm > anlik_fiyat:
-            rsi_l = dinamik_rsi_bonus
+        if RSI_MODU == "sapma":
+            bosluk = abs(rsi_oran - fiyat_konum)
+            bonus = max_puan * RSI_SAPMA_TAVAN * bosluk
+            if rsi_oran > fiyat_konum:
+                rsi_l = bonus
+            elif rsi_oran < fiyat_konum:
+                rsi_s = bonus
         else:
-            rsi_s = dinamik_rsi_bonus
+            rsi_gucu = min(1.0, np.log1p(abs(rsi_anlik - 50.0)) / np.log1p(20.0))
+            konum_gucu = min(1.0, abs(fiyat_konum - 0.5) / 0.25)
+            bonus = max_puan * RSI_MOMENTUM_TAVAN * min(rsi_gucu, konum_gucu)
+            if rsi_oran > 0.5 and fiyat_konum > 0.5:
+                rsi_l = bonus
+            elif rsi_oran < 0.5 and fiyat_konum < 0.5:
+                rsi_s = bonus
     else:
         fark_rsi = abs(rsi_anlik - 50.0)
         rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))

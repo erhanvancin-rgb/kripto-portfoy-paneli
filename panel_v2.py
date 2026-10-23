@@ -959,8 +959,11 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
-def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
-    global df_gecmisile_goster  # veya df değişkeniniz her ne adla çağrılıyorsa
+def otomatik_stop_kar_kontrolu(df, ortak_fiyat_havuzu):
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty or "Durum" not in df.columns:
+        return
+    
+    df_kopya = df.copy()
     
     # Güvenlik kontrolü: df DataFrame mi ve boş değil mi?
     if df_gecmisile_goster is None or not isinstance(df_gecmisile_goster, pd.DataFrame) or df_gecmisile_goster.empty or "Durum" not in df_gecmisile_goster.columns:
@@ -1188,7 +1191,7 @@ for sembol in tum_takip_edilenler:
         "zaman_katkilari": zaman_katkilari, "gunluk_oran": gunluk_oran, "df_market": df_market,
     })
 
-otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu)
+otomatik_stop_kar_kontrolu(df_gosterilecek, ortak_fiyat_havuzu)
 
 coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != "TOTAL"]
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == "TOTAL"][0]

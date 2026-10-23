@@ -320,25 +320,25 @@ def load_15min_market_data(coin_symbol: str):
 # --- LOGARİTMİK RİSK / HEDEF HESAPLAMA MİMARİSİ ---
 def calculate_coin_metrics_by_score(matris_puani):
     hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 55.0
+    min_esik = 60.0 if hsonu else 50.0  # Nötr taban dahil edildi
 
-    if matris_puani < min_esik:
-        return 0.70, 1.0, "Nötr"
+    # Tablonuzdaki referans puan ve karşılıkları (Logaritmik eğri uydurma için)
+    x_puanlar = np.array([50.0, 55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
+    y_risk = np.array([0.81, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50])
+    y_hedef = np.array([0.56, 0.75, 0.91, 1.08, 1.27, 1.46, 1.50])
 
-    x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
+    # Logaritmik curve fitting (Eğri uydurma katsayıları)
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
-
-    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
-    puan = max(min_esik, min(100.0, matris_puani))
+    puan = max(50.0, min(100.0, matris_puani))
 
     stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
     hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
 
-    stop_uzde = max(0.40, min(0.70, stop_uzde))
-    hedef_uzde = max(0.60, min(2.50, hedef_uzde))
+    # Sınırlandırmalar (Tablonuzun min/max sınırları)
+    stop_uzde = max(0.40, min(0.85, stop_uzde))
+    hedef_uzde = max(0.50, min(2.00, hedef_uzde))
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
 

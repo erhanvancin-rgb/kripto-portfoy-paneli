@@ -1688,8 +1688,11 @@ if not df_gecmisile_goster.empty:
         hedef_kar_sozluk[islem_id] = float(row["Beklenen_Kar"])
         olasi_stop_sozluk[islem_id] = float(row["Olasi_Stop"])
 
-        if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
-            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)), 2)
+        if giris_fiyat <= 0:
+            anlik_kz_sozluk[islem_id] = 0.0
+        elif not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
+            f_oran = ((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)
+            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * f_oran, 2)
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 

@@ -961,6 +961,11 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
             coin = row["Coin"]
             yon = row["Yon"]
             giris_fiyat = float(row["Giris_Fiyat"])
+            
+            # Sıfıra bölme hatasını önlemek için giriş fiyatı 0 veya geçersizse atla
+            if giris_fiyat <= 0:
+                continue
+
             stop_f = float(row["Stop"])
             kar_al_f = float(row["Kar_Al"])
             miktar = float(row["Islem_Miktari"])
@@ -969,6 +974,9 @@ def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
                 anl_f = ortak_fiyat_havuzu[coin]
             else:
                 anl_f = fiyat_cek_binance(coin)
+
+            if anl_f is None or anl_f <= 0:
+                continue
 
             islem_kapatilacak = False
             hedefe_ulasti = False

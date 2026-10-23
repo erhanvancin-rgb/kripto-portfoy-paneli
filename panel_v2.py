@@ -1685,8 +1685,8 @@ if not df_gecmisile_goster.empty:
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
-# HTML Portföy Tablosu (Zaman Dilimi sütunu eklendi, Google Sheets sıralamasıyla %100 uyumlu)
-portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Zaman Dilimi</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""
+# HTML Portföy Tablosu (Zaman Dilimi sütunu başlık ve satırlardan kaldırıldı, E-Tablo sıralaması korunuyor)
+portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""
 
 if not df_gosterilecek.empty:
     df_gecmis_copy = df_gosterilecek.copy()
@@ -1711,7 +1711,6 @@ if not df_gosterilecek.empty:
         kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
         matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
-        zaman_dilimi_val = str(row.get('Zaman_Dilimi', 'Oransal_Matris'))
         islem_miktari_val = float(row['Islem_Miktari'])
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"
@@ -1721,9 +1720,9 @@ if not df_gosterilecek.empty:
         guncel_kasa_val = float(row['Guncel_Kasa'])
         giris_fiyat_val = float(row['Giris_Fiyat'])
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{zaman_dilimi_val}</td><td>{giris_fiyat_val:,.{basamak_degeri}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{canli_beklenen_kar_val:,.2f}&nbsp;$</td><td>{canli_olasi_stop_val:,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{guncel_kasa_val:,.2f}&nbsp;$</td></tr>"
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{giris_fiyat_val:,.{basamak_degeri}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{canli_beklenen_kar_val:,.2f}&nbsp;$</td><td>{canli_olasi_stop_val:,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{guncel_kasa_val:,.2f}&nbsp;$</td></tr>"
 else:
-    portfoy_html += "<tr><td colspan='19' style='text-align: center; color: #91a0b8; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
+    portfoy_html += "<tr><td colspan='18' style='text-align: center; color: #91a0b8; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
 
 portfoy_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)

@@ -108,12 +108,10 @@ HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
 MAIL_PANELDEN_GONDER = False
 
-# --- RSI BONUS AYARLARI (panel_v2.py ve check_engine.py'de AYNI olmalı) ---
-# "momentum": RSI ve fiyat konumu aynı tarafta ise o yönde bonus (trend yönlü, eski kalibrasyonla uyumlu)
-# "sapma"   : RSI ile fiyat konumu arasındaki fark yönüne bonus (trend karşıtı / uyumsuzluk)
+# --- RSI BONUS AYARLARI ---
 RSI_MODU = "momentum"
-RSI_MOMENTUM_TAVAN = 0.03   # momentum modunda bonus tavanı (max_puanın oranı)
-RSI_SAPMA_TAVAN = 0.12      # sapma modunda bonus tavanı (max_puanın oranı)
+RSI_MOMENTUM_TAVAN = 0.03   
+RSI_SAPMA_TAVAN = 0.12      
 
 
 _TR_ASCII = str.maketrans({
@@ -320,25 +318,25 @@ def load_15min_market_data(coin_symbol: str):
 # --- LOGARİTMİK RİSK / HEDEF HESAPLAMA MİMARİSİ ---
 def calculate_coin_metrics_by_score(matris_puani):
     hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 50.0  # Nötr taban dahil edildi
+    min_esik = 60.0 if hsonu else 55.0
 
-    # Tablonuzdaki referans puan ve karşılıkları (Logaritmik eğri uydurma için)
-    x_puanlar = np.array([50.0, 55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.81, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50])
-    y_hedef = np.array([0.56, 0.75, 0.91, 1.08, 1.27, 1.46, 1.50])
+    if matris_puani < min_esik:
+        return 0.70, 1.0, "Nötr"
 
-    # Logaritmik curve fitting (Eğri uydurma katsayıları)
+    x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
+    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
+
+    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
-    puan = max(50.0, min(100.0, matris_puani))
+    puan = max(min_esik, min(100.0, matris_puani))
 
     stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
     hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
 
-    # Sınırlandırmalar (Tablonuzun min/max sınırları)
-    stop_uzde = max(0.40, min(0.85, stop_uzde))
-    hedef_uzde = max(0.50, min(2.00, hedef_uzde))
+    stop_uzde = max(0.40, min(0.70, stop_uzde))
+    hedef_uzde = max(0.60, min(2.50, hedef_uzde))
 
     hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
 
@@ -348,7 +346,7 @@ def calculate_coin_metrics_by_score(matris_puani):
 
     return stop_uzde, hedef_carpan, risk_hedef_metin
 
-# --- MATRİS (RSI bonusu: RSI_MODU ayarına göre momentum veya sapma) ---
+# --- MATRİS (RSI bonusu) ---
 def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     if df.empty or len(df) < 10:
         return max_puan / 2.0, max_puan / 2.0, 0, 0
@@ -383,8 +381,6 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rsi_serisi = 100 - (100 / (1 + rs))
     rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
 
-    # --- RSI BONUSU (mod: RSI_MODU) ---
-    # Fark, pencerenin fiyat aralığına göre 0-1 arası ölçülür; böylece zaman dilimi ve coin'den bağımsızdır.
     max_f = float(df["High"].max())
     min_f = float(df["Low"].min())
     fiyat_fark = max_f - min_f
@@ -392,7 +388,7 @@ def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
     rsi_l, rsi_s = 0.0, 0.0
     if fiyat_fark > 0 and not rsi_serisi.isna().all():
         rsi_oran = rsi_anlik / 100.0
-        fiyat_konum = (anlik_fiyat - min_f) / fiyat_fark  # 0 = pencere dibi, 1 = pencere tepesi
+        fiyat_konum = (anlik_fiyat - min_f) / fiyat_fark
 
         if RSI_MODU == "sapma":
             bosluk = abs(rsi_oran - fiyat_konum)
@@ -549,13 +545,14 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         ]
     df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
     df = df.drop_duplicates(subset=["Islem_ID"], keep="last").sort_values(by="Islem_ID").reset_index(drop=True)
+    
+    # Sağlamlaştırılmış Sayısal Kolon Dönüştürücü (Avrupa tipi 81.690,44 format desteği)
     sayisal_kolonlar = [
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati"
     ]
     for col in sayisal_kolonlar:
         if col in df.columns:
-            # Binlik ayırıcı noktaları kaldır, virgülü noktaya çevir
             temiz_seri = (
                 df[col]
                 .astype(str)
@@ -564,6 +561,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
                 .str.strip()
             )
             df[col] = pd.to_numeric(temiz_seri, errors="coerce").fillna(0.0).astype(float)
+    return df
 
 def dataframe_guncelle_gsheets(df):
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
@@ -613,10 +611,15 @@ def kasa_defteri_getir():
             & (df["Islem_ID"].astype(str) != "Islem_ID")
         ]
     df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
-    df["Tutar"] = pd.to_numeric(
-        df["Tutar"].astype(str).str.replace(",", ".").str.strip(),
-        errors="coerce",
-    ).fillna(0.0).astype(float)
+    
+    temiz_tutar = (
+        df["Tutar"]
+        .astype(str)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip()
+    )
+    df["Tutar"] = pd.to_numeric(temiz_tutar, errors="coerce").fillna(0.0).astype(float)
     return df
 
 def kasa_defteri_guncelle_gsheets(df):
@@ -718,21 +721,12 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         for _, rw in acik_df.iterrows():
             c_SYM = rw["Coin"]
             g_F = float(rw["Giris_Fiyat"])
-            
-            # Giriş fiyatı 0 veya geçersizse sıfıra bölme hatasını önlemek için atla
-            if g_F <= 0:
-                continue
-
             m_M = float(rw["Islem_Miktari"])
             y_Y = rw["Yon"]
             if not ortak_fiyat_havuzu:
                 anl_F = fiyat_cek_binance(c_SYM)
             else:
                 anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
-            
-            if anl_F is None or anl_F <= 0:
-                continue
-
             f_y = ((anl_F - g_F) / g_F) if "Long" in y_Y else ((g_F - anl_F) / g_F)
             acik_kz_toplam += m_M * KALDIRAC * f_y
 
@@ -959,17 +953,13 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
-def otomatik_stop_kar_kontrolu(df, ortak_fiyat_havuzu):
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty or "Durum" not in df.columns:
+def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
+    if df_arg is None or not isinstance(df_arg, pd.DataFrame) or df_arg.empty or "Durum" not in df_arg.columns:
         return
-    
-    df_kopya = df.copy()
-    
-    # Güvenlik kontrolü: df DataFrame mi ve boş değil mi?
-    if df_gecmisile_goster is None or not isinstance(df_gecmisile_goster, pd.DataFrame) or df_gecmisile_goster.empty or "Durum" not in df_gecmisile_goster.columns:
-        return
-        
-    df = df_gecmisile_goster.copy()
+    df = df_arg.copy()
+
+    degisiklik_oldu = False
+    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
 
     for idx, row in df.iterrows():
         durum_str = str(row["Durum"]).lower()
@@ -978,11 +968,6 @@ def otomatik_stop_kar_kontrolu(df, ortak_fiyat_havuzu):
             coin = row["Coin"]
             yon = row["Yon"]
             giris_fiyat = float(row["Giris_Fiyat"])
-            
-            # Sıfıra bölme hatasını önlemek için giriş fiyatı 0 veya geçersizse atla
-            if giris_fiyat <= 0:
-                continue
-
             stop_f = float(row["Stop"])
             kar_al_f = float(row["Kar_Al"])
             miktar = float(row["Islem_Miktari"])
@@ -991,9 +976,6 @@ def otomatik_stop_kar_kontrolu(df, ortak_fiyat_havuzu):
                 anl_f = ortak_fiyat_havuzu[coin]
             else:
                 anl_f = fiyat_cek_binance(coin)
-
-            if anl_f is None or anl_f <= 0:
-                continue
 
             islem_kapatilacak = False
             hedefe_ulasti = False
@@ -1119,7 +1101,8 @@ def arka_plan_dinleyicisi(durdur_olayi):
                 _, puan, yon, _, _, _ = kurgusal_matris_hesapla(s)
                 trend_metni, _, _, _ = trend_asamasini_ve_ikon_belirle(puan, yon)
                 sinyal_ve_trend_mail_kontrolu(s, puan, yon, trend_metni, coin_mi=(s != "TOTAL"))
-            otomatik_stop_kar_kontrolu(anlik_fiyat_havuzu)
+            df_bg = islem_gecmisi_getir(sheet_guncelle=False)
+            otomatik_stop_kar_kontrolu(df_bg, anlik_fiyat_havuzu)
         except Exception as e:
             print(f"Arka plan hata: {e}")
             bekleme = 10
@@ -1191,7 +1174,8 @@ for sembol in tum_takip_edilenler:
         "zaman_katkilari": zaman_katkilari, "gunluk_oran": gunluk_oran, "df_market": df_market,
     })
 
-otomatik_stop_kar_kontrolu(df_gosterilecek, ortak_fiyat_havuzu)
+df_ana_kayit = islem_gecmisi_getir(sheet_guncelle=False)
+otomatik_stop_kar_kontrolu(df_ana_kayit, ortak_fiyat_havuzu)
 
 coin_ham_veriler = [d for d in islenen_ham_veriler if d["sembol"] != "TOTAL"]
 total_ham_veri = [d for d in islenen_ham_veriler if d["sembol"] == "TOTAL"][0]
@@ -1696,14 +1680,12 @@ if not df_gecmisile_goster.empty:
         hedef_kar_sozluk[islem_id] = float(row["Beklenen_Kar"])
         olasi_stop_sozluk[islem_id] = float(row["Olasi_Stop"])
 
-        if giris_fiyat <= 0:
-            anlik_kz_sozluk[islem_id] = 0.0
-        elif not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
-            f_oran = ((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)
-            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * f_oran, 2)
+        if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
+            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)), 2)
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
+# HTML Portföy Tablosu (Zaman Dilimi sütunu eklendi, Google Sheets sıralamasıyla %100 uyumlu)
 portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Zaman Dilimi</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""
 
 if not df_gosterilecek.empty:

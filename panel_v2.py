@@ -714,12 +714,21 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
         for _, rw in acik_df.iterrows():
             c_SYM = rw["Coin"]
             g_F = float(rw["Giris_Fiyat"])
+            
+            # Giriş fiyatı 0 veya geçersizse sıfıra bölme hatasını önlemek için atla
+            if g_F <= 0:
+                continue
+
             m_M = float(rw["Islem_Miktari"])
             y_Y = rw["Yon"]
             if not ortak_fiyat_havuzu:
                 anl_F = fiyat_cek_binance(c_SYM)
             else:
                 anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
+            
+            if anl_F is None or anl_F <= 0:
+                continue
+
             f_y = ((anl_F - g_F) / g_F) if "Long" in y_Y else ((g_F - anl_F) / g_F)
             acik_kz_toplam += m_M * KALDIRAC * f_y
 

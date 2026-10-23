@@ -959,13 +959,14 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
-def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu=None):
-    df = islem_gecmisi_getir(sheet_guncelle=False)
-    if df.empty or "Durum" not in df.columns:
+def otomatik_stop_kar_kontrolu(ortak_fiyat_havuzu):
+    global df_gecmisile_goster  # veya df değişkeniniz her ne adla çağrılıyorsa
+    
+    # Güvenlik kontrolü: df DataFrame mi ve boş değil mi?
+    if df_gecmisile_goster is None or not isinstance(df_gecmisile_goster, pd.DataFrame) or df_gecmisile_goster.empty or "Durum" not in df_gecmisile_goster.columns:
         return
-
-    degisiklik_oldu = False
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+        
+    df = df_gecmisile_goster.copy()
 
     for idx, row in df.iterrows():
         durum_str = str(row["Durum"]).lower()

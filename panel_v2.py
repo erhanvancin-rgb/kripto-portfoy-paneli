@@ -1770,42 +1770,46 @@ with col_orta_grafik:
         t_df["RSI_Norm"] = min_f + (t_df["RSI"] / 100.0) * fiyat_fark
 
         fib_levels = {
-            -0.382: min_f - 0.382 * fiyat_fark,
+            -0.236: min_f - 0.236 * fiyat_fark,
             0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark,
             0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark,
             0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f,
-            1.382: max_f + 0.382 * fiyat_fark,
+            1.236: max_f + 0.236 * fiyat_fark,
         }
 
         min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(hours=1)
-        alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.43), max_f + (fiyat_fark * 0.43)
+        alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.28), max_f + (fiyat_fark * 0.28)
 
         fig_total = go.Figure()
-        # Bölgeler: önceki sürümden daha belirgin (şeffaflık artırıldı), kenarlıksız
+        # Bölgeler: %100 opak (tam dolu) renkler; yeşil üstte, turuncu-kırmızı altta, orta sarımsı
         for b_alt, b_ust, renk in [
-            (1.0, 1.382, "rgba(0,255,0,0.24)"), (0.786, 1.0, "rgba(0,255,0,0.18)"), (0.618, 0.786, "rgba(0,255,0,0.10)"),
-            (0.382, 0.618, "rgba(255,200,0,0.11)"),
-            (0.236, 0.382, "rgba(255,75,0,0.10)"), (0.0, 0.236, "rgba(255,75,0,0.18)"), (-0.382, 0.0, "rgba(255,75,0,0.24)"),
+            (1.0, 1.236, "rgb(10,112,44)"), (0.786, 1.0, "rgb(14,90,42)"), (0.618, 0.786, "rgb(18,66,40)"),
+            (0.382, 0.618, "rgb(82,70,24)"),
+            (0.236, 0.382, "rgb(92,50,26)"), (0.0, 0.236, "rgb(116,48,28)"), (-0.236, 0.0, "rgb(138,46,26)"),
         ]:
-            fig_total.add_hrect(y0=fib_levels[b_alt], y1=fib_levels[b_ust], fillcolor=renk, line_width=0, layer="below")
+            fig_total.add_hrect(y0=fib_levels[b_alt], y1=fib_levels[b_ust], fillcolor=renk, opacity=1, line_width=0, layer="below")
         for oran, val in fib_levels.items():
             _ton = "255,200,0" if oran == 0.5 else ("0,255,0" if oran > 0.5 else "255,75,0")
             fig_total.add_hline(y=val, line_width=0.8, line_dash="dot", line_color=f"rgba({_ton},0.45)")
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"{oran:g}", showarrow=False,
                                      xanchor="left", xshift=6, font=dict(size=10, color=f"rgb({_ton})"))
 
+        MAVI_CIZGI, TURUNCU_CIZGI = "rgb(0, 0, 255)", "rgb(255, 100, 0)"
+        # Koyu zeminde saf mavi/turuncu net seçilsin diye çizgilerin altına ince açık bir gölge
+        for _y in ("Close", "RSI_Norm"):
+            fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df[_y], mode="lines", showlegend=False, hoverinfo="skip",
+                                           line=dict(color="rgba(255,255,255,0.30)", width=4.6, shape="spline", smoothing=0.6)))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market",
-            line=dict(color="#5b8cff", width=2.4, shape="spline", smoothing=0.6),
-            fill="tozeroy", fillcolor="rgba(91,140,255,0.05)",
+            line=dict(color=MAVI_CIZGI, width=2.4, shape="spline", smoothing=0.6),
             hovertemplate="Total Market: %{y:,.2f}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI",
-            line=dict(color="rgba(255,153,0,0.9)", width=1.3, shape="spline", smoothing=0.6),
+            line=dict(color=TURUNCU_CIZGI, width=1.5, shape="spline", smoothing=0.6),
             customdata=t_df["RSI"], hovertemplate="RSI: %{customdata:.0f}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=[t_df["timestamp"].iloc[-1]], y=[t_df["Close"].iloc[-1]], mode="markers",
-            marker=dict(size=9, color="#5b8cff", line=dict(color="#e8eef8", width=2)), showlegend=False, hoverinfo="skip"))
+            marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
             template="plotly_dark", margin=dict(t=28, b=28, l=8, r=64), height=340,

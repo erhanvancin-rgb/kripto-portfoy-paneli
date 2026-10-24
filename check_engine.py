@@ -43,7 +43,9 @@ RSI_SAPMA_TAVAN = 0.12      # sapma modunda bonus tavanı (max_puanın oranı)
 
 BASLANGIC_BAKIYE = 500.0
 SINYAL_BEKLEME_DK = 60       # aynı coin + aynı aşama için iki mail arası minimum süre
-KAPANIS_PENCERESI_SAAT = 24  # kasa defterinde bu süreden eski kapanışlar için mail atılmaz
+KAPANIS_PENCERESI_SAAT = 24  # bu süreden eski kapanışlar için mail atılmaz
+ZAMAN_BUTCESI_SN = 180       # sinyal taraması bu süreden sonra bırakılır (kapanış mailleri öncelikli)
+_T0 = time.time()
 
 COINLER = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
 GMAIL_ADRES = "erhanvancin@gmail.com"
@@ -461,24 +463,26 @@ def kasa_defteri_oku():
 
 
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
-    """Başarılıysa True döner."""
-    sheet = google_sheets_baglan("KasaDefteri")
-    if sheet is None:
-        return False
-    try:
-        ham = sheet.get_all_values()
-        idler = []
-        for satir in ham[1:]:
+    """Başarılıysa True döner. Geçici Sheets hatalarına karşı 3 deneme yapar."""
+    for no in range(1, 4):
+        sheet = google_sheets_baglan("KasaDefteri")
+        if sheet is not None:
             try:
-                idler.append(int(float(str(satir[0]).replace(",", "."))))
-            except Exception:
-                pass
-        yeni_id = (max(idler) if idler else 0) + 1
-        sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(tutar, 2), aciklama])
-        return True
-    except Exception as e:
-        print(f"Kasa defteri kayıt hatası: {e}")
-        return False
+                ham = sheet.get_all_values()
+                idler = []
+                for satir in ham[1:]:
+                    try:
+                        idler.append(int(float(str(satir[0]).replace(",", "."))))
+                    except Exception:
+                        pass
+                yeni_id = (max(idler) if idler else 0) + 1
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(tutar, 2), aciklama])
+                return True
+            except Exception as e:
+                print(f"Kasa defteri kayıt hatası (deneme {no}/3): {e}")
+        if no < 3:
+            time.sleep(3 * no)
+    return False
 
 
 def bakiye_hesapla(df_trade):
@@ -573,6 +577,13 @@ def acik_islemleri_kontrol_et():
         islem_id, coin, yon = int(row["Islem_ID"]), row["Coin"], str(row["Yon"])
         giris, stop_f, kar_al_f, miktar = float(row["Giris_Fiyat"]), float(row["Stop"]), float(row["Kar_Al"]), float(row["Islem_Miktari"])
 
+        # Bozuk/boş satır (sayıya çevrilemeyen değerler 0'a düşer) tüm motoru çökertmesin
+        if giris <= 0 or stop_f <= 0 or kar_al_f <= 0 or miktar <= 0 or not str(coin).strip():
+            print(f"UYARI: #{islem_id} satırı atlandı (geçersiz değer): Coin='{coin}' Durum='{row['Durum']}' "
+                  f"Giris={row['Giris_Fiyat']} Stop={row['Stop']} Kar_Al={row['Kar_Al']} Miktar={row['Islem_Miktari']}. "
+                  f"Google Sheets'te bu satırı kontrol edin.")
+            continue
+
         anl_f = fiyat_cek_binance(coin)
         if anl_f is None:
             print(f"#{islem_id} {coin}: fiyat alınamadı, atlandı.")
@@ -613,41 +624,49 @@ def acik_islemleri_kontrol_et():
     for islem_id, coin, etiket, net_kar in kapananlar:
         ok = kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), f"{etiket}: #{islem_id} {coin}")
         if not ok:
-            print(f"UYARI: #{islem_id} kasa defterine yazılamadı, kontrol edin.")
+            print(f"UYARI: #{islem_id} kasa defterine yazılamadı (panel bakiyeyi kendisi düzeltir); mail yine de gönderilecek.")
     print(f"{len(kapananlar)} işlem kapatıldı.")
 
 
 # ----------------------------------------------------------------------------
 # 2) KAPANIŞ MAİLLERİ
 # ----------------------------------------------------------------------------
-KAPANIS_DESEN = re.compile(r"^(Hedef Kâr|Otomatik Stop): #(\d+)\s*(.*)$")
+def _fiyat_esit(a, b):
+    return abs(a - b) <= max(1e-4, abs(b) * 1e-6)
 
 
 def kapanis_maillerini_gonder(durum):
-    ham = kasa_defteri_oku()
-    if ham is None:
-        return
+    """Kaynak: işlem tablosu (KasaDefteri'ne bağlı değil). Böylece kasa kaydı yazılamasa
+    bile otomatik kapanan her işlem için, mail gidene kadar her turda yeniden denenir."""
     df_trade = islem_gecmisi_getir()
+    if df_trade is None or df_trade.empty:
+        return
     sinir = tr_zaman() - timedelta(hours=KAPANIS_PENCERESI_SAAT)
     degisti = False
 
-    for satir in ham[1:]:
-        satir = list(satir) + [""] * (5 - len(satir))
-        zaman_str, tur, tutar_str, aciklama = satir[1], satir[2], satir[3], satir[4]
-        if tur != "Trade_Sonuc":
+    for _, r in df_trade.iterrows():
+        d = str(r["Durum"]).translate(_TR_ASCII).lower()
+        if "kapandi" not in d or "kismi" in d:
             continue
-        m = KAPANIS_DESEN.match(aciklama.strip())
-        if not m:
-            continue
-        etiket, islem_id, coin = m.group(1), int(m.group(2)), m.group(3).split(" (")[0].strip()
 
+        zaman_str = str(r["Kapanis_Zamani"]).strip()
         try:
-            zaman = TR_TZ.localize(datetime.strptime(zaman_str.strip(), "%d.%m.%Y %H:%M"))
+            zaman = TR_TZ.localize(datetime.strptime(zaman_str, "%d.%m.%Y %H:%M"))
         except Exception:
             continue
         if zaman < sinir:
             continue
 
+        # Otomatik kapanış = kapanış fiyatı stop veya kâr hedefiyle aynı (manuel kapanışlara mail atılmaz)
+        kapanis_f = float(r["Kapanis_Fiyati"])
+        if _fiyat_esit(kapanis_f, float(r["Kar_Al"])):
+            etiket = "Hedef Kâr"
+        elif _fiyat_esit(kapanis_f, float(r["Stop"])):
+            etiket = "Otomatik Stop"
+        else:
+            continue
+
+        islem_id, coin = int(r["Islem_ID"]), str(r["Coin"])
         anahtar = f"kapanis|{islem_id}"
         if durum.al(anahtar)["aktif"] == 1:
             continue
@@ -657,23 +676,13 @@ def kapanis_maillerini_gonder(durum):
             degisti = True
             continue
 
-        try:
-            net_kar = float(str(tutar_str).replace(",", "."))
-        except Exception:
-            net_kar = 0.0
-
-        yon, kasa = "-", "-"
-        if df_trade is not None and not df_trade.empty:
-            satir_trade = df_trade[df_trade["Islem_ID"] == islem_id]
-            if not satir_trade.empty:
-                yon = satir_trade["Yon"].iloc[0]
-                kasa = f"{float(satir_trade['Guncel_Kasa'].iloc[0]):,.2f} $"
-
+        net_kar = float(r["Net_Kar_Zarar"])
+        kasa = f"{float(r['Guncel_Kasa']):,.2f} $"
         sonuc = "Kar" if etiket == "Hedef Kâr" else "Zarar"
         konu = f"⚡ {etiket}: #{islem_id} {coin} (Kapandi ({sonuc}))"
         icerik = (
             f"<h3>İşlem Otomatik Kapatıldı</h3>"
-            f"<p><b>Zaman:</b> {zaman_str}</p><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {yon}</p>"
+            f"<p><b>Zaman:</b> {zaman_str}</p><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {r['Yon']}</p>"
             f"<p><b>Sebep:</b> {etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p>"
             f"<p><b>Güncel Kasa:</b> {kasa}</p>"
         )
@@ -692,6 +701,9 @@ def kapanis_maillerini_gonder(durum):
 def sinyal_maillerini_gonder(durum):
     degisti = False
     for sembol in COINLER + ["TOTAL"]:
+        if time.time() - _T0 > ZAMAN_BUTCESI_SN:
+            print("Zaman bütçesi doldu; kalan sinyal taraması sonraki tura bırakıldı.")
+            break
         sonuc = matris_puani_hesapla(sembol)
         if sonuc is None:
             print(f"{sembol}: veri eksik, sinyal kontrolü atlandı.")
@@ -754,7 +766,13 @@ def motoru_calistir():
         )
         print("Telegram test mesajı:", "gönderildi" if ok else "GÖNDERİLEMEDİ (secret'ları kontrol edin)")
 
-    acik_islemleri_kontrol_et()
+    try:
+        acik_islemleri_kontrol_et()
+    except Exception as e:
+        # Bir hata kapanış/sinyal maillerini engellemesin
+        import traceback
+        print(f"HATA: acik_islemleri_kontrol_et çöktü, mail aşamasına devam ediliyor: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
     durum = MailDurumu()
     if not durum.yukle():
@@ -763,8 +781,13 @@ def motoru_calistir():
     if durum.ilk_calisma:
         print("İlk çalışma: mevcut durumlar mail atılmadan kaydedilecek.")
 
-    kapanis_maillerini_gonder(durum)
-    sinyal_maillerini_gonder(durum)
+    for adim in (kapanis_maillerini_gonder, sinyal_maillerini_gonder):
+        try:
+            adim(durum)
+        except Exception as e:
+            import traceback
+            print(f"HATA: {adim.__name__} çöktü: {type(e).__name__}: {e}")
+            traceback.print_exc()
 
     if durum.ilk_calisma:
         durum.kaydet()

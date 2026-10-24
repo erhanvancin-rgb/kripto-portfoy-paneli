@@ -88,11 +88,47 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .custom-table td { background:#101a2a; text-align:center; padding:9px 5px; border-bottom:1px solid #202e43; font-weight:600; vertical-align:middle; color:#e4ebf7 !important; white-space:nowrap; font-size:11px; }
 .custom-table tr:hover td { background:#17243a; }
 .custom-table td img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
-.kar-hucre { background-color: #00FF00 !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
-.zarar-hucre { background-color: rgb(255, 75, 0) !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
+.kar-hucre { background-color: #20d6a1 !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
+.zarar-hucre { background-color: #ff647c !important; color: #000000 !important; font-weight: bold; padding: 4px; border-radius: 4px; }
 [data-testid="stSidebar"] { background:#0b1220 !important; border-right:1px solid var(--border); }
 [data-testid="stCaptionContainer"] { color:var(--muted) !important; }
 @media (max-width: 768px) { .block-container { padding:1rem .7rem 2rem; } .metric-container { padding:12px !important; } .metric-container h1 { font-size:20px !important; } }
+.custom-table td, .custom-table th { font-variant-numeric:tabular-nums; }
+.custom-table th { background:#141f31; color:#8fa0ba !important; font-weight:600; letter-spacing:.2px; }
+.custom-table td { background:#0f1828; }
+.pos-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:14px; margin:8px 0 20px; }
+.pos-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:16px; padding:16px 18px; font-variant-numeric:tabular-nums; }
+.pos-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.pos-coin { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:15px; }
+.pos-logo { width:24px; height:24px; object-fit:contain; }
+.pos-id { color:var(--muted); font-size:11px; }
+.pill { padding:2px 10px; border-radius:999px; font-size:11px; font-weight:700; border:1px solid; }
+.pill-long { color:#20d6a1; border-color:rgba(32,214,161,.45); background:rgba(32,214,161,.10); }
+.pill-short { color:#ff647c; border-color:rgba(255,100,124,.45); background:rgba(255,100,124,.10); }
+.pos-kz { font-size:22px; font-weight:800; text-align:right; line-height:1.1; }
+.pos-kz small { display:block; font-size:11px; font-weight:600; opacity:.8; }
+.range-wrap { margin:16px 0 10px; }
+.range-bar { position:relative; height:8px; border-radius:6px; background:linear-gradient(90deg,rgba(255,100,124,.55),rgba(145,160,184,.25) 50%,rgba(32,214,161,.55)); }
+.range-tick { position:absolute; top:-4px; width:2px; height:16px; background:#91a0b8; border-radius:2px; transform:translateX(-1px); }
+.range-dot { position:absolute; top:-5px; width:18px; height:18px; border-radius:50%; background:#e8eef8; border:3px solid #5b8cff; transform:translateX(-9px); box-shadow:0 0 0 3px rgba(91,140,255,.18); }
+.range-lbl { display:flex; justify-content:space-between; margin-top:12px; font-size:11px; font-weight:700; }
+.range-mid { color:#e8eef8; }
+.range-dist { display:flex; justify-content:space-between; margin-top:2px; font-size:10px; color:var(--muted); }
+.pos-meta { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:11px; color:var(--muted); margin-top:10px; }
+.pos-meta b { color:#e8eef8; font-weight:700; }
+.bar-bg { height:6px; border-radius:6px; background:#1b2a40; overflow:hidden; }
+.bar-mini { height:4px; margin-top:6px; }
+.bar-fill { height:100%; border-radius:6px; transition:width .4s; }
+.pos-detay { margin-top:10px; font-size:11px; color:var(--muted); }
+.pos-detay summary { cursor:pointer; color:#8fa0ba; }
+.pos-detay-ic { padding-top:6px; line-height:1.7; }
+.risk-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:16px; padding:14px 18px; margin:6px 0 14px; }
+.risk-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.risk-title { font-size:13px; font-weight:700; color:#e8eef8; }
+.risk-val { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; }
+.risk-val small { font-weight:600; color:var(--muted); }
+.risk-note { font-size:10px; color:var(--muted); margin-top:7px; }
+@media (max-width: 768px) { .pos-grid { grid-template-columns:1fr; } .pos-kz { font-size:19px; } }
 </style>
 """,
     unsafe_allow_html=True,
@@ -154,6 +190,94 @@ def risk_kapasitesi(toplam_kasa, df, coin, giris, stop):
     kalan = max(0.0, toplam_limit - diger)
     azami = min(islem_limit, kalan) / birim if birim > 0 else 0.0
     return {"azami": azami, "islem_limit": islem_limit, "kalan_toplam_risk": kalan, "diger_risk": diger, "birim": birim}
+
+# ====================== GÖRSEL BİLEŞENLER ======================
+RENK_YESIL, RENK_KIRMIZI, RENK_SARI = "#20d6a1", "#ff647c", "#f5c451"
+
+def _fmt_fiyat(v):
+    return f"{v:,.4f}" if abs(v) < 10 else f"{v:,.2f}"
+
+def _risk_rengi(oran):
+    return RENK_YESIL if oran < 0.6 else (RENK_SARI if oran < 0.9 else RENK_KIRMIZI)
+
+def risk_ozet_html(df, toplam_kasa):
+    """Toplam risk limiti ilerleme çubuğu (tek satır HTML: markdown kod bloğuna dönmesin)."""
+    kullanilan = acik_pozisyonlar_riski(df)
+    limit = max(0.0, float(toplam_kasa)) * TOPLAM_RISK_LIMIT_YUZDE / 100.0
+    oran = (kullanilan / limit) if limit > 0 else 0.0
+    renk = _risk_rengi(oran)
+    genislik = max(2.0, min(100.0, oran * 100.0))
+    return ('<div class="risk-card"><div class="risk-top"><span class="risk-title">🛡️ Toplam Risk Kullanımı</span>'
+            f'<span class="risk-val" style="color:{renk}">{kullanilan:,.2f} $ / {limit:,.2f} $ <small>(%{TOPLAM_RISK_LIMIT_YUZDE:g} limit)</small></span></div>'
+            f'<div class="bar-bg"><div class="bar-fill" style="width:{genislik:.1f}%;background:{renk}"></div></div>'
+            f'<div class="risk-note">Stop vurulursa, komisyon dahil toplam olası zarar. İşlem başı limit: {max(0.0, float(toplam_kasa)) * ISLEM_BASINA_RISK_YUZDE / 100.0:,.2f} $</div></div>')
+
+def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
+    coin, yon = str(row["Coin"]), str(row["Yon"])
+    long_mi = "Long" in yon
+    giris, stop, hedef, miktar = float(row["Giris_Fiyat"]), float(row["Stop"]), float(row["Kar_Al"]), float(row["Islem_Miktari"])
+    if giris <= 0 or anl_f is None:
+        return ""
+    fark = ((anl_f - giris) / giris) if long_mi else ((giris - anl_f) / giris)
+    kz = miktar * KALDIRAC * fark
+    kz_yuzde = (kz / miktar * 100.0) if miktar > 0 else 0.0
+    kz_renk = RENK_YESIL if kz >= 0 else RENK_KIRMIZI
+
+    aralik = hedef - stop
+    t_anlik = min(1.0, max(0.0, (anl_f - stop) / aralik)) if aralik else 0.5
+    t_giris = min(1.0, max(0.0, (giris - stop) / aralik)) if aralik else 0.5
+    stopa = abs(anl_f - stop) / anl_f * 100.0
+    hedefe = abs(hedef - anl_f) / anl_f * 100.0
+
+    islem_risk = stop_riski(miktar, giris, stop)
+    islem_limit = max(0.0, float(toplam_kasa)) * ISLEM_BASINA_RISK_YUZDE / 100.0
+    r_oran = (islem_risk / islem_limit) if islem_limit > 0 else 0.0
+    r_renk = _risk_rengi(r_oran)
+
+    pill = f'<span class="pill {"pill-long" if long_mi else "pill-short"}">{yon}</span>'
+    logo = f'<img src="{logo_url}" class="pos-logo">' if logo_url else ""
+    detay = (f'<details class="pos-detay"><summary>Detay</summary><div class="pos-detay-ic">'
+             f'<div>Açılış: {row["Acilis_Zamani"]}</div><div>Matris: {row.get("Matris_Puan_RH", "-")}</div>'
+             f'<div>Beklenen kâr: {float(row["Beklenen_Kar"]):+,.2f} $ · Olası stop: {float(row["Olasi_Stop"]):+,.2f} $</div>'
+             f'<div>Güncel kasa kaydı: {float(row["Guncel_Kasa"]):,.2f} $</div></div></details>')
+    return ('<div class="pos-card">'
+            f'<div class="pos-head"><div class="pos-coin">{logo}<b>{coin}</b>{pill}<span class="pos-id">#{int(row["Islem_ID"])}</span></div>'
+            f'<div class="pos-kz" style="color:{kz_renk}">{kz:+,.2f} $<small>{kz_yuzde:+.1f}%</small></div></div>'
+            '<div class="range-wrap"><div class="range-bar">'
+            f'<div class="range-tick" style="left:{t_giris*100:.1f}%"></div><div class="range-dot" style="left:{t_anlik*100:.1f}%"></div></div>'
+            f'<div class="range-lbl"><span style="color:{RENK_KIRMIZI}">Stop {_fmt_fiyat(stop)}</span><span class="range-mid">Anlık {_fmt_fiyat(anl_f)}</span>'
+            f'<span style="color:{RENK_YESIL}">Hedef {_fmt_fiyat(hedef)}</span></div>'
+            f'<div class="range-dist"><span>Stopa %{stopa:.2f}</span><span>Hedefe %{hedefe:.2f}</span></div></div>'
+            f'<div class="pos-meta"><span>Giriş <b>{_fmt_fiyat(giris)}</b></span><span>Teminat <b>{miktar:,.2f} $</b></span>'
+            f'<span>Risk <b style="color:{r_renk}">{islem_risk:,.2f} / {islem_limit:,.2f} $</b></span></div>'
+            f'<div class="bar-bg bar-mini"><div class="bar-fill" style="width:{max(2.0, min(100.0, r_oran * 100.0)):.1f}%;background:{r_renk}"></div></div>'
+            f'{detay}</div>')
+
+@st.cache_data(ttl=60)
+def kasa_gecmisi_getir():
+    """Motorun yazdığı 'KasaGecmisi' sayfasını okur (sayfa yoksa boş döner; hata önbelleğe takılmaz)."""
+    kolonlar = ["Zaman", "Toplam_Kasa", "Efektif_Kasa", "Acik_KZ", "Marjin"]
+    try:
+        kaynak = google_sheets_baglan("KasaDefteri")
+        if kaynak is None:
+            return pd.DataFrame(columns=kolonlar)
+        ham = kaynak.spreadsheet.worksheet("KasaGecmisi").get_all_values()
+    except Exception:
+        return pd.DataFrame(columns=kolonlar)
+    satirlar = []
+    for r in ham[1:]:
+        if len(r) < 3:
+            continue
+        try:
+            z = datetime.strptime(r[0].strip(), "%d.%m.%Y %H:%M")
+            sayilar = []
+            for x in (r + [""] * 5)[1:5]:
+                t = str(x).replace(".", "").replace(",", ".").strip()
+                sayilar.append(float(t) if t else 0.0)
+            satirlar.append([z] + sayilar)
+        except Exception:
+            continue
+    return pd.DataFrame(satirlar, columns=kolonlar)
 TR_TZ = pytz.timezone("Europe/Istanbul")
 HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
@@ -1327,7 +1451,7 @@ for data in coin_ham_veriler:
     kirmizi_led_sayisi = 10 - yesil_led_sayisi
 
     detay_matris_html = (
-        f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 10px; height: 10px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 10px; height: 10px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
+        f'<div style="text-align: center; line-height: 1.2;"><div style="font-size: 15px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * yesil_led_sayisi}{"🔴" * kirmizi_led_sayisi}</div><div style="font-size: 11px; font-weight: 600;"><span style="color: #20d6a1; display: inline-block; width: 10px; height: 10px; background-color: #20d6a1; border-radius: 50%; margin-right: 2px;"></span>%{y_yuzde:.1f} | <span style="color: #ff647c; display: inline-block; width: 10px; height: 10px; background-color: #ff647c; border-radius: 50%; margin-left: 4px; margin-right: 2px;"></span>%{k_yuzde:.1f}</div></div>'
     )
 
     is_notr = (nihai_puan < min_esik_bilgi)
@@ -1338,7 +1462,7 @@ for data in coin_ham_veriler:
         yon_html = f'<div style="background-color: #6c757d; padding: 6px; border-radius: 6px; color: white; font-weight: bold; font-size: 12px;">{trend}</div>'
     else:
         aktif_yon_turu = aktif_yon
-        renk_bg = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
+        renk_bg = "#20d6a1" if aktif_yon == "Long" else "#ff647c"
         yon_html = f'<div style="background-color: {renk_bg}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold; font-size: 12px;">{trend}</div>'
 
     sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon_turu, trend, coin_mi=True)
@@ -1376,8 +1500,8 @@ for item in gecici_islenen_liste:
 
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
 
-    yon_renk = "#00FF00" if aktif_yon == "Long" else "rgb(255, 75, 0)"
-    puan_html = f'<div style="font-weight: bold; color: {"#00FF00" if not is_notr and aktif_yon == "Long" else ("rgb(255, 75, 0)" if not is_notr and aktif_yon == "Short" else "#e8eef8")};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px; color: {yon_renk};">(Nötr)</span></div>'
+    yon_renk = "#20d6a1" if aktif_yon == "Long" else "#ff647c"
+    puan_html = f'<div style="font-weight: bold; color: {"#20d6a1" if not is_notr and aktif_yon == "Long" else ("#ff647c" if not is_notr and aktif_yon == "Short" else "#e8eef8")};">{nihai_puan:.1f} / 100<br><span style="font-size: 10px; color: {yon_renk};">(Nötr)</span></div>'
 
     basamak = 4 if anlik_fiyat < 10 else 2
     logo_html = f'<img src="{logo_urls.get(sembol, "")}" width="24" height="24">'
@@ -1420,7 +1544,7 @@ def format_yuzde(val, is_change=False):
         return f"+%{val:.1f}" if val > 0 else f"-%{abs(val):.1f}" if val < 0 else "%0.0"
     return f"%{val:.1f}"
 
-aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
+aktif_renk = "#20d6a1" if toplam_acik_kz >= 0 else "#ff647c"
 with col_ust1:
     st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">📊 Aktif Yatırım</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{aktif_renk}; font-size:22px; font-weight:800;">{aktif_yatirim_tutari:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(aktif_oran)}</div></div></div>""", unsafe_allow_html=True)
 
@@ -1430,15 +1554,15 @@ with col_ust2:
 with col_ust3:
     st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">🟢 Boştaki Nakit</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:#e8eef8; font-size:22px; font-weight:800;">{mevcut_bakiye:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(bostaki_oran)}</div></div></div>""", unsafe_allow_html=True)
 
-realize_kar_renk = "#00FF00" if realize_kar >= 0 else "rgb(255, 75, 0)"
+realize_kar_renk = "#20d6a1" if realize_kar >= 0 else "#ff647c"
 with col_ust4:
     st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">⚡ Net Kâr (Realize)</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{realize_kar_renk}; font-size:22px; font-weight:800;">{realize_kar:+,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(realize_kar_oran, True)}</div></div></div>""", unsafe_allow_html=True)
 
-efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
+efektif_renk = "#20d6a1" if efektif_kasa >= toplam_kasa else "#ff647c"
 with col_ust5:
     st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💎 Efektif Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{efektif_renk}; font-size:22px; font-weight:800;">{efektif_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(ef_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
 
-toplam_kasa_renk = "#00FF00" if toplam_kasa >= BASLANGIC_BAKIYE else "rgb(255, 75, 0)"
+toplam_kasa_renk = "#20d6a1" if toplam_kasa >= BASLANGIC_BAKIYE else "#ff647c"
 with col_ust6:
     st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💼 Toplam Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{toplam_kasa_renk}; font-size:22px; font-weight:800;">{toplam_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(toplam_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
 
@@ -1511,7 +1635,7 @@ for v in islenen_veriler:
         risk_hedef_gosterim = v['Risk_Hedef_Metin']
 
     val_str = f"%{v['Sepet_Orani']:.1f}" if v['Sepet_Orani'] != int(v['Sepet_Orani']) else f"%{int(v['Sepet_Orani'])}"
-    renk_yon = "#00FF00" if v['Aktif_Yon'] == "Long" else "rgb(255, 75, 0)"
+    renk_yon = "#20d6a1" if v['Aktif_Yon'] == "Long" else "#ff647c"
 
     if v["Notr"]:
         oran_html = '<div style="background-color: rgba(255, 235, 59, 0.2); color: #e8eef8; padding: 5px; font-weight: bold;">%0<br>(Beklemede)</div>'
@@ -1600,7 +1724,7 @@ with col_sol_panel:
             max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 999999.0
 
             manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
-            st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #20d6a1; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
             
             col_islem_yap, col_kapat_kilit = st.columns(2)
             with col_islem_yap:
@@ -1683,18 +1807,18 @@ with col_sag_endeks:
     t_yesil_led = max(0, min(10, round((t_yuzde / 100.0) * 10.0)))
     t_kirmizi_led = 10 - t_yesil_led
 
-    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #00FF00; display: inline-block; width: 8px; height: 8px; background-color: #00FF00; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: rgb(255, 75, 0); display: inline-block; width: 8px; height: 8px; background-color: rgb(255, 75, 0); border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="text-align: center; line-height: 1.2; margin-bottom: 6px;"><div style="font-size: 14px; margin-bottom: 2px; letter-spacing: 1px;">{"🟢" * t_yesil_led}{"🔴" * t_kirmizi_led}</div><div style="font-size: 10px; font-weight: 600;"><span style="color: #20d6a1; display: inline-block; width: 8px; height: 8px; background-color: #20d6a1; border-radius: 50%; margin-right: 2px;"></span>%{t_yuzde:.1f} | <span style="color: #ff647c; display: inline-block; width: 8px; height: 8px; background-color: #ff647c; border-radius: 50%; margin-left: 2px; margin-right: 2px;"></span>%{100.0 - t_yuzde:.1f}</div></div>', unsafe_allow_html=True)
 
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():
         sl, ss = veri["sl"], veri["ss"]
         y_ad, k_ad = veri["y_adet"], veri["k_adet"]
-        kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
+        kazanan_renk = "#20d6a1" if sl >= ss else "#ff647c"
         boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
     boxes_birlestirilmis = "".join(boxes_listesi)
 
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#20d6a1" if total_ham_veri["aktif_yon"] == "Long" else ("#ff647c" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -1729,21 +1853,21 @@ with col_sol_analiz:
             fig = px.pie(
                 pd.DataFrame({"Durum": ["Kârlı", "Zararlı"], "Adet": [karli_sayisi, zararli_sayisi]}),
                 names="Durum", values="Adet", hole=0.50, color="Durum",
-                color_discrete_map={"Kârlı": "#00FF00", "Zararlı": "rgb(255, 75, 0)"}
+                color_discrete_map={"Kârlı": "#20d6a1", "Zararlı": "#ff647c"}
             )
             fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13), margin=dict(t=10, b=10, l=10, r=10), height=210, showlegend=False)
             fig.update_traces(textfont_size=13, textinfo="percent", marker=dict(line=dict(width=0)))
             st.plotly_chart(fig, width='stretch', config={"responsive": True, "displayModeBar": False})
 
         with sub_p2:
-            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {'#00FF00' if kar_yuzde >= 50 else 'rgb(255, 75, 0)'};">🎯 Başarı Oranı: %{kar_yuzde:.1f}</p>""", unsafe_allow_html=True)
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #20d6a1; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: #ff647c; font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {'#20d6a1' if kar_yuzde >= 50 else '#ff647c'};">🎯 Başarı Oranı: %{kar_yuzde:.1f}</p>""", unsafe_allow_html=True)
 
         with sub_p3:
-            net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
+            net_renk = "#20d6a1" if net_fark_dolar >= 0 else "#ff647c"
             toplam_hareket_dolar = toplam_kazanc_dolar + toplam_kayip_dolar
             parasal_basari_yuzde = (toplam_kazanc_dolar / toplam_hareket_dolar * 100.0) if toplam_hareket_dolar > 0 else 0.0
-            parasal_renk = "#00FF00" if parasal_basari_yuzde >= 50 else "rgb(255, 75, 0)"
-            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">💰 Finansal Metrikler</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Net Fark</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: {net_renk};">{net_fark_dolar:+,.2f} $</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {parasal_renk};">💵 Parasal Başarı Oranı: %{parasal_basari_yuzde:.1f}</p>""", unsafe_allow_html=True)
+            parasal_renk = "#20d6a1" if parasal_basari_yuzde >= 50 else "#ff647c"
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">💰 Finansal Metrikler</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Net Fark</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: {net_renk};">{net_fark_dolar:+,.2f} $</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #20d6a1; font-weight: bold;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: #ff647c; font-weight: bold;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {parasal_renk};">💵 Parasal Başarı Oranı: %{parasal_basari_yuzde:.1f}</p>""", unsafe_allow_html=True)
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
@@ -1830,6 +1954,36 @@ if not df_gecmisile_goster.empty:
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
+# ---- Açık pozisyon kartları, risk özeti ve kasa eğrisi ----
+st.markdown("<h3>🧭 Açık Pozisyonlar</h3>", unsafe_allow_html=True)
+_df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
+if _df_acik_kart.empty:
+    st.info("Şu an açık pozisyon yok.")
+else:
+    st.markdown(risk_ozet_html(df_gecmisile_goster, toplam_kasa), unsafe_allow_html=True)
+    _kartlar = "".join(
+        pozisyon_karti_html(_r, anlik_fiyat_sozluk.get(_r["Islem_ID"]), logo_urls.get(_r["Coin"], ""), toplam_kasa)
+        for _, _r in _df_acik_kart.iterrows()
+    )
+    st.markdown(f'<div class="pos-grid">{_kartlar}</div>', unsafe_allow_html=True)
+
+st.markdown("<h3>📈 Kasa Eğrisi</h3>", unsafe_allow_html=True)
+_df_kg = kasa_gecmisi_getir()
+if len(_df_kg) >= 2:
+    _fig_kg = go.Figure()
+    _fig_kg.add_trace(go.Scatter(x=_df_kg["Zaman"], y=_df_kg["Toplam_Kasa"], name="Toplam kasa", mode="lines", line=dict(color="#5b8cff", width=2.4), fill="tozeroy", fillcolor="rgba(91,140,255,0.07)"))
+    _fig_kg.add_trace(go.Scatter(x=_df_kg["Zaman"], y=_df_kg["Efektif_Kasa"], name="Efektif kasa", mode="lines", line=dict(color="#20d6a1", width=1.6, dash="dot")))
+    _alt, _ust = float(min(_df_kg["Toplam_Kasa"].min(), _df_kg["Efektif_Kasa"].min())), float(max(_df_kg["Toplam_Kasa"].max(), _df_kg["Efektif_Kasa"].max()))
+    _pay = max((_ust - _alt) * 0.15, 0.5)
+    _fig_kg.update_layout(
+        height=260, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#91a0b8", size=11), legend=dict(orientation="h", y=1.12, x=0),
+        xaxis=dict(showgrid=False, zeroline=False), yaxis=dict(range=[_alt - _pay, _ust + _pay], gridcolor="rgba(145,160,184,0.12)", zeroline=False, tickformat=",.2f"),
+    )
+    st.plotly_chart(_fig_kg, width="stretch")
+else:
+    st.caption("Kasa eğrisi için veri toplanıyor: motor her 15 dakikada bir kasa değerini kaydeder.")
+
 # HTML Portföy Tablosu (Zaman Dilimi sütunu başlık ve satırlardan kaldırıldı, E-Tablo sıralaması korunuyor)
 portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""
 
@@ -1842,8 +1996,8 @@ if not df_gosterilecek.empty:
 
     for _, row in df_gecmis_copy.iterrows():
         logo_h = f'<img src="{logo_urls.get(row["Coin"], "")}" width="24" height="24">'
-        yon_h = f'<div style="background-color: {"#00FF00" if "Long" in row["Yon"] else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold;">{row["Yon"]}</div>'
-        anlik_fiyat_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_Fiyat_Deger"] or 0) > float(row["Giris_Fiyat"]) else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_Fiyat_Deger"] or 0):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
+        yon_h = f'<div style="background-color: {"#20d6a1" if "Long" in row["Yon"] else "#ff647c"}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold;">{row["Yon"]}</div>'
+        anlik_fiyat_h = f'<div style="background-color: {"#20d6a1" if float(row["Anlik_Fiyat_Deger"] or 0) > float(row["Giris_Fiyat"]) else "#ff647c"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_Fiyat_Deger"] or 0):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
 
         if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
             kapanis_fiyat_h, durum_h = '<div style="padding: 5px; color: #91a0b8;">-</div>', '<div style="background-color: #5b8cff; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
@@ -1853,7 +2007,7 @@ if not df_gosterilecek.empty:
             kapanis_fiyat_h = f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{4 if row["Coin"] == "XRP/USDT" else 2}f}&nbsp;$</div>'
             durum_h = f'<div class="{sinif}">{row["Durum"]}</div>'
 
-        kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
+        kz_h = f'<div style="background-color: {"#20d6a1" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "#ff647c"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
         matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
         islem_miktari_val = float(row['Islem_Miktari'])
@@ -1870,7 +2024,8 @@ else:
     portfoy_html += "<tr><td colspan='18' style='text-align: center; color: #91a0b8; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
 
 portfoy_html += "</tbody></table>"
-st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
+with st.expander("📋 İşlem tablosu (tüm detaylar)", expanded=False):
+    st.markdown(f'<div class="table-container">{portfoy_html}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 st.markdown("<h3>📁 50'şerli İşlem Arşivleri (Analiz Klasörü)</h3>", unsafe_allow_html=True)

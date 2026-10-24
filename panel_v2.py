@@ -1770,31 +1770,34 @@ with col_orta_grafik:
         t_df["RSI_Norm"] = min_f + (t_df["RSI"] / 100.0) * fiyat_fark
 
         fib_levels = {
+            -0.382: min_f - 0.382 * fiyat_fark,
             0.0: min_f, 0.236: min_f + 0.236 * fiyat_fark, 0.382: min_f + 0.382 * fiyat_fark,
             0.5: min_f + 0.5 * fiyat_fark, 0.618: min_f + 0.618 * fiyat_fark,
             0.786: min_f + 0.786 * fiyat_fark, 1.0: max_f,
+            1.382: max_f + 0.382 * fiyat_fark,
         }
 
         min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(hours=1)
-        alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.05), max_f + (fiyat_fark * 0.05)
+        alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.43), max_f + (fiyat_fark * 0.43)
 
         fig_total = go.Figure()
-        # Sert renk blokları yerine çok hafif bölgeler
+        # Bölgeler: önceki sürümden daha belirgin (şeffaflık artırıldı), kenarlıksız
         for b_alt, b_ust, renk in [
-            (0.786, 1.0, "rgba(0,255,0,0.075)"), (0.618, 0.786, "rgba(0,255,0,0.035)"),
-            (0.382, 0.618, "rgba(145,160,184,0.04)"),
-            (0.236, 0.382, "rgba(255,75,0,0.035)"), (0.0, 0.236, "rgba(255,75,0,0.075)"),
+            (1.0, 1.382, "rgba(0,255,0,0.24)"), (0.786, 1.0, "rgba(0,255,0,0.18)"), (0.618, 0.786, "rgba(0,255,0,0.10)"),
+            (0.382, 0.618, "rgba(255,200,0,0.11)"),
+            (0.236, 0.382, "rgba(255,75,0,0.10)"), (0.0, 0.236, "rgba(255,75,0,0.18)"), (-0.382, 0.0, "rgba(255,75,0,0.24)"),
         ]:
             fig_total.add_hrect(y0=fib_levels[b_alt], y1=fib_levels[b_ust], fillcolor=renk, line_width=0, layer="below")
         for oran, val in fib_levels.items():
-            fig_total.add_hline(y=val, line_width=0.6, line_dash="dot", line_color="rgba(145,160,184,0.25)")
+            _ton = "255,200,0" if oran == 0.5 else ("0,255,0" if oran > 0.5 else "255,75,0")
+            fig_total.add_hline(y=val, line_width=0.8, line_dash="dot", line_color=f"rgba({_ton},0.45)")
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"{oran:g}", showarrow=False,
-                                     xanchor="left", xshift=4, font=dict(size=9, color="#6f7f99"))
+                                     xanchor="left", xshift=6, font=dict(size=10, color=f"rgb({_ton})"))
 
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market",
             line=dict(color="#5b8cff", width=2.4, shape="spline", smoothing=0.6),
-            fill="tozeroy", fillcolor="rgba(91,140,255,0.07)",
+            fill="tozeroy", fillcolor="rgba(91,140,255,0.05)",
             hovertemplate="Total Market: %{y:,.2f}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI",
@@ -1805,7 +1808,7 @@ with col_orta_grafik:
             marker=dict(size=9, color="#5b8cff", line=dict(color="#e8eef8", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=28, l=8, r=34), height=340,
+            template="plotly_dark", margin=dict(t=28, b=28, l=8, r=64), height=340,
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=7200000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=10, color="#8fa0ba"), showgrid=False, zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False),

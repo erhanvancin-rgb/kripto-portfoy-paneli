@@ -103,6 +103,57 @@ GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
 ARSIV_KLASORU = "arsiv"
 BASLANGIC_BAKIYE = 500.0
 KALDIRAC = 3
+
+# --- Komisyon ve risk ayarları (Binance USDⓈ-M Futures, standart kullanıcı / VIP 0) ---
+KOMISYON_TAKER = 0.0005         # %0,05: piyasa emriyle giriş ve stop çıkışı
+KOMISYON_MAKER = 0.0002         # %0,02: limit emirle hedef (kâr al) çıkışı
+ISLEM_BASINA_RISK_YUZDE = 1.0   # tek işlemin (komisyon dahil) stop riski: kasanın en fazla %1'i
+TOPLAM_RISK_LIMIT_YUZDE = 3.0   # tüm açık işlemlerin toplam stop riski: kasanın en fazla %3'ü
+
+def giris_komisyonu(miktar):
+    return float(miktar) * KALDIRAC * KOMISYON_TAKER
+
+def cikis_komisyonu(miktar, hedef_mi):
+    """Hedef (limit emir) maker, stop ve manuel kapanış (piyasa emri) taker öder."""
+    return float(miktar) * KALDIRAC * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
+
+def beklenen_ve_olasi(long_mi, miktar, giris, kar_al, stop):
+    """Hedefe/stopa ulaşılırsa kalan K/Z. Giriş komisyonu açılışta kasadan düşüldüğü için sadece çıkış komisyonu dahil."""
+    if long_mi:
+        brut_kar = miktar * KALDIRAC * ((kar_al - giris) / giris)
+        brut_stop = miktar * KALDIRAC * ((stop - giris) / giris)
+    else:
+        brut_kar = miktar * KALDIRAC * ((giris - kar_al) / giris)
+        brut_stop = miktar * KALDIRAC * ((giris - stop) / giris)
+    return brut_kar - cikis_komisyonu(miktar, True), brut_stop - cikis_komisyonu(miktar, False)
+
+def stop_riski(miktar, giris, stop):
+    """Stop vurulursa olası toplam zarar (pozitif): fiyat zararı + giriş ve çıkış komisyonu."""
+    if giris <= 0:
+        return 0.0
+    return float(miktar) * KALDIRAC * (abs(stop - giris) / giris + 2 * KOMISYON_TAKER)
+
+def acik_pozisyonlar_riski(df, haric_coin=None):
+    if df is None or df.empty or "Durum" not in df.columns:
+        return 0.0
+    acik = df[~durum_kapali_maskesi(df["Durum"])]
+    toplam = 0.0
+    for _, r in acik.iterrows():
+        if haric_coin is not None and r["Coin"] == haric_coin:
+            continue
+        toplam += stop_riski(float(r["Islem_Miktari"]), float(r["Giris_Fiyat"]), float(r["Stop"]))
+    return toplam
+
+def risk_kapasitesi(toplam_kasa, df, coin, giris, stop):
+    """Bu coin için izin verilen azami toplam teminat. Sınırlar: işlem başı risk ve toplam risk."""
+    stop_oran = abs(stop - giris) / giris if giris > 0 else 0.0
+    birim = KALDIRAC * (stop_oran + 2 * KOMISYON_TAKER)
+    islem_limit = max(0.0, toplam_kasa) * ISLEM_BASINA_RISK_YUZDE / 100.0
+    toplam_limit = max(0.0, toplam_kasa) * TOPLAM_RISK_LIMIT_YUZDE / 100.0
+    diger = acik_pozisyonlar_riski(df, haric_coin=coin)
+    kalan = max(0.0, toplam_limit - diger)
+    azami = min(islem_limit, kalan) / birim if birim > 0 else 0.0
+    return {"azami": azami, "islem_limit": islem_limit, "kalan_toplam_risk": kalan, "diger_risk": diger, "birim": birim}
 TR_TZ = pytz.timezone("Europe/Istanbul")
 HAFIZA_DOSYASI = "sinyal_hafizasi.json"
 MAIL_LOG_DOSYASI = "mail_log.txt"
@@ -564,17 +615,25 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     return df
 
 def dataframe_guncelle_gsheets(df):
+    """Başarılıysa True döner. Önce yeni veriyi yazar, sonra artan eski satırları siler.
+    (Önce silip sonra yazmak, yazma yarıda kalırsa tabloyu boş bırakabilirdi.)"""
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
+    basarili = False
     if sheet is not None:
         try:
+            df = df.copy()
             df["Islem_ID"] = df["Islem_ID"].astype(int)
             df = df.sort_values(by="Islem_ID").reset_index(drop=True)
             veri_listesi = [df.columns.tolist()] + df.values.tolist()
-            sheet.clear()
+            eski_satir_sayisi = len(sheet.get_all_values())
             sheet.update(veri_listesi)
+            if eski_satir_sayisi > len(veri_listesi):
+                sheet.batch_clear([f"A{len(veri_listesi) + 1}:Z{eski_satir_sayisi}"])
+            basarili = True
         except Exception as e:
             print(f"GSheets Güncelleme Hatası: {e}")
     st.cache_data.clear()
+    return basarili
 
 @st.cache_data(ttl=15)
 def kasa_defteri_getir():
@@ -635,38 +694,65 @@ def kasa_defteri_guncelle_gsheets(df):
             print(f"Kasa Defteri Güncelleme Hatası: {e}")
     st.cache_data.clear()
 
-def kasa_islem_ekle(islem_turu, tutar, aciklama):
-    df_kasa = kasa_defteri_getir()
-    yeni_id = 1 if df_kasa.empty else int(pd.to_numeric(df_kasa["Islem_ID"], errors="coerce").max() or 0) + 1
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+def _defter_id_oku(deger):
+    try:
+        return int(float(str(deger).replace(".", "").replace(",", ".")))
+    except Exception:
+        return None
 
+def _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
+    """KasaDefteri'ne yalnızca satır EKLER (silip baştan yazmaz; motorla aynı anda yazsa bile satır kaybolmaz)."""
+    for deneme in range(1, 4):
+        sheet = google_sheets_baglan("KasaDefteri")
+        if sheet is not None:
+            try:
+                ham = sheet.get_all_values()
+                if not ham:
+                    sheet.append_row(["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"])
+                    ham = [["Islem_ID"]]
+                idler = [i for i in (_defter_id_oku(r[0]) for r in ham[1:] if r) if i is not None]
+                yeni_id = (max(idler) if idler else 0) + 1
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(net_tutar), 2), aciklama])
+                st.cache_data.clear()
+                return True
+            except Exception as e:
+                print(f"Kasa defteri kayıt hatası (deneme {deneme}/3): {e}")
+        if deneme < 3:
+            time.sleep(2 * deneme)
+    st.cache_data.clear()
+    return False
+
+def kasa_islem_ekle(islem_turu, tutar, aciklama):
     islem_carpan = 1.0 if islem_turu == "Para_Yatir" else -1.0
     net_tutar = float(tutar) * islem_carpan
-
-    yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id,
-        "Zaman": suan_tr,
-        "Islem_Turu": islem_turu,
-        "Tutar": round(net_tutar, 2),
-        "Aciklama": aciklama,
-    }])
-    df_kasa = pd.concat([df_kasa, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
-    kasa_defteri_guncelle_gsheets(df_kasa)
-    return True, f"Kasa işlemi başarılı: {islem_turu} -> {net_tutar:.2f} $"
+    if _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
+        return True, f"Kasa işlemi başarılı: {islem_turu} -> {net_tutar:.2f} $"
+    return False, "⚠️ Kasa defterine yazılamadı! İşlem kaydedilmedi, lütfen tekrar deneyin."
 
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
-    df_kasa = kasa_defteri_getir()
-    yeni_id = 1 if df_kasa.empty else int(pd.to_numeric(df_kasa["Islem_ID"], errors="coerce").max() or 0) + 1
-    suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
-    yeni_kayit = pd.DataFrame([{
-        "Islem_ID": yeni_id,
-        "Zaman": suan_tr,
-        "Islem_Turu": islem_turu,
-        "Tutar": round(tutar, 2),
-        "Aciklama": aciklama,
-    }])
-    df_kasa = pd.concat([df_kasa, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
-    kasa_defteri_guncelle_gsheets(df_kasa)
+    return _deftere_satir_ekle(islem_turu, tutar, aciklama)
+
+KAPANIS_ETIKETLERI = ("Hedef Kâr", "Otomatik Stop", "Trade K/Z")
+
+def kapanis_defterde_var(islem_id):
+    """Aynı işlemin tam kapanışı deftere daha önce yazıldı mı? (panel ve motor çift işlemesin)"""
+    sheet = google_sheets_baglan("KasaDefteri")
+    if sheet is None:
+        return False
+    try:
+        for r in sheet.get_all_values()[1:]:
+            if len(r) >= 5 and r[2] == "Trade_Sonuc":
+                if any(str(r[4]).startswith(f"{e}: #{islem_id} ") for e in KAPANIS_ETIKETLERI):
+                    return True
+    except Exception as e:
+        print(f"Kapanış kontrolü okunamadı: {e}")
+    return False
+
+def kapanis_deftere_yaz_tekil(islem_id, etiket, coin, tutar, sonuc_metin):
+    if kapanis_defterde_var(islem_id):
+        print(f"#{islem_id} kapanışı defterde zaten var, tekrar yazılmadı.")
+        return True
+    return kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin} ({sonuc_metin})")
 
 def elli_islem_arsiv_kontrol():
     try:
@@ -728,7 +814,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             else:
                 anl_F = ortak_fiyat_havuzu.get(c_SYM, baz_fiyatlar.get(c_SYM, 100.0))
             f_y = ((anl_F - g_F) / g_F) if "Long" in y_Y else ((g_F - anl_F) / g_F)
-            acik_kz_toplam += m_M * KALDIRAC * f_y
+            acik_kz_toplam += m_M * KALDIRAC * f_y - cikis_komisyonu(m_M, False)
 
     efektif_kasa = toplam_kasa + acik_kz_toplam
     bos_bakiye = toplam_kasa - aktif_marjin_toplami
@@ -736,9 +822,10 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
     df = islem_gecmisi_getir()
-    _, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
-    if round(islem_miktari, 2) > round(mevcut_bakiye, 2):
-        return False, f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen: {islem_miktari:.2f} $"
+    toplam_kasa_risk, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
+    gereken_nakit = islem_miktari + giris_komisyonu(islem_miktari)
+    if round(gereken_nakit, 2) > round(mevcut_bakiye, 2):
+        return False, f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen: {islem_miktari:.2f} $ + giriş komisyonu {giris_komisyonu(islem_miktari):.2f} $"
     if islem_miktari <= 0:
         return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
 
@@ -797,22 +884,28 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         yeni_agirlikli_ortalama = ((eski_miktar * eski_giris) + (islem_miktari * giris_fiyat)) / yeni_toplam_miktar
         yeni_agirlikli_puan = ((eski_miktar * eski_puan) + (islem_miktari * matris_puan)) / yeni_toplam_miktar
 
-        stop_uzde_guncel, hedef_carpan_guncel, _ = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
+        stop_uzde_guncel, hedef_carpan_guncel, rh_guncel_metin = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
 
         if "Long" in eski_yon:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_uzde_guncel / 100.0)
             yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
-            beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_kar_al - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
-            olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_stop - yeni_agirlikli_ortalama) / yeni_agirlikli_ortalama)
         else:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_uzde_guncel / 100.0)
             yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
-            beklenen_kar = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_kar_al) / yeni_agirlikli_ortalama)
-            olasi_stop = yeni_toplam_miktar * KALDIRAC * ((yeni_agirlikli_ortalama - yeni_stop) / yeni_agirlikli_ortalama)
+        beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop)
+
+        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop)
+        if yeni_toplam_miktar > kap["azami"] + 0.005:
+            eklenebilir = max(0.0, kap["azami"] - eski_miktar)
+            return False, (f"⚠️ Risk sınırı aşılıyor! {coin} için azami toplam teminat {kap['azami']:.2f} $ "
+                           f"(işlem başı risk %{ISLEM_BASINA_RISK_YUZDE:g} = {kap['islem_limit']:.2f} $, "
+                           f"toplam risk payından kalan {kap['kalan_toplam_risk']:.2f} $). "
+                           f"Şu an en fazla {eklenebilir:.2f} $ ekleyebilirsiniz.")
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
-        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({risk_hedef_metin})"
+        matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({rh_guncel_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
+        giris_kom = round(giris_komisyonu(islem_miktari), 2)
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(yeni_agirlikli_ortalama, basamak)
         df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
@@ -822,11 +915,15 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
-        df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa, 2)
+        df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa - giris_kom, 2)
 
-        dataframe_guncelle_gsheets(df)
+        if not dataframe_guncelle_gsheets(df):
+            return False, "⚠️ Ekleme Google Sheets'e yazılamadı! Pozisyon DEĞİŞMEDİ, lütfen tekrar deneyin."
+        islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
+        kom_ok = kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
         elli_islem_arsiv_kontrol()
-        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Binance Verisiyle Eşleşen Zaman ({yeni_acilis_zamani_str}) ve Maliyet Güncellendi."
+        uyari = "" if kom_ok else " ⚠️ Giriş komisyonu deftere yazılamadı, KasaDefteri'ni kontrol edin."
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Binance Verisiyle Eşleşen Zaman ({yeni_acilis_zamani_str}) ve Maliyet Güncellendi. Giriş komisyonu: {giris_kom:.2f} $.{uyari}"
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
@@ -834,14 +931,16 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
 
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
 
-        if "Long" in yon:
-            beklenen_kar = islem_miktari * KALDIRAC * ((kar_al - giris_fiyat) / giris_fiyat)
-            olasi_stop = islem_miktari * KALDIRAC * ((stop - giris_fiyat) / giris_fiyat)
-        else:
-            beklenen_kar = islem_miktari * KALDIRAC * ((giris_fiyat - kar_al) / giris_fiyat)
-            olasi_stop = islem_miktari * KALDIRAC * ((giris_fiyat - stop) / giris_fiyat)
+        beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop)
+
+        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop)
+        if islem_miktari > kap["azami"] + 0.005:
+            return False, (f"⚠️ Risk sınırı aşılıyor! {coin} için azami teminat {kap['azami']:.2f} $ "
+                           f"(işlem başı risk %{ISLEM_BASINA_RISK_YUZDE:g} = {kap['islem_limit']:.2f} $, "
+                           f"toplam risk payından kalan {kap['kalan_toplam_risk']:.2f} $).")
 
         basamak = 4 if giris_fiyat < 10 else 2
+        giris_kom = round(giris_komisyonu(islem_miktari), 2)
         matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
         yeni_kayit = pd.DataFrame([{
@@ -859,14 +958,20 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             "Olasi_Stop": round(olasi_stop, 2),
             "Durum": "Acik",
             "Net_Kar_Zarar": 0.0,
-            "Guncel_Kasa": round(toplam_kasa, 2),
+            "Guncel_Kasa": round(toplam_kasa - giris_kom, 2),
             "Kapanis_Zamani": "-",
             "Kapanis_Fiyati": 0.0,
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
-        dataframe_guncelle_gsheets(df)
+        if not dataframe_guncelle_gsheets(df):
+            return False, "⚠️ İşlem Google Sheets'e yazılamadı! İşlem AÇILMADI, lütfen tekrar deneyin."
+        kom_ok = kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
         elli_islem_arsiv_kontrol()
-        return True, f"✅ {coin} emri başarıyla verildi!"
+        uyari = "" if kom_ok else " ⚠️ Giriş komisyonu deftere yazılamadı, KasaDefteri'ni kontrol edin."
+        return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.2f} $.{uyari}"
+
+def _islem_acik_mi(durum):
+    return not bool(durum_kapali_maskesi(pd.Series([durum])).iloc[0])
 
 def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     df = islem_gecmisi_getir()
@@ -874,18 +979,22 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     if idx.empty:
         return False, "İşlem bulunamadı!"
     row = df.loc[idx[0]]
+    if not _islem_acik_mi(row["Durum"]):
+        return False, "Bu işlem zaten kapalı!"
     try:
         giris_fiyat = float(row["Giris_Fiyat"])
         mevcut_miktar = float(row["Islem_Miktari"])
         suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+        long_mi = "Long" in row["Yon"]
+        fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if long_mi else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
 
         if kapatilacak_miktar is not None and kapatilacak_miktar < mevcut_miktar:
-            fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if "Long" in row["Yon"] else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
-            kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde
-            
+            # Manuel kapanış piyasa emriyle yapılır: taker komisyonu çıkışta düşülür
+            kismi_kar = kapatilacak_miktar * KALDIRAC * fark_yuzde - cikis_komisyonu(kapatilacak_miktar, False)
+
             yeni_id = int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
             durum_metni = "Kısmi Kapandı (Zarar)" if kismi_kar < 0 else "Kısmi Kapandı (Kâr)"
-            
+
             toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
             yeni_kapali_kayit = pd.DataFrame([{
                 "Islem_ID": yeni_id,
@@ -906,33 +1015,27 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 "Kapanis_Zamani": suan_tr,
                 "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
             }])
-            
+
             kalan_miktar = mevcut_miktar - kapatilacak_miktar
             df.at[idx[0], "Islem_Miktari"] = round(kalan_miktar, 2)
-            
-            if "Long" in row["Yon"]:
-                bek_kar_yeni = kalan_miktar * KALDIRAC * ((float(row["Kar_Al"]) - giris_fiyat) / giris_fiyat)
-                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((float(row["Stop"]) - giris_fiyat) / giris_fiyat)
-            else:
-                bek_kar_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Kar_Al"])) / giris_fiyat)
-                olasi_stop_yeni = kalan_miktar * KALDIRAC * ((giris_fiyat - float(row["Stop"])) / giris_fiyat)
-                
+            bek_kar_yeni, olasi_stop_yeni = beklenen_ve_olasi(long_mi, kalan_miktar, giris_fiyat, float(row["Kar_Al"]), float(row["Stop"]))
             df.at[idx[0], "Beklenen_Kar"] = round(bek_kar_yeni, 2)
             df.at[idx[0], "Olasi_Stop"] = round(olasi_stop_yeni, 2)
-            
+
             df = pd.concat([df, yeni_kapali_kayit], ignore_index=True).sort_values(by="Islem_ID").reset_index(drop=True)
-            dataframe_guncelle_gsheets(df)
-            
-            kasa_islem_ekle_deftere(
+            if not dataframe_guncelle_gsheets(df):
+                return False, "⚠️ Kısmi kapama Google Sheets'e yazılamadı! Pozisyon DEĞİŞMEDİ, lütfen tekrar deneyin."
+
+            ok = kasa_islem_ekle_deftere(
                 "Trade_Sonuc",
                 float(round(kismi_kar, 2)),
                 f"Kısmi K/Z: #{islem_id} {row['Coin']} ({kapatilacak_miktar}$ kapatıldı)",
             )
             elli_islem_arsiv_kontrol()
-            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z: {kismi_kar:,.2f} $"
+            uyari = "" if ok else " ⚠️ Kasa defterine yazılamadı, KasaDefteri'ni kontrol edin."
+            return True, f"Kısmi kapama başarılı! Realize Edilen K/Z (komisyon dahil): {kismi_kar:,.2f} $.{uyari}"
         else:
-            fark_yuzde = ((anlik_kapatma_fiyati - giris_fiyat) / giris_fiyat) if "Long" in row["Yon"] else ((giris_fiyat - anlik_kapatma_fiyati) / giris_fiyat)
-            net_kar = mevcut_miktar * KALDIRAC * fark_yuzde
+            net_kar = mevcut_miktar * KALDIRAC * fark_yuzde - cikis_komisyonu(mevcut_miktar, False)
 
             durum_metni = "Kapandi (Zarar)" if net_kar < 0 else "Kapandi (Kar)"
             df.at[idx[0], "Durum"] = durum_metni
@@ -942,80 +1045,97 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
 
             toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
             df.at[idx[0], "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
-            dataframe_guncelle_gsheets(df)
-            kasa_islem_ekle_deftere(
-                "Trade_Sonuc",
-                float(round(net_kar, 2)),
-                f"Trade K/Z: #{islem_id} {row['Coin']} ({durum_metni})",
-            )
+            if not dataframe_guncelle_gsheets(df):
+                return False, "⚠️ Kapanış Google Sheets'e yazılamadı! İşlem hâlâ AÇIK, lütfen tekrar deneyin."
+            ok = kapanis_deftere_yaz_tekil(islem_id, "Trade K/Z", row["Coin"], net_kar, durum_metni)
             elli_islem_arsiv_kontrol()
-            return True, f"İşlem tamamen kapatıldı. K/Z: {net_kar:.2f} $"
+            uyari = "" if ok else " ⚠️ Kasa defterine yazılamadı, KasaDefteri'ni kontrol edin."
+            return True, f"İşlem tamamen kapatıldı. K/Z (komisyon dahil): {net_kar:.2f} $.{uyari}"
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
 def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
     if df_arg is None or not isinstance(df_arg, pd.DataFrame) or df_arg.empty or "Durum" not in df_arg.columns:
         return
-    df = df_arg.copy()
 
-    degisiklik_oldu = False
+    # 1) Eldeki (eski olabilecek) tabloya göre hangi işlemler kapanmalı?
+    adaylar = []  # (islem_id, hedefe_ulasti, kapanis_fiyati)
+    for idx, row in df_arg.iterrows():
+        if not _islem_acik_mi(row["Durum"]):
+            continue
+        islem_id = int(row["Islem_ID"])
+        coin = row["Coin"]
+        yon = row["Yon"]
+        stop_f = float(row["Stop"])
+        kar_al_f = float(row["Kar_Al"])
+        if ortak_fiyat_havuzu is not None and coin in ortak_fiyat_havuzu:
+            anl_f = ortak_fiyat_havuzu[coin]
+        else:
+            anl_f = fiyat_cek_binance(coin)
+
+        if "Long" in yon:
+            if anl_f <= stop_f:
+                adaylar.append((islem_id, False, stop_f))
+            elif anl_f >= kar_al_f:
+                adaylar.append((islem_id, True, kar_al_f))
+        elif "Short" in yon:
+            if anl_f >= stop_f:
+                adaylar.append((islem_id, False, stop_f))
+            elif anl_f <= kar_al_f:
+                adaylar.append((islem_id, True, kar_al_f))
+
+    if not adaylar:
+        return
+
+    # 2) Yazmadan hemen önce tabloyu TAZE oku: motor aynı işlemi kapatmış ya da ekleme yapılmış olabilir.
+    #    Eski tabloyu geri yazmak, bu değişiklikleri silerdi.
+    st.cache_data.clear()
+    df = islem_gecmisi_getir(sheet_guncelle=False).copy()
+    if df is None or df.empty:
+        return
     suan_tr = tr_zaman().strftime("%d.%m.%Y %H:%M")
+    toplam_kasa, _, _, _, _ = bakiye_durumunu_getir({} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu)
+    kasa_ilerleyen = toplam_kasa
+    yazilacaklar = []  # (islem_id, coin, hedefe_ulasti, net_kar)
 
-    for idx, row in df.iterrows():
-        durum_str = str(row["Durum"]).lower()
-        if not ("kapandi" in durum_str or "kar" in durum_str or "zarar" in durum_str or "kısmi" in durum_str):
-            islem_id = int(row["Islem_ID"])
-            coin = row["Coin"]
-            yon = row["Yon"]
-            giris_fiyat = float(row["Giris_Fiyat"])
-            stop_f = float(row["Stop"])
-            kar_al_f = float(row["Kar_Al"])
-            miktar = float(row["Islem_Miktari"])
+    for islem_id, hedefe_ulasti, kapanis_fiyat_degeri in adaylar:
+        eslesen = df.index[df["Islem_ID"] == islem_id]
+        if len(eslesen) == 0:
+            continue
+        i = eslesen[0]
+        if not _islem_acik_mi(df.at[i, "Durum"]):
+            continue  # motor veya başka bir oturum zaten kapatmış
+        giris_fiyat = float(df.at[i, "Giris_Fiyat"])
+        miktar = float(df.at[i, "Islem_Miktari"])
+        yon = df.at[i, "Yon"]
+        coin = df.at[i, "Coin"]
+        if giris_fiyat <= 0 or miktar <= 0:
+            print(f"UYARI: #{islem_id} geçersiz değerler nedeniyle atlandı.")
+            continue
 
-            if ortak_fiyat_havuzu is not None and coin in ortak_fiyat_havuzu:
-                anl_f = ortak_fiyat_havuzu[coin]
-            else:
-                anl_f = fiyat_cek_binance(coin)
+        fark_yuzde = ((kapanis_fiyat_degeri - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - kapanis_fiyat_degeri) / giris_fiyat)
+        # Giriş komisyonu açılışta düşüldü; çıkışta hedef=maker, stop=taker
+        net_kar = miktar * KALDIRAC * fark_yuzde - cikis_komisyonu(miktar, hedefe_ulasti)
+        kasa_ilerleyen += net_kar
 
-            islem_kapatilacak = False
-            hedefe_ulasti = False
-            kapanis_fiyat_degeri = 0.0
+        df.at[i, "Durum"] = "Kapandi (Kar)" if hedefe_ulasti else "Kapandi (Zarar)"
+        df.at[i, "Kapanis_Zamani"] = suan_tr
+        df.at[i, "Net_Kar_Zarar"] = float(round(net_kar, 2))
+        df.at[i, "Kapanis_Fiyati"] = float(round(kapanis_fiyat_degeri, 4))
+        df.at[i, "Guncel_Kasa"] = float(round(kasa_ilerleyen, 2))
+        yazilacaklar.append((islem_id, coin, hedefe_ulasti, net_kar))
 
-            if "Long" in yon:
-                if anl_f <= stop_f:
-                    islem_kapatilacak, hedefe_ulasti, kapanis_fiyat_degeri = True, False, stop_f
-                elif anl_f >= kar_al_f:
-                    islem_kapatilacak, hedefe_ulasti, kapanis_fiyat_degeri = True, True, kar_al_f
-            elif "Short" in yon:
-                if anl_f >= stop_f:
-                    islem_kapatilacak, hedefe_ulasti, kapanis_fiyat_degeri = True, False, stop_f
-                elif anl_f <= kar_al_f:
-                    islem_kapatilacak, hedefe_ulasti, kapanis_fiyat_degeri = True, True, kar_al_f
+    if not yazilacaklar:
+        return
 
-            if islem_kapatilacak:
-                fark_yuzde = ((kapanis_fiyat_degeri - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - kapanis_fiyat_degeri) / giris_fiyat)
-                net_kar = miktar * KALDIRAC * fark_yuzde
-                durum_metni = "Kapandi (Kar)" if hedefe_ulasti else "Kapandi (Zarar)"
-
-                df.at[idx, "Durum"] = durum_metni
-                df.at[idx, "Kapanis_Zamani"] = suan_tr
-                df.at[idx, "Net_Kar_Zarar"] = float(round(net_kar, 2))
-                df.at[idx, "Kapanis_Fiyati"] = float(round(kapanis_fiyat_degeri, 4))
-
-                toplam_kasa, _, _, _, _ = bakiye_durumunu_getir({} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu)
-                df.at[idx, "Guncel_Kasa"] = float(round(toplam_kasa + net_kar, 2))
-
-                islem_turu_etiket = "Hedef Kâr" if hedefe_ulasti else "Otomatik Stop"
-                kasa_islem_ekle_deftere(
-                    "Trade_Sonuc",
-                    float(round(net_kar, 2)),
-                    f"{islem_turu_etiket}: #{islem_id} {coin} ({'Kar' if hedefe_ulasti else 'Zarar'})",
-                )
-                degisiklik_oldu = True
-
-    if degisiklik_oldu:
-        dataframe_guncelle_gsheets(df)
-        elli_islem_arsiv_kontrol()
+    # 3) Önce tablo, sonra defter (tablo yazılamazsa defter de yazılmaz)
+    if not dataframe_guncelle_gsheets(df):
+        print("Otomatik kapanış tabloya yazılamadı; sonraki turda yeniden denenecek.")
+        return
+    for islem_id, coin, hedefe_ulasti, net_kar in yazilacaklar:
+        etiket = "Hedef Kâr" if hedefe_ulasti else "Otomatik Stop"
+        kapanis_deftere_yaz_tekil(islem_id, etiket, coin, net_kar, "Kar" if hedefe_ulasti else "Zarar")
+    elli_islem_arsiv_kontrol()
 
 def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
     hsonu = hafta_sonu_mu()
@@ -1434,10 +1554,33 @@ with col_sol_panel:
 
     onerilen_tutar_hesap = round(mevcut_bakiye * (onerilen_oran_val / 100.0), 2)
 
+    # Risk bazlı üst sınır: işlem başı risk ve toplam risk (komisyon dahil)
+    risk_mesaji, risk_eklenebilir = "", None
+    if secilen_coin and coin_verisii is not None:
+        try:
+            _fiyat, _stop = float(coin_verisii["Fiyat"]), float(coin_verisii["Stopla"])
+            _kap = risk_kapasitesi(toplam_kasa, df_gecmis_temp, secilen_coin, _fiyat, _stop)
+            _mevcut_miktar = 0.0
+            if acik_pozisyon_var:
+                _acik_df = df_gecmis_temp[~durum_kapali_maskesi(df_gecmis_temp["Durum"])]
+                _mevcut_miktar = float(_acik_df[_acik_df["Coin"] == secilen_coin]["Islem_Miktari"].iloc[0])
+            risk_eklenebilir = max(0.0, _kap["azami"] - _mevcut_miktar)
+            risk_mesaji = (f"🛡️ Risk sınırı: bu coinde azami toplam teminat {_kap['azami']:,.2f} $ "
+                           f"(işlem başı risk %{ISLEM_BASINA_RISK_YUZDE:g} = {_kap['islem_limit']:,.2f} $; "
+                           f"toplam risk payından kalan {_kap['kalan_toplam_risk']:,.2f} $). "
+                           f"Eklenebilir: {risk_eklenebilir:,.2f} $. Komisyon: giriş %{KOMISYON_TAKER*100:g}, "
+                           f"hedef çıkışı %{KOMISYON_MAKER*100:g}, stop çıkışı %{KOMISYON_TAKER*100:g}.")
+            onerilen_tutar_hesap = round(min(onerilen_tutar_hesap, risk_eklenebilir), 2)
+        except Exception as _e:
+            print(f"Risk kapasitesi hesaplanamadı: {_e}")
+
     if acik_pozisyon_var:
         st.markdown("""<div style="background:linear-gradient(145deg,#1f2b3e,#162234); color:#e8eef8; border:1px solid #3b82f6; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#60a5fa; margin-bottom:4px;">🔄 Açık Pozisyona Ekleme Modu</div><div style="color:#dce6f5;">Bu coin için açık bir pozisyonunuz var. Girilen tutar ağırlıklı ortalama ile maliyete eklenecektir.</div></div>""", unsafe_allow_html=True)
     elif secilen_coin:
         st.markdown(f"""<div style="background:linear-gradient(145deg,#17263b,#111b2b); color:#e8eef8; border:1px solid #30415b; padding:12px; border-radius:10px; margin-bottom:12px; font-size:13px; line-height:1.8;"><div style="font-weight:750; color:#ffd166; margin-bottom:4px;">💡 Matris Önerisi (Oransal & Akışkan)</div><div style="color:#dce6f5;">Önerilen oran: <b style="color:#ffffff;">%{onerilen_oran_val:.1f}</b></div><div style="color:#dce6f5;">Önerilen tutar: <b style="color:#ffffff;">{onerilen_tutar_hesap:,.2f} $</b></div></div>""", unsafe_allow_html=True)
+
+    if risk_mesaji:
+        st.caption(risk_mesaji)
 
     st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
@@ -1451,6 +1594,8 @@ with col_sol_panel:
     else:
         with st.form(key="manuel_islem_formu"):
             hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
+            if acik_pozisyon_var and risk_eklenebilir is not None:
+                hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
             guvenli_tutar = max(0.0, float(hesaplanan_tutar))
             max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 999999.0
 

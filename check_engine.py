@@ -833,6 +833,56 @@ def sinyal_maillerini_gonder(durum):
 
 
 # ----------------------------------------------------------------------------
+KASA_GECMISI_SAYFASI = "KasaGecmisi"
+KASA_GORUNTU_ARALIK_DK = 15
+
+
+def kasa_goruntusu_yaz():
+    """Panelin kasa eğrisi için en fazla 15 dakikada bir toplam/efektif kasa satırı ekler.
+    Hata verirse ana akışı etkilemez."""
+    ss = spreadsheet_ac()
+    if ss is None:
+        return
+    try:
+        try:
+            sheet = ss.worksheet(KASA_GECMISI_SAYFASI)
+        except gspread.WorksheetNotFound:
+            sheet = ss.add_worksheet(title=KASA_GECMISI_SAYFASI, rows=3000, cols=5)
+            sheet.append_row(["Zaman", "Toplam_Kasa", "Efektif_Kasa", "Acik_KZ", "Marjin"])
+
+        kolon = [x for x in sheet.col_values(1) if str(x).strip()]
+        if len(kolon) > 1:
+            try:
+                son = TR_TZ.localize(datetime.strptime(kolon[-1].strip(), "%d.%m.%Y %H:%M"))
+                if tr_zaman() - son < timedelta(minutes=KASA_GORUNTU_ARALIK_DK):
+                    return
+            except Exception:
+                pass
+
+        df = islem_gecmisi_getir()
+        if df is None:
+            return
+        toplam = bakiye_hesapla(df)
+        acik_kz, marjin = 0.0, 0.0
+        if not df.empty:
+            acik = df[~durum_kapali_maskesi(df["Durum"])]
+            for _, r in acik.iterrows():
+                giris, miktar = float(r["Giris_Fiyat"]), float(r["Islem_Miktari"])
+                if giris <= 0 or miktar <= 0:
+                    continue
+                fiyat = fiyat_cek_binance(r["Coin"])
+                if not fiyat:
+                    continue
+                fark = ((fiyat - giris) / giris) if "Long" in str(r["Yon"]) else ((giris - fiyat) / giris)
+                acik_kz += miktar * KALDIRAC * fark - cikis_komisyonu(miktar, False)
+                marjin += miktar
+        sheet.append_row([tr_zaman().strftime("%d.%m.%Y %H:%M"), round(toplam, 2),
+                          round(toplam + acik_kz, 2), round(acik_kz, 2), round(marjin, 2)])
+        print(f"Kasa görüntüsü kaydedildi: toplam={toplam:,.2f} efektif={toplam + acik_kz:,.2f}")
+    except Exception as e:
+        print(f"Kasa görüntüsü yazılamadı (ana akış etkilenmedi): {e}")
+
+
 def motoru_calistir():
     print(f"Trade Kontrol Motoru başladı: {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')} "
           f"({'hafta sonu' if hafta_sonu_mu() else 'hafta içi'} modu)")
@@ -851,6 +901,8 @@ def motoru_calistir():
         import traceback
         print(f"HATA: acik_islemleri_kontrol_et çöktü, mail aşamasına devam ediliyor: {type(e).__name__}: {e}")
         traceback.print_exc()
+
+    kasa_goruntusu_yaz()
 
     durum = MailDurumu()
     if not durum.yukle():

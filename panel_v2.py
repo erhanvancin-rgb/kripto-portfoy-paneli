@@ -131,6 +131,10 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .risk-val { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; }
 .risk-val small { font-weight:600; color:var(--muted); }
 .risk-note { font-size:10px; color:var(--muted); margin-top:7px; }
+.ozet-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:14px; padding:14px 16px; font-variant-numeric:tabular-nums; }
+.ozet-satir { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:12px; color:var(--muted); padding:6px 0; border-bottom:1px solid #1d2a40; }
+.ozet-satir:last-child { border-bottom:none; }
+.ozet-satir b { font-size:13px; font-weight:800; white-space:nowrap; }
 .risk-line { font-size:13px; line-height:1.55; color:#e8eef8; margin:4px 0 8px; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] { border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden; }
 </style>
@@ -204,17 +208,36 @@ def _fmt_fiyat(v):
 def _risk_rengi(oran):
     return RENK_YESIL if oran < 0.6 else (RENK_SARI if oran < 0.9 else RENK_KIRMIZI)
 
-def risk_ozet_html(df, toplam_kasa):
-    """Toplam risk limiti ilerleme çubuğu (tek satır HTML: markdown kod bloğuna dönmesin)."""
+def risk_kar_ozeti_html(df, toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_kz):
+    """Risk kullanımı + açık işlemlerin toplam hedef/stop tutarı + anlık K/Z ve kasa bilgileri (tek satır HTML)."""
+    acik = pd.DataFrame()
+    if df is not None and not df.empty and "Durum" in df.columns:
+        acik = df[~durum_kapali_maskesi(df["Durum"])]
+    hedef_toplam = float(pd.to_numeric(acik["Beklenen_Kar"], errors="coerce").fillna(0.0).sum()) if not acik.empty else 0.0
+    stop_toplam = float(pd.to_numeric(acik["Olasi_Stop"], errors="coerce").fillna(0.0).sum()) if not acik.empty else 0.0
     kullanilan = acik_pozisyonlar_riski(df)
     limit = max(0.0, float(toplam_kasa)) * TOPLAM_RISK_LIMIT_YUZDE / 100.0
     oran = (kullanilan / limit) if limit > 0 else 0.0
     renk = _risk_rengi(oran)
     genislik = max(2.0, min(100.0, oran * 100.0))
-    return ('<div class="risk-card"><div class="risk-top"><span class="risk-title">🛡️ Toplam Risk Kullanımı</span>'
-            f'<span class="risk-val" style="color:{renk}">{kullanilan:,.2f} $ / {limit:,.2f} $ <small>(%{TOPLAM_RISK_LIMIT_YUZDE:g} limit)</small></span></div>'
+    islem_limit = max(0.0, float(toplam_kasa)) * ISLEM_BASINA_RISK_YUZDE / 100.0
+
+    def satir(etiket, deger, renkli="#e8eef8"):
+        return f'<div class="ozet-satir"><span>{etiket}</span><b style="color:{renkli}">{deger}</b></div>'
+
+    return ('<div class="ozet-card">'
+            f'<div class="risk-top"><span class="risk-title">Risk kullanımı</span>'
+            f'<span class="risk-val" style="color:{renk}">{kullanilan:,.2f} $ / {limit:,.2f} $</span></div>'
             f'<div class="bar-bg"><div class="bar-fill" style="width:{genislik:.1f}%;background:{renk}"></div></div>'
-            f'<div class="risk-note">Stop vurulursa, komisyon dahil toplam olası zarar. İşlem başı limit: {max(0.0, float(toplam_kasa)) * ISLEM_BASINA_RISK_YUZDE / 100.0:,.2f} $</div></div>')
+            f'<div class="risk-note">Toplam limit %{TOPLAM_RISK_LIMIT_YUZDE:g} · işlem başı limit {islem_limit:,.2f} $ (komisyon dahil stop riski)</div>'
+            + satir("Anlık K/Z (net)", f"{acik_kz:+,.2f} $", RENK_YESIL if acik_kz >= 0 else RENK_KIRMIZI)
+            + satir("Efektif kasa", f"{efektif_kasa:,.2f} $")
+            + satir("Toplam kasa", f"{toplam_kasa:,.2f} $")
+            + satir("Hedef kâr toplamı", f"{hedef_toplam:+,.2f} $", RENK_YESIL)
+            + satir("Stop zararı toplamı", f"{stop_toplam:+,.2f} $", RENK_KIRMIZI)
+            + satir("Kullanılan teminat", f"{marjin:,.2f} $")
+            + satir("Boş nakit", f"{bos_bakiye:,.2f} $")
+            + '</div>')
 
 def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
     coin, yon = str(row["Coin"]), str(row["Yon"])
@@ -242,7 +265,8 @@ def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
     logo = f'<img src="{logo_url}" class="pos-logo">' if logo_url else ""
     detay = (f'<details class="pos-detay"><summary>Detay</summary><div class="pos-detay-ic">'
              f'<div>Açılış: {row["Acilis_Zamani"]}</div><div>Matris: {row.get("Matris_Puan_RH", "-")}</div>'
-             f'<div>Beklenen kâr: {float(row["Beklenen_Kar"]):+,.2f} $</div><div>Olası stop: {float(row["Olasi_Stop"]):+,.2f} $</div>'
+             f'<div>Risk: <b style="color:{r_renk}">{islem_risk:,.2f} / {islem_limit:,.2f} $</b></div>'
+             f'<div class="bar-bg bar-mini"><div class="bar-fill" style="width:{max(2.0, min(100.0, r_oran * 100.0)):.1f}%;background:{r_renk}"></div></div>'
              f'<div>Güncel kasa kaydı: {float(row["Guncel_Kasa"]):,.2f} $</div></div></details>')
     return ('<div class="pos-card">'
             f'<div class="pos-head"><div class="pos-left">{logo}<div><div class="pos-name">{coin}</div><div class="pos-sub">{pill}<span class="pos-id">#{int(row["Islem_ID"])}</span></div></div></div>'
@@ -252,39 +276,9 @@ def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
             f'<div class="range-lbl"><span style="color:{RENK_KIRMIZI}">Stop {_fmt_fiyat(stop)}</span><span style="color:{RENK_YESIL}">Hedef {_fmt_fiyat(hedef)}</span></div>'
             f'<div class="range-dist"><span>Stopa %{stopa:.2f}</span><span class="range-mid">{_fmt_fiyat(anl_f)}</span><span>Hedefe %{hedefe:.2f}</span></div></div>'
             f'<div class="pos-meta"><span>Giriş <b>{_fmt_fiyat(giris)}</b></span><span>Teminat <b>{miktar:,.2f} $</b></span></div>'
-            f'<div class="pos-meta"><span>Risk <b style="color:{r_renk}">{islem_risk:,.2f} / {islem_limit:,.2f} $</b></span></div>'
-            f'<div class="bar-bg bar-mini"><div class="bar-fill" style="width:{max(2.0, min(100.0, r_oran * 100.0)):.1f}%;background:{r_renk}"></div></div>'
+            f'<div class="pos-meta"><span>Beklenen kâr <b style="color:{RENK_YESIL}">{float(row["Beklenen_Kar"]):+,.2f} $</b></span>'
+            f'<span>Olası stop <b style="color:{RENK_KIRMIZI}">{float(row["Olasi_Stop"]):+,.2f} $</b></span></div>'
             f'{detay}</div>')
-
-@st.cache_data(ttl=60)
-def kasa_gecmisi_getir():
-    """Motorun yazdığı 'KasaGecmisi' sayfasını okur (sayfa yoksa boş döner; hata önbelleğe takılmaz)."""
-    kolonlar = ["Zaman", "Toplam_Kasa", "Efektif_Kasa", "Acik_KZ", "Marjin"]
-    try:
-        kaynak = google_sheets_baglan("KasaDefteri")
-        if kaynak is None:
-            return pd.DataFrame(columns=kolonlar)
-        ham = kaynak.spreadsheet.worksheet("KasaGecmisi").get_all_values()
-    except Exception:
-        return pd.DataFrame(columns=kolonlar)
-    satirlar = []
-    for r in ham[1:]:
-        if len(r) < 3:
-            continue
-        try:
-            z = datetime.strptime(r[0].strip(), "%d.%m.%Y %H:%M")
-            sayilar = []
-            for x in (r + [""] * 5)[1:5]:
-                t = str(x).replace(".", "").replace(",", ".").strip()
-                sayilar.append(float(t) if t else 0.0)
-            satirlar.append([z] + sayilar)
-        except Exception:
-            continue
-    return pd.DataFrame(satirlar, columns=kolonlar)
-TR_TZ = pytz.timezone("Europe/Istanbul")
-HAFIZA_DOSYASI = "sinyal_hafizasi.json"
-MAIL_LOG_DOSYASI = "mail_log.txt"
-MAIL_PANELDEN_GONDER = False
 
 # --- RSI BONUS AYARLARI ---
 RSI_MODU = "momentum"
@@ -1794,18 +1788,14 @@ with col_orta_grafik:
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"{oran:g}", showarrow=False,
                                      xanchor="left", xshift=6, font=dict(size=10, color=f"rgb({_ton})"))
 
-        MAVI_CIZGI, TURUNCU_CIZGI = "rgb(0, 0, 255)", "rgb(255, 100, 0)"
-        # Koyu zeminde saf mavi/turuncu net seçilsin diye çizgilerin altına ince açık bir gölge
-        for _y in ("Close", "RSI_Norm"):
-            fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df[_y], mode="lines", showlegend=False, hoverinfo="skip",
-                                           line=dict(color="rgba(255,255,255,0.30)", width=4.6, shape="spline", smoothing=0.6)))
+        MAVI_CIZGI, RSI_CIZGI = "rgb(0, 0, 175)", "rgb(255, 255, 0)"
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market",
             line=dict(color=MAVI_CIZGI, width=2.4, shape="spline", smoothing=0.6),
             hovertemplate="Total Market: %{y:,.2f}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI",
-            line=dict(color=TURUNCU_CIZGI, width=1.5, shape="spline", smoothing=0.6),
+            line=dict(color=RSI_CIZGI, width=1.5, shape="spline", smoothing=0.6),
             customdata=t_df["RSI"], hovertemplate="RSI: %{customdata:.0f}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=[t_df["timestamp"].iloc[-1]], y=[t_df["Close"].iloc[-1]], mode="markers",
@@ -1910,52 +1900,8 @@ with col_orta_durum:
     st.info("ℹ️ Sadece Aktifler." if st.session_state["sadece_aktifleri_goster"] else "ℹ️ Tüm işlemler.")
 
 with col_sag_sonlandir:
-    st.markdown("<h3>🛑 İşlemi Kapat</h3>", unsafe_allow_html=True)
-    st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-
-    def paneli_kilitle():
-        st.session_state["kapama_paneli_acik"] = False
-
-    kapatilacak_id = st.selectbox("ID Kodu:", acik_islem_listesi if acik_islem_listesi else [0], key="k_id_secim_en_yeni_kilitli", on_change=paneli_kilitle)
-
-    if not st.session_state.get("kapama_paneli_acik", False):
-        if st.button("🔒 İşlem Kapatma Kilidini Aç", width='stretch', key="btn_kilit_ac_yeni"):
-            if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-                st.session_state["kapama_paneli_acik"] = True
-                st.rerun()
-            else:
-                st.warning("Seçilen ID'ye ait açık işlem bulunmuyor!")
-    else:
-        secilen_islem_miktar, secilen_coin = 100.0, "BTC/USDT"
-        if acik_islem_listesi and kapatilacak_id in acik_islem_listesi:
-            secilen_islem_satir = df_gecmis[df_gecmis["Islem_ID"] == kapatilacak_id]
-            if not secilen_islem_satir.empty:
-                secilen_islem_miktar = float(secilen_islem_satir["Islem_Miktari"].iloc[0])
-                secilen_coin = str(secilen_islem_satir["Coin"].iloc[0])
-
-        st.markdown(f"""<div style="background:linear-gradient(145deg,#2b1111,#1a0b0b); color:#e8eef8; border:1px solid #5b3030; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px;"><b>{secilen_coin}</b> (#{kapatilacak_id}) Pozisyonu:<br>Yatırım: <b style="color:#ff6b6b;">{secilen_islem_miktar:,.2f} $</b></div>""", unsafe_allow_html=True)
-
-        girilen_tutar = st.number_input("Kapatılacak Tutar ($):", min_value=0.0, max_value=float(secilen_islem_miktar), value=float(secilen_islem_miktar), step=10.0, key="input_tek_tutar_en_yeni")
-
-        col_islem_yap, col_iptal = st.columns(2)
-        with col_islem_yap:
-            if st.button("🛑 Emri Al", width='stretch', key="btn_emri_al_en_yeni"):
-                if girilen_tutar <= 0:
-                    st.error("Kapatılacak miktar 0'dan büyük olmalıdır!")
-                else:
-                    hedef_miktar = None if girilen_tutar >= secilen_islem_miktar else girilen_tutar
-                    b_durum, b_mesaj = manuel_islem_kapat(kapatilacak_id, ortak_fiyat_havuzu.get(secilen_coin, baz_fiyatlar.get(secilen_coin, 100.0)), kapatilacak_miktar=hedef_miktar)
-                    if b_durum:
-                        st.session_state["kapama_paneli_acik"] = False
-                        st.success(b_mesaj)
-                        time.sleep(1.2)
-                        st.rerun()
-                    else:
-                        st.error(b_mesaj)
-        with col_iptal:
-            if st.button("İptal", width='stretch', key="btn_iptal_en_yeni"):
-                st.session_state["kapama_paneli_acik"] = False
-                st.rerun()
+    st.markdown("<h3>🛡️ Risk & Kâr Özeti</h3>", unsafe_allow_html=True)
+    st.markdown(risk_kar_ozeti_html(df_gecmis, toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz), unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -1982,13 +1928,40 @@ if not df_gecmisile_goster.empty:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
 # ---- Açık pozisyon kartları (yalnızca "Aktif İşlemler" görünümünde) ----
+def _kart_kapat_cb(islem_id, coin, miktar):
+    """Kapatma butonu: onay kutusu işaretliyse tamamını ya da girilen tutarı kapatır.
+    Callback içinde çalıştığı için işlem sonrası kutu ve tutar alanı güvenle sıfırlanır."""
+    onay_k, tutar_k = f"onay_kart_kapat_{islem_id}", f"kismi_tutar_{islem_id}"
+    try:
+        if not st.session_state.get(onay_k, False):
+            return
+        girilen = float(st.session_state.get(tutar_k, miktar))
+        if girilen <= 0:
+            st.session_state["kart_kapat_mesaj"] = (False, "Kapatılacak tutar 0'dan büyük olmalıdır!")
+            return
+        hedef_miktar = None if girilen >= float(miktar) - 0.005 else girilen
+        try:
+            fiyat_k = fiyat_cek_binance(coin) or ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
+        except Exception:
+            fiyat_k = ortak_fiyat_havuzu.get(coin, baz_fiyatlar.get(coin, 100.0))
+        ok_k, msg_k = manuel_islem_kapat(int(islem_id), fiyat_k, kapatilacak_miktar=hedef_miktar)
+        st.session_state["kart_kapat_mesaj"] = (ok_k, msg_k)
+        if ok_k:
+            st.session_state[onay_k] = False
+            if tutar_k in st.session_state:
+                del st.session_state[tutar_k]
+    except Exception as e:
+        st.session_state["kart_kapat_mesaj"] = (False, f"Kapatma hatası: {e}")
+
 if st.session_state["sadece_aktifleri_goster"]:
     st.markdown("<h3>🧭 Açık Pozisyonlar</h3>", unsafe_allow_html=True)
+    if "kart_kapat_mesaj" in st.session_state:
+        _ok_m, _msg_m = st.session_state.pop("kart_kapat_mesaj")
+        (st.success if _ok_m else st.error)(_msg_m)
     _df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
     if _df_acik_kart.empty:
         st.info("Şu an açık pozisyon yok.")
     else:
-        st.markdown(risk_ozet_html(df_gecmisile_goster, toplam_kasa), unsafe_allow_html=True)
         try:
             _kart_alani = st.container(key="poz_kartlari")
         except TypeError:
@@ -2001,35 +1974,18 @@ if st.session_state["sadece_aktifleri_goster"]:
                     with _k:
                         _id = int(_r["Islem_ID"])
                         st.markdown(pozisyon_karti_html(_r, anlik_fiyat_sozluk.get(_r["Islem_ID"]), logo_urls.get(_r["Coin"], ""), toplam_kasa), unsafe_allow_html=True)
+                        _miktar = float(_r["Islem_Miktari"])
                         _onay = st.checkbox("Kapatmayı onaylıyorum", key=f"onay_kart_kapat_{_id}")
-                        if st.button("🛑 İşlemi Kapat", key=f"btn_kart_kapat_{_id}", disabled=not _onay, width="stretch"):
-                            _fiyat_k = ortak_fiyat_havuzu.get(_r["Coin"], baz_fiyatlar.get(_r["Coin"], 100.0))
-                            _ok_k, _msg_k = manuel_islem_kapat(_id, _fiyat_k, kapatilacak_miktar=None)
-                            if _ok_k:
-                                st.success(_msg_k)
-                                time.sleep(1.2)
-                                st.rerun()
-                            else:
-                                st.error(_msg_k)
+                        _etiket = "🛑 İşlemi Kapat"
+                        if _onay:
+                            _tutar = st.number_input("Kapatılacak tutar ($) — tamamı için bırakın", min_value=0.01, max_value=_miktar,
+                                                     value=_miktar, step=10.0, key=f"kismi_tutar_{_id}")
+                            if _tutar < _miktar - 0.005:
+                                _etiket = f"✂️ Kısmi Kapat ({_tutar:,.2f} $)"
+                        st.button(_etiket, key=f"btn_kart_kapat_{_id}", disabled=not _onay, width="stretch",
+                                  on_click=_kart_kapat_cb, args=(_id, _r["Coin"], _miktar))
 else:
     st.markdown("<h3>📋 Tüm İşlemler</h3>", unsafe_allow_html=True)
-
-st.markdown("<h3>📈 Kasa Eğrisi</h3>", unsafe_allow_html=True)
-_df_kg = kasa_gecmisi_getir()
-if len(_df_kg) >= 2:
-    _fig_kg = go.Figure()
-    _fig_kg.add_trace(go.Scatter(x=_df_kg["Zaman"], y=_df_kg["Toplam_Kasa"], name="Toplam kasa", mode="lines", line=dict(color="#5b8cff", width=2.4), fill="tozeroy", fillcolor="rgba(91,140,255,0.07)"))
-    _fig_kg.add_trace(go.Scatter(x=_df_kg["Zaman"], y=_df_kg["Efektif_Kasa"], name="Efektif kasa", mode="lines", line=dict(color="#00FF00", width=1.6, dash="dot")))
-    _alt, _ust = float(min(_df_kg["Toplam_Kasa"].min(), _df_kg["Efektif_Kasa"].min())), float(max(_df_kg["Toplam_Kasa"].max(), _df_kg["Efektif_Kasa"].max()))
-    _pay = max((_ust - _alt) * 0.15, 0.5)
-    _fig_kg.update_layout(
-        height=260, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#91a0b8", size=11), legend=dict(orientation="h", y=1.12, x=0),
-        xaxis=dict(showgrid=False, zeroline=False), yaxis=dict(range=[_alt - _pay, _ust + _pay], gridcolor="rgba(145,160,184,0.12)", zeroline=False, tickformat=",.2f"),
-    )
-    st.plotly_chart(_fig_kg, width="stretch")
-else:
-    st.caption("Kasa eğrisi için veri toplanıyor: motor her 15 dakikada bir kasa değerini kaydeder.")
 
 # HTML Portföy Tablosu (Zaman Dilimi sütunu başlık ve satırlardan kaldırıldı, E-Tablo sıralaması korunuyor)
 portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""

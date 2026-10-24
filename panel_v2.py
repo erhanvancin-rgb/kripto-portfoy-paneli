@@ -712,7 +712,7 @@ def _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
                     ham = [["Islem_ID"]]
                 idler = [i for i in (_defter_id_oku(r[0]) for r in ham[1:] if r) if i is not None]
                 yeni_id = (max(idler) if idler else 0) + 1
-                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(net_tutar), 2), aciklama])
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(net_tutar), 4), aciklama])
                 st.cache_data.clear()
                 return True
             except Exception as e:
@@ -905,7 +905,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
         matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({rh_guncel_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
-        giris_kom = round(giris_komisyonu(islem_miktari), 2)
+        giris_kom = round(giris_komisyonu(islem_miktari), 4)
 
         df.at[acik_islem_idx, "Giris_Fiyat"] = round(yeni_agirlikli_ortalama, basamak)
         df.at[acik_islem_idx, "Islem_Miktari"] = round(yeni_toplam_miktar, 2)
@@ -923,7 +923,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         kom_ok = kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
         elli_islem_arsiv_kontrol()
         uyari = "" if kom_ok else " ⚠️ Giriş komisyonu deftere yazılamadı, KasaDefteri'ni kontrol edin."
-        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Binance Verisiyle Eşleşen Zaman ({yeni_acilis_zamani_str}) ve Maliyet Güncellendi. Giriş komisyonu: {giris_kom:.2f} $.{uyari}"
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Binance Verisiyle Eşleşen Zaman ({yeni_acilis_zamani_str}) ve Maliyet Güncellendi. Giriş komisyonu: {giris_kom:.4f} $.{uyari}"
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
@@ -940,7 +940,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
                            f"toplam risk payından kalan {kap['kalan_toplam_risk']:.2f} $).")
 
         basamak = 4 if giris_fiyat < 10 else 2
-        giris_kom = round(giris_komisyonu(islem_miktari), 2)
+        giris_kom = round(giris_komisyonu(islem_miktari), 4)
         matris_rh_metin = f"{matris_puan} ({risk_hedef_metin})"
         toplam_kasa, _, _, _, _ = bakiye_durumunu_getir()
         yeni_kayit = pd.DataFrame([{
@@ -968,7 +968,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         kom_ok = kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
         elli_islem_arsiv_kontrol()
         uyari = "" if kom_ok else " ⚠️ Giriş komisyonu deftere yazılamadı, KasaDefteri'ni kontrol edin."
-        return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.2f} $.{uyari}"
+        return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.4f} $.{uyari}"
 
 def _islem_acik_mi(durum):
     return not bool(durum_kapali_maskesi(pd.Series([durum])).iloc[0])

@@ -511,7 +511,7 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
                 ham = sheet.get_all_values()
                 idler = [i for i in (_defter_id_oku(s[0]) for s in ham[1:] if s) if i is not None]
                 yeni_id = (max(idler) if idler else 0) + 1
-                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 2), aciklama])
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 4), aciklama])
                 return True
             except Exception as e:
                 print(f"Kasa defteri kayıt hatası (deneme {no}/3): {e}")

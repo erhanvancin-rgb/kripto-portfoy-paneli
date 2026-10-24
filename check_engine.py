@@ -402,6 +402,23 @@ def google_sheets_baglan(sayfa_adi):
         return None
 
 
+def sayi_cevir(deger):
+    """Sheets'ten gelen metni sayıya çevirir. Türkçe biçimi destekler:
+    '81.690,44' -> 81690.44 | '-4,29' -> -4.29 | '81106,51' -> 81106.51 | '200' -> 200.0
+    Çevrilemezse NaN döner."""
+    t = str(deger).strip().replace(" ", "").replace("\u00a0", "").replace("$", "")
+    if not t:
+        return float("nan")
+    if "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    elif t.count(".") > 1 or re.fullmatch(r"-?\d{1,3}\.\d{3}", t):
+        t = t.replace(".", "")  # binlik ayracı
+    try:
+        return float(t)
+    except ValueError:
+        return float("nan")
+
+
 def islem_gecmisi_getir():
     kolonlar = [
         "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
@@ -431,7 +448,7 @@ def islem_gecmisi_getir():
     df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
     for col in ["Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
                 "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati"]:
-        df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ".").str.strip(), errors="coerce").fillna(0.0).astype(float)
+        df[col] = df[col].map(sayi_cevir).fillna(0.0).astype(float)
     return df
 
 
@@ -589,6 +606,7 @@ def acik_islemleri_kontrol_et():
             print(f"#{islem_id} {coin}: fiyat alınamadı, atlandı.")
             continue
 
+        print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f} miktar={miktar:,.2f}")
         kapat, hedef, kapanis = False, False, 0.0
         if "Long" in yon:
             if anl_f <= stop_f:

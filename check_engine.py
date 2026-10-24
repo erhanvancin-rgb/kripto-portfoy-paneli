@@ -34,6 +34,22 @@ GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
 MAIL_DURUM_SAYFASI = "MailDurumu"
 KALDIRAC = 3
 
+# --- Komisyon ve risk ayarları (Binance USDⓈ-M Futures, standart kullanıcı / VIP 0) ---
+KOMISYON_TAKER = 0.0005         # %0,05: piyasa emriyle giriş ve stop çıkışı
+KOMISYON_MAKER = 0.0002         # %0,02: limit emirle hedef (kâr al) çıkışı
+ISLEM_BASINA_RISK_YUZDE = 1.0   # tek işlemin (komisyon dahil) stop riski: kasanın en fazla %1'i
+TOPLAM_RISK_LIMIT_YUZDE = 3.0   # tüm açık işlemlerin toplam stop riski: kasanın en fazla %3'ü
+
+
+def giris_komisyonu(miktar):
+    return float(miktar) * KALDIRAC * KOMISYON_TAKER
+
+
+def cikis_komisyonu(miktar, hedef_mi):
+    """Hedef (limit emir) maker, stop (piyasa emri) taker öder."""
+    return float(miktar) * KALDIRAC * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
+
+
 # --- RSI BONUS AYARLARI (panel_v2.py ve check_engine.py'de AYNI olmalı) ---
 # "momentum": RSI ve fiyat konumu aynı tarafta ise o yönde bonus (trend yönlü, eski kalibrasyonla uyumlu)
 # "sapma"   : RSI ile fiyat konumu arasındaki fark yönüne bonus (trend karşıtı / uyumsuzluk)
@@ -479,21 +495,23 @@ def kasa_defteri_oku():
         return None
 
 
+def _defter_id_oku(deger):
+    try:
+        return int(float(str(deger).replace(".", "").replace(",", ".")))
+    except Exception:
+        return None
+
+
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
-    """Başarılıysa True döner. Geçici Sheets hatalarına karşı 3 deneme yapar."""
+    """Başarılıysa True döner. Yalnızca satır EKLER (silip baştan yazmaz); geçici hatalarda 3 deneme yapar."""
     for no in range(1, 4):
         sheet = google_sheets_baglan("KasaDefteri")
         if sheet is not None:
             try:
                 ham = sheet.get_all_values()
-                idler = []
-                for satir in ham[1:]:
-                    try:
-                        idler.append(int(float(str(satir[0]).replace(",", "."))))
-                    except Exception:
-                        pass
+                idler = [i for i in (_defter_id_oku(s[0]) for s in ham[1:] if s) if i is not None]
                 yeni_id = (max(idler) if idler else 0) + 1
-                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(tutar, 2), aciklama])
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 2), aciklama])
                 return True
             except Exception as e:
                 print(f"Kasa defteri kayıt hatası (deneme {no}/3): {e}")
@@ -502,11 +520,51 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     return False
 
 
+KAPANIS_ETIKETLERI = ("Hedef Kâr", "Otomatik Stop", "Trade K/Z")
+
+
+def kapanis_defterde_var(islem_id):
+    """Aynı işlemin tam kapanışı deftere daha önce yazıldı mı? (panel ve motor çift işlemesin)"""
+    sheet = google_sheets_baglan("KasaDefteri")
+    if sheet is None:
+        return False
+    try:
+        for s in sheet.get_all_values()[1:]:
+            if len(s) >= 5 and s[2] == "Trade_Sonuc":
+                if any(str(s[4]).startswith(f"{e}: #{islem_id} ") for e in KAPANIS_ETIKETLERI):
+                    return True
+    except Exception as e:
+        print(f"Kapanış kontrolü okunamadı: {e}")
+    return False
+
+
+def kapanis_deftere_yaz_tekil(islem_id, etiket, coin, tutar):
+    """Kapanış kaydı zaten varsa yazmaz (True döner). Yoksa yazar."""
+    if kapanis_defterde_var(islem_id):
+        print(f"#{islem_id} kapanışı defterde zaten var, tekrar yazılmadı.")
+        return True
+    return kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin}")
+
+
 def bakiye_hesapla(df_trade):
+    """Panelle aynı mantık: başlangıç + defter toplamı (+ defterde eksik kalan kapanış farkı).
+    Giriş komisyonları defterde 'Komisyon' satırı olarak zaten düşülmüştür."""
     toplam = BASLANGIC_BAKIYE
+    ham = kasa_defteri_oku()
+    trade_sonuc_defterde = 0.0
+    if ham:
+        for s in ham[1:]:
+            if len(s) >= 4:
+                tutar = sayi_cevir(s[3])
+                if tutar == tutar:  # NaN değilse
+                    toplam += tutar
+                    if len(s) > 2 and s[2] == "Trade_Sonuc":
+                        trade_sonuc_defterde += tutar
     if df_trade is not None and not df_trade.empty:
         kap = df_trade[durum_kapali_maskesi(df_trade["Durum"])]
-        toplam += pd.to_numeric(kap["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
+        gercek = float(pd.to_numeric(kap["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum())
+        if abs(gercek - trade_sonuc_defterde) > 1e-9:
+            toplam += gercek - trade_sonuc_defterde
     return float(toplam)
 
 
@@ -622,7 +680,9 @@ def acik_islemleri_kontrol_et():
             continue
 
         fark = ((kapanis - giris) / giris) if "Long" in yon else ((giris - kapanis) / giris)
-        net_kar = miktar * KALDIRAC * fark
+        brut_kar = miktar * KALDIRAC * fark
+        # Giriş komisyonu açılışta kasadan zaten düşüldü; çıkış komisyonu burada düşülür.
+        net_kar = brut_kar - cikis_komisyonu(miktar, hedef)
         df.at[idx, "Durum"] = "Kapandi (Kar)" if hedef else "Kapandi (Zarar)"
         df.at[idx, "Kapanis_Zamani"] = suan
         df.at[idx, "Net_Kar_Zarar"] = float(round(net_kar, 2))
@@ -640,7 +700,7 @@ def acik_islemleri_kontrol_et():
         return
 
     for islem_id, coin, etiket, net_kar in kapananlar:
-        ok = kasa_islem_ekle_deftere("Trade_Sonuc", float(round(net_kar, 2)), f"{etiket}: #{islem_id} {coin}")
+        ok = kapanis_deftere_yaz_tekil(islem_id, etiket, coin, net_kar)
         if not ok:
             print(f"UYARI: #{islem_id} kasa defterine yazılamadı (panel bakiyeyi kendisi düzeltir); mail yine de gönderilecek.")
     print(f"{len(kapananlar)} işlem kapatıldı.")

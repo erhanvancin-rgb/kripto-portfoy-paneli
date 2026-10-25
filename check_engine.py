@@ -21,6 +21,8 @@ import time
 import html
 from datetime import datetime, timedelta
 import pytz
+
+import matris_motoru
 import requests
 import pandas as pd
 import numpy as np
@@ -50,14 +52,7 @@ def cikis_komisyonu(miktar, hedef_mi):
     return float(miktar) * KALDIRAC * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
 
 
-# --- RSI BONUS AYARLARI (panel_v2.py ve check_engine.py'de AYNI olmalı) ---
-# "momentum": RSI ve fiyat konumu aynı tarafta ise o yönde bonus (trend yönlü, eski kalibrasyonla uyumlu)
-# "sapma"   : RSI ile fiyat konumu arasındaki fark yönüne bonus (trend karşıtı / uyumsuzluk)
-RSI_MODU = "momentum"
-RSI_MOMENTUM_TAVAN = 0.03   # momentum modunda bonus tavanı (max_puanın oranı)
-RSI_SAPMA_TAVAN = 0.12      # sapma modunda bonus tavanı (max_puanın oranı)
-
-BASLANGIC_BAKIYE = 500.0
+BASLANGIC_BAKIYE = 0.0
 SINYAL_BEKLEME_DK = 60       # aynı coin + aynı aşama için iki mail arası minimum süre
 KAPANIS_PENCERESI_SAAT = 24  # bu süreden eski kapanışlar için mail atılmaz
 ZAMAN_BUTCESI_SN = 180       # sinyal taraması bu süreden sonra bırakılır (kapanış mailleri öncelikli)
@@ -249,124 +244,20 @@ def kline_cek_binance(coin_symbol, interval, limit):
 
 
 # ----------------------------------------------------------------------------
-# MATRİS PUANI (RSI bonusu: RSI_MODU ayarına göre momentum veya sapma)
+# MATRİS PUANI (hesap matris_motoru.py içinde; panel de aynı dosyayı kullanır)
 # ----------------------------------------------------------------------------
-def oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan):
-    if df.empty or len(df) < 10:
-        return max_puan / 2.0, max_puan / 2.0, 0, 0
-
-    df["Body"] = df["Close"] - df["Open"]
-    toplam_yesil_boy = df[df["Body"] > 0]["Body"].sum()
-    toplam_kirmizi_boy = abs(df[df["Body"] < 0]["Body"].sum())
-    toplam_boy = toplam_yesil_boy + toplam_kirmizi_boy
-
-    if toplam_boy > 0:
-        yesil_oran = toplam_yesil_boy / toplam_boy
-        kirmizi_oran = toplam_kirmizi_boy / toplam_boy
-    else:
-        yesil_oran, kirmizi_oran = 0.5, 0.5
-
-    baz_long_puan = max_puan * yesil_oran
-    baz_short_puan = max_puan * kirmizi_oran
-
-    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-    anlik_fiyat = float(df["Close"].iloc[-1])
-    anlik_ema = float(df["EMA20"].iloc[-1])
-    fark_yuzde = (abs(anlik_fiyat - anlik_ema) / anlik_ema) * 100.0
-    ema_log_carpan = min(1.0, np.log1p(fark_yuzde) / np.log1p(1.5))
-    max_ema_bonus = max_puan * 0.04
-    ema_l = max_ema_bonus * ema_log_carpan if anlik_fiyat > anlik_ema else 0.0
-    ema_s = max_ema_bonus * ema_log_carpan if anlik_fiyat < anlik_ema else 0.0
-
-    delta = df["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    rsi_serisi = 100 - (100 / (1 + rs))
-    rsi_anlik = float(rsi_serisi.iloc[-1]) if not rsi_serisi.isna().all() else 50.0
-
-    # --- RSI BONUSU (mod: RSI_MODU) ---
-    # Fark, pencerenin fiyat aralığına göre 0-1 arası ölçülür; böylece zaman dilimi ve coin'den bağımsızdır.
-    max_f = float(df["High"].max())
-    min_f = float(df["Low"].min())
-    fiyat_fark = max_f - min_f
-
-    rsi_l, rsi_s = 0.0, 0.0
-    if fiyat_fark > 0 and not rsi_serisi.isna().all():
-        rsi_oran = rsi_anlik / 100.0
-        fiyat_konum = (anlik_fiyat - min_f) / fiyat_fark  # 0 = pencere dibi, 1 = pencere tepesi
-
-        if RSI_MODU == "sapma":
-            bosluk = abs(rsi_oran - fiyat_konum)
-            bonus = max_puan * RSI_SAPMA_TAVAN * bosluk
-            if rsi_oran > fiyat_konum:
-                rsi_l = bonus
-            elif rsi_oran < fiyat_konum:
-                rsi_s = bonus
-        else:
-            rsi_gucu = min(1.0, np.log1p(abs(rsi_anlik - 50.0)) / np.log1p(20.0))
-            konum_gucu = min(1.0, abs(fiyat_konum - 0.5) / 0.25)
-            bonus = max_puan * RSI_MOMENTUM_TAVAN * min(rsi_gucu, konum_gucu)
-            if rsi_oran > 0.5 and fiyat_konum > 0.5:
-                rsi_l = bonus
-            elif rsi_oran < 0.5 and fiyat_konum < 0.5:
-                rsi_s = bonus
-    else:
-        fark_rsi = abs(rsi_anlik - 50.0)
-        rsi_log_carpan = min(1.0, np.log1p(fark_rsi) / np.log1p(20.0))
-        max_rsi_bonus = max_puan * 0.03
-        rsi_l = max_rsi_bonus * rsi_log_carpan if rsi_anlik > 50 else 0.0
-        rsi_s = max_rsi_bonus * rsi_log_carpan if rsi_anlik < 50 else 0.0
-
-    fib_l, fib_s = 0.0, 0.0
-    if fiyat_fark > 0:
-        fib_050 = min_f + (fiyat_fark * 0.5)
-        fib_618 = min_f + (fiyat_fark * 0.618)
-        mesafe_050 = abs(anlik_fiyat - fib_050) / fiyat_fark
-        mesafe_618 = abs(anlik_fiyat - fib_618) / fiyat_fark
-        min_mesafe = min(mesafe_050, mesafe_618)
-        if min_mesafe < 0.05:
-            yaklasim = (0.05 - min_mesafe) / 0.05
-            fib_log_carpan = np.log1p(yaklasim * 10) / np.log1p(10)
-            max_fib_bonus = max_puan * 0.03
-            if anlik_fiyat >= anlik_ema:
-                fib_l = max_fib_bonus * fib_log_carpan
-            else:
-                fib_s = max_fib_bonus * fib_log_carpan
-
-    final_long = baz_long_puan + ema_l + rsi_l + fib_l
-    final_short = baz_short_puan + ema_s + rsi_s + fib_s
-
-    grup_toplam = final_long + final_short
-    if grup_toplam > 0 and grup_toplam > max_puan:
-        final_long = (final_long / grup_toplam) * max_puan
-        final_short = (final_short / grup_toplam) * max_puan
-
-    y_adet = len(df[df["Body"] > 0])
-    k_adet = len(df[df["Body"] < 0])
-    return round(final_long, 2), round(final_short, 2), y_adet, k_adet
-
-
 def matris_puani_hesapla(sembol):
     """(nihai_puan, yon) döner. Veri eksikse None döner (sahte sinyal üretmemek için)."""
     sembol_istek = sembol if sembol != "TOTAL" else "BTC/USDT"
-    dilimler = [
-        (kline_cek_binance(sembol_istek, "15m", 64), 9.5),
-        (kline_cek_binance(sembol_istek, "5m", 96), 15.5),
-        (kline_cek_binance(sembol_istek, "5m", 48), 50.0),
-        (kline_cek_binance(sembol_istek, "1m", 120), 15.5),
-        (kline_cek_binance(sembol_istek, "1m", 60), 9.5),
-    ]
-    if any(df.empty or len(df) < 10 for df, _ in dilimler):
-        return None
+    pencereler = []
+    for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER:
+        df = kline_cek_binance(sembol_istek, aralik, mum_sayisi)
+        if df.empty or len(df) < 10:
+            return None
+        pencereler.append((etiket, df, agirlik))
 
-    long_toplam = short_toplam = 0.0
-    for df, max_puan in dilimler:
-        sl, ss, _, _ = oransal_matris_ve_teknik_faktorler_hesapla(df, max_puan)
-        long_toplam += sl
-        short_toplam += ss
-
-    nihai_long, nihai_short = round(long_toplam, 2), round(short_toplam, 2)
+    sonuc = matris_motoru.matris_hesapla(pencereler)
+    nihai_long, nihai_short = sonuc["nihai_long"], sonuc["nihai_short"]
     esik = aktif_min_puan_esigi_getir()
     if nihai_long >= esik:
         return nihai_long, "Long"

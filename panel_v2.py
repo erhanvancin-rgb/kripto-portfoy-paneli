@@ -6,6 +6,7 @@ import smtplib
 import math
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 
 import gspread
@@ -284,6 +285,370 @@ def risk_kar_ozeti_html(df, toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_
             + satir("Boş nakit", f"{bos_bakiye:,.2f} $")
             + '</div>')
 
+# ====================== A4 PDF RAPORU ======================
+_TR_YEDEK_TABLO = str.maketrans("ğüşöçıİĞÜŞÖÇ", "gusociIGUSOC")
+
+def _rapor_sayi(v, d=2):
+    try:
+        t = f"{float(v):,.{d}f}"
+    except Exception:
+        return "-"
+    return t.replace(",", "X").replace(".", ",").replace("X", ".")
+
+def _rapor_tarih(s_):
+    """'22.10.2026 15:00' -> '22.10.26 15:00' (tablo sütununa sığsın)."""
+    t = str(s_).strip()
+    return (t[:6] + t[8:16]) if len(t) >= 16 and t[2] == "." and t[5] == "." else t
+
+def _rapor_fiyat(v):
+    try:
+        v = float(v)
+    except Exception:
+        return "-"
+    return _rapor_sayi(v, 4 if abs(v) < 10 else 2)
+
+def _rapor_fontlari_kaydet():
+    """Türkçe karakterli TTF kaydeder. Bulunamazsa Helvetica + ASCII yedek (adlar, ğ→g gibi sadeleşir)."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    adaylar = [("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")]
+    try:
+        import matplotlib
+        taban = os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf")
+        adaylar.append((os.path.join(taban, "DejaVuSans.ttf"), os.path.join(taban, "DejaVuSans-Bold.ttf")))
+    except Exception:
+        pass
+    adaylar.append(("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"))
+    for normal, kalin in adaylar:
+        if os.path.exists(normal) and os.path.exists(kalin):
+            try:
+                pdfmetrics.registerFont(TTFont("RaporFont", normal))
+                pdfmetrics.registerFont(TTFont("RaporFont-Bold", kalin))
+                return "RaporFont", "RaporFont-Bold", True
+            except Exception:
+                continue
+    return "Helvetica", "Helvetica-Bold", False
+
+def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
+    """Döner: (pdf_bytes, None) ya da (None, hata_metni)."""
+    try:
+        import io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+        from reportlab.graphics.shapes import Drawing, String
+        from reportlab.graphics.charts.lineplots import LinePlot
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+    except ImportError:
+        return None, "reportlab kurulu değil (requirements.txt dosyasına 'reportlab' ekleyin)."
+
+    try:
+        FONT, FONT_B, ttf_var = _rapor_fontlari_kaydet()
+        T = (lambda x: str(x)) if ttf_var else (lambda x: str(x).translate(_TR_YEDEK_TABLO))
+
+        toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_kz = [float(x) for x in bakiye]
+        YESIL, KIRMIZI = colors.HexColor("#0a8f3c"), colors.HexColor("#d9480f")
+        LACIVERT, GRI, ACIK = colors.HexColor("#14213d"), colors.HexColor("#5f6b7a"), colors.HexColor("#eef2f7")
+
+        # ---------- veri hazırlığı
+        cols = ["Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
+                "Olasi_Stop", "Durum", "Net_Kar_Zarar", "Kapanis_Zamani", "Kapanis_Fiyati"]
+        dt = df_trade.copy() if df_trade is not None and not df_trade.empty else pd.DataFrame(columns=cols)
+        if not dt.empty:
+            kapali_m = durum_kapali_maskesi(dt["Durum"])
+            kap, acik = dt[kapali_m].copy(), dt[~kapali_m].copy()
+        else:
+            kap, acik = dt.copy(), dt.copy()
+        kap["Net_Kar_Zarar"] = pd.to_numeric(kap["Net_Kar_Zarar"], errors="coerce").fillna(0.0)
+        kap["_kt"] = pd.to_datetime(kap["Kapanis_Zamani"], format="%d.%m.%Y %H:%M", errors="coerce")
+        kap = kap.sort_values(["_kt", "Islem_ID"], na_position="last").reset_index(drop=True)
+
+        dk = df_kasa.copy() if df_kasa is not None and not df_kasa.empty else pd.DataFrame(columns=["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"])
+        dk["Tutar"] = pd.to_numeric(dk["Tutar"], errors="coerce").fillna(0.0)
+        dk["_z"] = pd.to_datetime(dk["Zaman"], format="%d.%m.%Y %H:%M", errors="coerce")
+        dk = dk.sort_values("Islem_ID").reset_index(drop=True)
+        tur_toplam = {t: float(dk.loc[dk["Islem_Turu"] == t, "Tutar"].sum()) for t in ("Para_Yatir", "Para_Cek", "Trade_Sonuc", "Komisyon")}
+        net_para_girisi = tur_toplam["Para_Yatir"] + tur_toplam["Para_Cek"]
+        anapara = BASLANGIC_BAKIYE + net_para_girisi
+        getiri = ((efektif_kasa - anapara) / anapara * 100.0) if anapara > 0 else 0.0
+        gerceklesen = float(kap["Net_Kar_Zarar"].sum())
+
+        net = kap["Net_Kar_Zarar"]
+        n_kap = len(kap)
+        kaz, kay = net[net > 0], net[net < 0]
+        isabet = (len(kaz) / n_kap * 100.0) if n_kap else 0.0
+        pf = (kaz.sum() / abs(kay.sum())) if len(kay) and kay.sum() != 0 else None
+
+        # ---------- stiller
+        st_ba = ParagraphStyle("ba", fontName=FONT_B, fontSize=18, textColor=LACIVERT, leading=22)
+        st_alt = ParagraphStyle("alt", fontName=FONT, fontSize=8, textColor=GRI, leading=11)
+        st_h = ParagraphStyle("h", fontName=FONT_B, fontSize=11.5, textColor=colors.white, leading=14, backColor=LACIVERT,
+                              borderPadding=(4, 6, 4, 6), spaceBefore=10, spaceAfter=7)
+        st_n = ParagraphStyle("n", fontName=FONT, fontSize=8, textColor=colors.black, leading=10)
+
+        def tablo_stili(baslik_renk=LACIVERT, fs=7, zebra=True):
+            ts = [("FONTNAME", (0, 0), (-1, -1), FONT), ("FONTSIZE", (0, 0), (-1, -1), fs),
+                  ("FONTNAME", (0, 0), (-1, 0), FONT_B), ("BACKGROUND", (0, 0), (-1, 0), baslik_renk),
+                  ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                  ("TOPPADDING", (0, 0), (-1, -1), 2.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2),
+                  ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#d5dbe4"))]
+            if zebra:
+                ts.append(("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ACIK]))
+            return TableStyle(ts)
+
+        def renkli(v):
+            return YESIL if v > 0 else (KIRMIZI if v < 0 else colors.black)
+
+        W = A4[0] - 24 * mm   # kullanılabilir genişlik
+
+        def cizgi_grafik(noktalar, etiketler, baslik, renk, yukseklik=135):
+            d = Drawing(W, yukseklik + 16)
+            d.add(String(0, yukseklik + 4, T(baslik), fontName=FONT_B, fontSize=9, fillColor=LACIVERT))
+            if len(noktalar) < 2:
+                d.add(String(W / 2 - 50, yukseklik / 2, T("Yeterli veri yok"), fontName=FONT, fontSize=9, fillColor=GRI))
+                return d
+            lp = LinePlot()
+            lp.x, lp.y, lp.width, lp.height = 44, 20, W - 54, yukseklik - 26
+            lp.data = [[(i, float(v)) for i, v in enumerate(noktalar)]]
+            lp.lines[0].strokeColor, lp.lines[0].strokeWidth = renk, 1.6
+            n = len(noktalar)
+            lp.xValueAxis.valueMin, lp.xValueAxis.valueMax = 0, n - 1
+            adim = sorted({int(round(i * (n - 1) / 5.0)) for i in range(6)})
+            lp.xValueAxis.valueSteps = adim
+            lp.xValueAxis.labelTextFormat = lambda v: T(etiketler[int(round(v))]) if 0 <= int(round(v)) < len(etiketler) else ""
+            lp.xValueAxis.labels.fontName, lp.xValueAxis.labels.fontSize = FONT, 6.5
+            lp.yValueAxis.labelTextFormat = lambda v: _rapor_sayi(v, 2)
+            lp.yValueAxis.labels.fontName, lp.yValueAxis.labels.fontSize = FONT, 6.5
+            lo, hi = min(noktalar), max(noktalar)
+            pay = max((hi - lo) * 0.12, 0.5)
+            lp.yValueAxis.valueMin, lp.yValueAxis.valueMax = lo - pay, hi + pay
+            lp.yValueAxis.visibleGrid, lp.yValueAxis.gridStrokeColor = 1, colors.HexColor("#e1e6ee")
+            d.add(lp)
+            return d
+
+        def bar_grafik(adlar, degerler, baslik, yukseklik=125):
+            d = Drawing(W, yukseklik + 16)
+            d.add(String(0, yukseklik + 4, T(baslik), fontName=FONT_B, fontSize=9, fillColor=LACIVERT))
+            if not adlar:
+                d.add(String(W / 2 - 50, yukseklik / 2, T("Yeterli veri yok"), fontName=FONT, fontSize=9, fillColor=GRI))
+                return d
+            bc = VerticalBarChart()
+            bc.x, bc.y, bc.width, bc.height = 44, 20, W - 54, yukseklik - 26
+            bc.data = [[max(v, 0.0) for v in degerler], [min(v, 0.0) for v in degerler]]
+            bc.categoryAxis.style = "stacked"
+            bc.categoryAxis.categoryNames = [T(a) for a in adlar]
+            bc.categoryAxis.labels.fontName, bc.categoryAxis.labels.fontSize = FONT, 7
+            bc.categoryAxis.labels.dy = -6
+            bc.bars[0].fillColor, bc.bars[1].fillColor = YESIL, KIRMIZI
+            bc.bars[0].strokeColor = bc.bars[1].strokeColor = None
+            lo, hi = min(min(degerler), 0.0), max(max(degerler), 0.0)
+            pay = max((hi - lo) * 0.15, 0.5)
+            bc.valueAxis.valueMin, bc.valueAxis.valueMax = lo - (pay if lo < 0 else 0), hi + pay
+            bc.valueAxis.labelTextFormat = lambda v: _rapor_sayi(v, 2)
+            bc.valueAxis.labels.fontName, bc.valueAxis.labels.fontSize = FONT, 6.5
+            bc.valueAxis.visibleGrid, bc.valueAxis.gridStrokeColor = 1, colors.HexColor("#e1e6ee")
+            bc.groupSpacing = 14
+            d.add(bc)
+            return d
+
+        story = []
+        story.append(Paragraph(T("Kripto Portföy Raporu"), st_ba))
+        story.append(Paragraph(T(f"Oluşturulma: {zaman.strftime('%d.%m.%Y %H:%M')} (TR) · Tüm tutarlar USDT · {KALDIRAC}x kaldıraç · "
+                                 f"Komisyon: giriş %{KOMISYON_TAKER*100:g}, hedef çıkışı %{KOMISYON_MAKER*100:g}, stop çıkışı %{KOMISYON_TAKER*100:g}"), st_alt))
+
+        # ---------- 1) Kasa durumu
+        story.append(Paragraph(T("1. Kasa Durumu"), st_h))
+        def kpi(etiket, deger, renk=colors.black):
+            return [Paragraph(f'<font name="{FONT}" size="7" color="#5f6b7a">{T(etiket)}</font>', st_n),
+                    Paragraph(f'<font name="{FONT_B}" size="12" color="{renk.hexval().replace("0x", "#")}">{T(deger)}</font>', st_n)]
+        kz_r = lambda v: YESIL if v > 0 else (KIRMIZI if v < 0 else colors.black)
+        hucreler = [
+            kpi("Toplam kasa", f"{_rapor_sayi(toplam_kasa)} $"), kpi("Efektif kasa", f"{_rapor_sayi(efektif_kasa)} $"),
+            kpi("Boş nakit", f"{_rapor_sayi(bos_bakiye)} $"), kpi("Kullanılan teminat", f"{_rapor_sayi(marjin)} $"),
+            kpi("Anlık K/Z (net)", f"{acik_kz:+,.2f} $".replace(",", "X").replace(".", ",").replace("X", "."), kz_r(acik_kz)),
+            kpi("Gerçekleşen net K/Z", f"{gerceklesen:+,.2f} $".replace(",", "X").replace(".", ",").replace("X", "."), kz_r(gerceklesen)),
+            kpi("Anapara (başlangıç + net giriş)", f"{_rapor_sayi(anapara)} $"),
+            kpi("Toplam getiri", ("-" if getiri < 0 else "") + f"%{_rapor_sayi(abs(getiri))}", kz_r(getiri)),
+        ]
+        grid = [[hucreler[i], hucreler[i + 1], hucreler[i + 2], hucreler[i + 3]] for i in (0, 4)]
+        kt = Table(grid, colWidths=[W / 4.0] * 4)
+        kt.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c9d1dc")), ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dfe5ee")),
+                                ("BACKGROUND", (0, 0), (-1, -1), ACIK), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 8)]))
+        story.append(kt)
+
+        # ---------- 2) Para akışı
+        story.append(Paragraph(T("2. Para Akışı"), st_h))
+        bak_noktalari, bak_etiket, bak = [], [], float(BASLANGIC_BAKIYE)
+        bak_noktalari.append(bak); bak_etiket.append("Başlangıç")
+        for _, r in dk.iterrows():
+            bak += float(r["Tutar"])
+            bak_noktalari.append(bak)
+            bak_etiket.append(r["_z"].strftime("%d.%m %H:%M") if pd.notna(r["_z"]) else "")
+        if abs(bak - toplam_kasa) > 0.005:   # defter + düzeltme farkı
+            bak_noktalari.append(toplam_kasa); bak_etiket.append("Şimdi")
+        story.append(cizgi_grafik(bak_noktalari, bak_etiket, "Kasa bakiyesi (defter hareketlerine göre)", colors.HexColor("#1f4fd8")))
+        akis_tablo = [[T("Hareket türü"), T("Toplam ($)")],
+                      [T("Para yatırma"), _rapor_sayi(tur_toplam["Para_Yatir"])], [T("Para çekme"), _rapor_sayi(tur_toplam["Para_Cek"])],
+                      [T("İşlem sonuçları (net)"), _rapor_sayi(tur_toplam["Trade_Sonuc"])], [T("Giriş komisyonları"), _rapor_sayi(tur_toplam["Komisyon"], 4)]]
+        at = Table(akis_tablo, colWidths=[W * 0.45, W * 0.2], hAlign="LEFT")
+        at.setStyle(tablo_stili()); at.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT")]))
+        story.append(Spacer(1, 4)); story.append(at)
+        son = dk.tail(12).iloc[::-1]
+        if not son.empty:
+            sat = [[T("Tarih"), T("Tür"), T("Tutar ($)"), T("Açıklama")]] + [
+                [r["Zaman"], T(r["Islem_Turu"]), _rapor_sayi(r["Tutar"], 4 if abs(r["Tutar"]) < 1 else 2), T(str(r["Aciklama"])[:58])] for _, r in son.iterrows()]
+            st_t = Table(sat, colWidths=[W * 0.17, W * 0.15, W * 0.15, W * 0.53], repeatRows=1)
+            st_t.setStyle(tablo_stili()); st_t.setStyle(TableStyle([("ALIGN", (2, 0), (2, -1), "RIGHT")]))
+            story.append(Spacer(1, 6)); story.append(Paragraph(T("Son kasa hareketleri"), ParagraphStyle("sk", fontName=FONT_B, fontSize=8.5, textColor=LACIVERT, spaceAfter=3)))
+            story.append(st_t)
+
+        # ---------- 3) Analiz
+        story.append(Paragraph(T("3. Analiz"), st_h))
+        en_iyi = kap.loc[net.idxmax()] if n_kap else None
+        en_kotu = kap.loc[net.idxmin()] if n_kap else None
+        long_n, short_n = int(kap["Yon"].astype(str).str.contains("Long").sum()) if n_kap else 0, int(kap["Yon"].astype(str).str.contains("Short").sum()) if n_kap else 0
+        long_net = float(net[kap["Yon"].astype(str).str.contains("Long")].sum()) if n_kap else 0.0
+        short_net = float(net[kap["Yon"].astype(str).str.contains("Short")].sum()) if n_kap else 0.0
+        satirlar = [
+            [T("Kapanan işlem"), str(n_kap), T("Açık işlem"), str(len(acik))],
+            [T("Kazanan / Kaybeden"), f"{len(kaz)} / {len(kay)}", T("İsabet oranı"), f"%{_rapor_sayi(isabet, 1)}"],
+            [T("Ortalama kâr"), _rapor_sayi(kaz.mean() if len(kaz) else 0) + " $", T("Ortalama zarar"), _rapor_sayi(kay.mean() if len(kay) else 0) + " $"],
+            [T("Kâr faktörü"), (_rapor_sayi(pf) if pf is not None else "-"), T("İşlem başı beklenti"), _rapor_sayi(net.mean() if n_kap else 0) + " $"],
+            [T("En iyi işlem"), (f"#{int(en_iyi['Islem_ID'])} {en_iyi['Coin']} {_rapor_sayi(en_iyi['Net_Kar_Zarar'])} $" if n_kap else "-"),
+             T("En kötü işlem"), (f"#{int(en_kotu['Islem_ID'])} {en_kotu['Coin']} {_rapor_sayi(en_kotu['Net_Kar_Zarar'])} $" if n_kap else "-")],
+            [T("Long (adet / net K/Z)"), f"{long_n} / {_rapor_sayi(long_net)} $", T("Short (adet / net K/Z)"), f"{short_n} / {_rapor_sayi(short_net)} $"],
+        ]
+        an_t = Table(satirlar, colWidths=[W * 0.22, W * 0.28, W * 0.22, W * 0.28])
+        an_t.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), FONT), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                                  ("FONTNAME", (0, 0), (0, -1), FONT_B), ("FONTNAME", (2, 0), (2, -1), FONT_B),
+                                  ("TEXTCOLOR", (0, 0), (0, -1), GRI), ("TEXTCOLOR", (2, 0), (2, -1), GRI),
+                                  ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, ACIK]), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                                  ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#c9d1dc"))]))
+        story.append(an_t)
+        kum, kum_et, t = [], [], 0.0
+        for _, r in kap.iterrows():
+            t += float(r["Net_Kar_Zarar"]); kum.append(t)
+            kum_et.append(r["_kt"].strftime("%d.%m %H:%M") if pd.notna(r["_kt"]) else f"#{int(r['Islem_ID'])}")
+        story.append(Spacer(1, 8))
+        story.append(cizgi_grafik([0.0] + kum, ["Başlangıç"] + kum_et, "Kümülatif net K/Z (kapanan işlemler)", colors.HexColor("#0a8f3c")))
+        coin_grup = kap.groupby("Coin")["Net_Kar_Zarar"].agg(["count", "sum", lambda x: (x > 0).mean() * 100.0]) if n_kap else pd.DataFrame()
+        if not coin_grup.empty:
+            coin_grup.columns = ["adet", "net", "isabet"]
+            coin_grup = coin_grup.sort_values("net", ascending=False)
+        story.append(Spacer(1, 6))
+        story.append(bar_grafik(list(coin_grup.index) if not coin_grup.empty else [], [float(x) for x in coin_grup["net"]] if not coin_grup.empty else [], "Coin bazında net K/Z"))
+        if not coin_grup.empty:
+            ct = Table([[T("Coin"), T("İşlem"), T("Net K/Z ($)"), T("İsabet")]] + [[c, str(int(r["adet"])), _rapor_sayi(r["net"]), f"%{_rapor_sayi(r['isabet'], 1)}"] for c, r in coin_grup.iterrows()],
+                       colWidths=[W * 0.2, W * 0.12, W * 0.2, W * 0.15], hAlign="LEFT", repeatRows=1)
+            ct.setStyle(tablo_stili()); ct.setStyle(TableStyle([("ALIGN", (1, 0), (-1, -1), "RIGHT")]))
+            story.append(Spacer(1, 4)); story.append(ct)
+
+        # ---------- 4) Açık pozisyonlar
+        story.append(Paragraph(T("4. Açık Pozisyonlar"), st_h))
+        if acik.empty:
+            story.append(Paragraph(T("Açık pozisyon yok."), st_n))
+        else:
+            ap = [[T("ID"), T("Coin"), T("Yön"), T("Giriş"), T("Anlık"), T("Stop"), T("Hedef"), T("Teminat"), T("K/Z (net)"), T("Beklenen"), T("Ol. stop")]]
+            for _, r in acik.iterrows():
+                giris, miktar = float(r["Giris_Fiyat"]), float(r["Islem_Miktari"])
+                anl = float(fiyatlar.get(r["Coin"], 0.0) or 0.0)
+                fark = ((anl - giris) / giris) if "Long" in str(r["Yon"]) else ((giris - anl) / giris) if giris > 0 else 0.0
+                kz = miktar * KALDIRAC * fark - cikis_komisyonu(miktar, False) if anl > 0 else 0.0
+                ap.append([str(int(r["Islem_ID"])), r["Coin"], r["Yon"], _rapor_fiyat(giris), _rapor_fiyat(anl) if anl > 0 else "-", _rapor_fiyat(r["Stop"]),
+                           _rapor_fiyat(r["Kar_Al"]), _rapor_sayi(miktar), _rapor_sayi(kz), _rapor_sayi(r["Beklenen_Kar"]), _rapor_sayi(r["Olasi_Stop"])])
+            apt = Table(ap, colWidths=[W * x / 1.01 for x in (0.05, 0.11, 0.07, 0.12, 0.12, 0.11, 0.11, 0.08, 0.08, 0.08, 0.08)], repeatRows=1)
+            apt.setStyle(tablo_stili(fs=6.6)); apt.setStyle(TableStyle([("ALIGN", (3, 0), (-1, -1), "RIGHT")]))
+            for i in range(1, len(ap)):
+                try:
+                    v = float(ap[i][8].replace(".", "").replace(",", "."))
+                    apt.setStyle(TableStyle([("TEXTCOLOR", (8, i), (8, i), renkli(v))]))
+                except Exception:
+                    pass
+            story.append(apt)
+
+        # ---------- 5) Tüm işlemler
+        story.append(Paragraph(T(f"5. Tüm İşlemler ({len(dt)} kayıt)"), st_h))
+        if dt.empty:
+            story.append(Paragraph(T("Kayıtlı işlem yok."), st_n))
+        else:
+            tum = dt.copy()
+            tum["Islem_ID"] = pd.to_numeric(tum["Islem_ID"], errors="coerce").fillna(0).astype(int)
+            tum = tum.sort_values("Islem_ID", ascending=False)
+            satir_l = [[T("ID"), T("Açılış"), T("Coin"), T("Yön"), T("Giriş"), T("Miktar $"), T("Stop"), T("Hedef"), T("Durum"), T("Net K/Z $"), T("Kapanış"), T("Kapanış F.")]]
+            for _, r in tum.iterrows():
+                kapali = bool(durum_kapali_mi(r["Durum"]))
+                satir_l.append([str(int(r["Islem_ID"])), _rapor_tarih(r["Acilis_Zamani"]), r["Coin"], r["Yon"], _rapor_fiyat(r["Giris_Fiyat"]), _rapor_sayi(r["Islem_Miktari"]),
+                                _rapor_fiyat(r["Stop"]), _rapor_fiyat(r["Kar_Al"]), T(str(r["Durum"])), _rapor_sayi(r["Net_Kar_Zarar"]) if kapali else "-",
+                                _rapor_tarih(r["Kapanis_Zamani"]) if kapali else "-", _rapor_fiyat(r["Kapanis_Fiyati"]) if kapali and float(r["Kapanis_Fiyati"]) > 0 else "-"])
+            _oran = (0.035, 0.105, 0.072, 0.043, 0.078, 0.052, 0.078, 0.078, 0.09, 0.058, 0.105, 0.078)
+            genis = [W * x / sum(_oran) for x in _oran]
+            tt = Table(satir_l, colWidths=genis, repeatRows=1)
+            tt.setStyle(tablo_stili(fs=6.0)); tt.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2)])); tt.setStyle(TableStyle([("ALIGN", (4, 0), (7, -1), "RIGHT"), ("ALIGN", (9, 0), (9, -1), "RIGHT"), ("ALIGN", (11, 0), (11, -1), "RIGHT")]))
+            for i in range(1, len(satir_l)):
+                try:
+                    v = float(satir_l[i][9].replace(".", "").replace(",", "."))
+                    tt.setStyle(TableStyle([("TEXTCOLOR", (9, i), (9, i), renkli(v))]))
+                except Exception:
+                    pass
+            story.append(tt)
+
+        def sayfa_alt(canvas, doc):
+            canvas.saveState()
+            canvas.setFont(FONT, 7)
+            canvas.setFillColor(GRI)
+            canvas.drawString(12 * mm, 8 * mm, T(f"Pro Kripto Paneli · {zaman.strftime('%d.%m.%Y %H:%M')}"))
+            canvas.drawRightString(A4[0] - 12 * mm, 8 * mm, T(f"Sayfa {doc.page}"))
+            canvas.restoreState()
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=12 * mm, bottomMargin=14 * mm,
+                                title=T("Kripto Portföy Raporu"), author="Pro Kripto Paneli")
+        doc.build(story, onFirstPage=sayfa_alt, onLaterPages=sayfa_alt)
+        return buf.getvalue(), None
+    except Exception as e:
+        import traceback
+        return None, f"{type(e).__name__}: {e} | {traceback.format_exc().splitlines()[-3][:120]}"
+
+def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
+    gonderici_mail = "erhanvancin@gmail.com"
+    alici_mail = "erhanvancin@gmail.com"
+    sifre = os.environ.get("GMAIL_PASSWORD", "").strip()
+    if not sifre:
+        try:
+            sifre = str(st.secrets.get("GMAIL_PASSWORD", "")).strip()
+        except Exception:
+            sifre = ""
+    if not sifre:
+        return False, "GMAIL_PASSWORD tanımlı değil (Streamlit secrets'a ekleyin)."
+    toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_kz = [float(x) for x in bakiye]
+    govde = (f"<h3>Kripto Portföy Raporu</h3><p>Oluşturulma: {zaman.strftime('%d.%m.%Y %H:%M')}</p>"
+             f"<p><b>Toplam kasa:</b> {toplam_kasa:,.2f} $<br><b>Efektif kasa:</b> {efektif_kasa:,.2f} $<br>"
+             f"<b>Anlık K/Z (net):</b> {acik_kz:+,.2f} $<br><b>Boş nakit:</b> {bos_bakiye:,.2f} $</p>"
+             "<p>Tüm işlemler, para akışı ve analizler ekteki A4 PDF dosyasındadır.</p>")
+    server = None
+    try:
+        msg = MIMEMultipart()
+        msg["From"], msg["To"], msg["Subject"] = gonderici_mail, alici_mail, f"📄 Portföy Raporu - {zaman.strftime('%d.%m.%Y %H:%M')}"
+        msg.attach(MIMEText(govde, "html", "utf-8"))
+        ek = MIMEApplication(pdf_bytes, _subtype="pdf")
+        ek.add_header("Content-Disposition", "attachment", filename=dosya_adi)
+        msg.attach(ek)
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30)
+        server.login(gonderici_mail, sifre)
+        server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
+        return True, "E-posta gönderildi."
+    except Exception as e:
+        return False, str(e)
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
 def matris_birlesik_html(nihai_puan, aktif_yon, y_yuzde, k_yuzde):
     """Matris puanı + teyit tek sütunda: yön adı (Long/Short, nötr bölgede de eğilimli yön) ve yönün rengiyle puan,
     altında Short|Long dengesini gösteren çubuk (nokta Long % konumunda)."""
@@ -301,7 +666,7 @@ def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
     if giris <= 0 or anl_f is None:
         return ""
     fark = ((anl_f - giris) / giris) if long_mi else ((giris - anl_f) / giris)
-    kz = miktar * KALDIRAC * fark
+    kz = miktar * KALDIRAC * fark - cikis_komisyonu(miktar, False)   # net: kapanışta ödenecek komisyon düşülmüş
     kz_yuzde = (kz / miktar * 100.0) if miktar > 0 else 0.0
     kz_renk = RENK_YESIL if kz >= 0 else RENK_KIRMIZI
 
@@ -325,7 +690,7 @@ def pozisyon_karti_html(row, anl_f, logo_url, toplam_kasa):
              f'<div>Güncel kasa kaydı: {float(row["Guncel_Kasa"]):,.2f} $</div></div></details>')
     return ('<div class="pos-card">'
             f'<div class="pos-head"><div class="pos-left">{logo}<div><div class="pos-name">{coin}</div><div class="pos-sub">{pill}<span class="pos-id">#{int(row["Islem_ID"])}</span></div></div></div>'
-            f'<div class="pos-kz" style="color:{kz_renk}">{kz:+,.2f} $<small>{kz_yuzde:+.1f}%</small></div></div>'
+            f'<div class="pos-kz" style="color:{kz_renk}">{kz:+,.2f} $<small>{kz_yuzde:+.1f}% net</small></div></div>'
             '<div class="range-wrap"><div class="range-bar">'
             f'<div class="range-tick" style="left:{t_giris*100:.1f}%"></div><div class="range-dot" style="left:{t_anlik*100:.1f}%"></div></div>'
             f'<div class="range-lbl"><span style="color:{RENK_KIRMIZI}">Stop {_fmt_fiyat(stop)}</span><span style="color:{RENK_YESIL}">Hedef {_fmt_fiyat(hedef)}</span></div>'
@@ -1853,14 +2218,13 @@ with col_orta_grafik:
         for oran, val in fib_levels.items():
             _ton = "255,235,59" if oran == 0.5 else ("0,255,0" if oran > 0.5 else "255,75,0")
             fig_total.add_hline(y=val, line_width=1.0, line_dash="dot", line_color=f"rgba({_ton},0.65)")
-            # Etiket: seviyenin altındaki bandın rengiyle dolu kutucuk, okunur yazı (açık zeminde koyu, koyu zeminde beyaz)
+            # Etiket: kutu yok; yazı rengi seviyenin altındaki bandın rengi (aynı ton, koyu zeminde okunsun diye parlaklaştırılmış)
             _j = _seviyeler.index(oran)
             _cr = _bant_renkleri[max(0, min(_j - 1, len(_bant_renkleri) - 1))]
-            _parlaklik = (0.2126 * _cr[0] + 0.7152 * _cr[1] + 0.0722 * _cr[2]) / 255.0
+            _kat = 235.0 / max(_cr)
+            _yazi = tuple(min(255, int(round(c * _kat))) for c in _cr)
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"<b>{oran:g}</b>", showarrow=False,
-                                     xanchor="left", xshift=6, borderpad=3,
-                                     bgcolor=f"rgb{_cr}", bordercolor="rgba(255,255,255,0.25)", borderwidth=1,
-                                     font=dict(size=12, color=("#111111" if _parlaklik > 0.5 else "#ffffff")))
+                                     xanchor="left", xshift=8, font=dict(size=12, color=f"rgb{_yazi}"))
 
         MAVI_CIZGI, RSI_CIZGI = "rgb(0, 0, 175)", "rgb(255, 255, 0)"
         fig_total.add_trace(go.Scatter(
@@ -1963,17 +2327,43 @@ with col_sol_analiz:
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
+def _ac_kapat_toggle(anahtar):
+    st.session_state[anahtar] = not st.session_state.get(anahtar, False)
+
+def _rapor_cb():
+    """Tüm işlemler + kasa + para akışı + analiz içeren A4 PDF raporu üretip e-posta ile gönderir."""
+    try:
+        st.cache_data.clear()
+        df_t = islem_gecmisi_getir()
+        df_k = kasa_defteri_getir()
+        bak = bakiye_durumunu_getir(ortak_fiyat_havuzu)
+        fiyatlar = {c: ortak_fiyat_havuzu.get(c, baz_fiyatlar.get(c, 0.0)) for c in (df_t["Coin"].unique() if df_t is not None and not df_t.empty else [])}
+        pdf_b, hata = rapor_pdf_olustur(df_t, df_k, bak, fiyatlar, tr_zaman())
+        if pdf_b is None:
+            st.session_state["kart_kapat_mesaj"] = (False, f"Rapor oluşturulamadı: {hata}")
+            return
+        dosya_adi = f"portfoy_raporu_{tr_zaman().strftime('%Y%m%d_%H%M')}.pdf"
+        ok_m, msg_m = rapor_maili_gonder(pdf_b, dosya_adi, bak, tr_zaman())
+        if ok_m:
+            st.session_state.pop("rapor_pdf", None)
+            st.session_state["kart_kapat_mesaj"] = (True, f"Rapor e-posta ile gönderildi ({dosya_adi}, {len(pdf_b) / 1024:.0f} KB).")
+        else:
+            st.session_state["rapor_pdf"] = (pdf_b, dosya_adi)
+            st.session_state["kart_kapat_mesaj"] = (False, f"Rapor oluşturuldu ama mail gönderilemedi: {msg_m} Raporu aşağıdan indirebilirsiniz.")
+    except Exception as e:
+        st.session_state["kart_kapat_mesaj"] = (False, f"Rapor hatası: {e}")
+
 def _tum_kapat_cb():
     """Kriz anı: onay işaretliyse tüm açık işlemleri güncel fiyattan tamamen kapatır."""
     try:
-        if not st.session_state.get("onay_tum_kapat", False):
+        if not st.session_state.get("tum_kapat_acik", False):
             return
         st.cache_data.clear()
         df_t = islem_gecmisi_getir()
         acik_t = df_t[~durum_kapali_maskesi(df_t["Durum"])] if df_t is not None and not df_t.empty else pd.DataFrame()
         if acik_t.empty:
             st.session_state["kart_kapat_mesaj"] = (True, "Kapatılacak açık işlem yok.")
-            st.session_state["onay_tum_kapat"] = False
+            st.session_state["tum_kapat_acik"] = False
             return
         basarili, hatalar = 0, []
         for _, r in acik_t.iterrows():
@@ -1991,7 +2381,7 @@ def _tum_kapat_cb():
         if hatalar:
             metin += " Kapatılamayanlar: " + " | ".join(hatalar)
         st.session_state["kart_kapat_mesaj"] = (not hatalar, metin)
-        st.session_state["onay_tum_kapat"] = False
+        st.session_state["tum_kapat_acik"] = False
     except Exception as e:
         st.session_state["kart_kapat_mesaj"] = (False, f"Toplu kapatma hatası: {e}")
 
@@ -2005,9 +2395,13 @@ with col_orta_durum:
         st.session_state["sadece_aktifleri_goster"] = False
         st.rerun()
     st.caption("Görünüm: Aktif işlemler" if st.session_state["sadece_aktifleri_goster"] else "Görünüm: Tüm işlemler")
-    st.checkbox("🚨 Tüm açık işlemleri kapatmayı onaylıyorum", key="onay_tum_kapat")
-    if st.session_state.get("onay_tum_kapat", False):
+    st.button("Aktif İşlemleri Sonlandır", key="btn_tum_ac", width="stretch", on_click=_ac_kapat_toggle, args=("tum_kapat_acik",))
+    if st.session_state.get("tum_kapat_acik", False):
         st.button("🛑 TÜM İŞLEMLERİ KAPAT", key="btn_tum_kapat", width="stretch", on_click=_tum_kapat_cb)
+    st.button("Tüm İşlemleri Raporla", key="btn_rapor", width="stretch", on_click=_rapor_cb)
+    if "rapor_pdf" in st.session_state:
+        _pdf_b, _pdf_ad = st.session_state["rapor_pdf"]
+        st.download_button("📄 Raporu indir (mail gönderilemedi)", data=_pdf_b, file_name=_pdf_ad, mime="application/pdf", width="stretch")
 
 with col_sag_sonlandir:
     st.markdown("<h3>🛡️ Risk & Kâr Özeti</h3>", unsafe_allow_html=True)
@@ -2037,15 +2431,15 @@ if not df_gecmisile_goster.empty:
         olasi_stop_sozluk[islem_id] = float(row["Olasi_Stop"])
 
         if not ("kapandi" in str(row["Durum"]).lower() or "kar" in str(row["Durum"]).lower() or "zarar" in str(row["Durum"]).lower() or "kısmi" in str(row["Durum"]).lower()):
-            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)), 2)
+            anlik_kz_sozluk[islem_id] = round(miktar * KALDIRAC * (((anl_f - giris_fiyat) / giris_fiyat) if "Long" in yon else ((giris_fiyat - anl_f) / giris_fiyat)) - cikis_komisyonu(miktar, False), 2)
         else:
             anlik_kz_sozluk[islem_id] = float(row["Net_Kar_Zarar"])
 
 # ---- Açık pozisyon kartları (yalnızca "Aktif İşlemler" görünümünde) ----
 def _kart_kapat_cb(islem_id, coin, miktar):
-    """Kapatma butonu: onay kutusu işaretliyse tamamını ya da girilen tutarı kapatır.
-    Callback içinde çalıştığı için işlem sonrası kutu ve tutar alanı güvenle sıfırlanır."""
-    onay_k, tutar_k = f"onay_kart_kapat_{islem_id}", f"kismi_tutar_{islem_id}"
+    """Kapatma butonu: açılan alan açıksa tamamını ya da girilen tutarı kapatır.
+    Callback içinde çalıştığı için işlem sonrası alan ve tutar güvenle sıfırlanır."""
+    onay_k, tutar_k = f"kart_ac_{islem_id}", f"kismi_tutar_{islem_id}"
     try:
         if not st.session_state.get(onay_k, False):
             return
@@ -2086,8 +2480,9 @@ if st.session_state["sadece_aktifleri_goster"]:
                         _id = int(_r["Islem_ID"])
                         st.markdown(pozisyon_karti_html(_r, anlik_fiyat_sozluk.get(_r["Islem_ID"]), logo_urls.get(_r["Coin"], ""), toplam_kasa), unsafe_allow_html=True)
                         _miktar = float(_r["Islem_Miktari"])
-                        _onay = st.checkbox("Kapatmayı onaylıyorum", key=f"onay_kart_kapat_{_id}")
-                        if _onay:
+                        st.button(f"{_id} ID İşlemini Sonlandır", key=f"btn_kart_ac_{_id}", width="stretch",
+                                  on_click=_ac_kapat_toggle, args=(f"kart_ac_{_id}",))
+                        if st.session_state.get(f"kart_ac_{_id}", False):
                             _etiket = "🛑 İşlemi Kapat"
                             _tutar = st.number_input("Kapatılacak tutar ($) — tamamı için bırakın", min_value=0.01, max_value=_miktar,
                                                      value=_miktar, step=10.0, key=f"kismi_tutar_{_id}")

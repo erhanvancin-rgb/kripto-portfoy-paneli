@@ -1834,23 +1834,25 @@ with col_orta_grafik:
         alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.28), max_f + (fiyat_fark * 0.28)
 
         fig_total = go.Figure()
-        # Zemin: üstte koyu yeşil, ortada sarı, altta bordo; 64 ince, tam opak bant ile yumuşak geçiş
-        _f_ust, _f_alt = fib_levels[1.236], fib_levels[-0.236]
-        _duraklar = [(0.0, (6, 64, 28)), (0.5, (140, 120, 10)), (1.0, (88, 8, 32))]
-        _N = 64
-        for _i in range(_N):
-            _f = (_i + 0.5) / _N
-            for _k in range(len(_duraklar) - 1):
-                if _duraklar[_k][0] <= _f <= _duraklar[_k + 1][0]:
-                    _w = (_f - _duraklar[_k][0]) / (_duraklar[_k + 1][0] - _duraklar[_k][0])
-                    _rgb = tuple(int(round(_duraklar[_k][1][c] + (_duraklar[_k + 1][1][c] - _duraklar[_k][1][c]) * _w)) for c in range(3))
-                    break
-            _y1 = _f_ust - (_f_ust - _f_alt) * _i / _N
-            _y0 = _f_ust - (_f_ust - _f_alt) * (_i + 1) / _N
-            fig_total.add_hrect(y0=_y0, y1=_y1, fillcolor=f"rgb{_rgb}", opacity=1, line_width=0, layer="below")
+        # Zemin: her fibonacci aralığı kendi düz rengiyle (degrade yok): altta bordo -> ortada sarı -> üstte koyu yeşil
+        _seviyeler = sorted(fib_levels.keys())
+        _bant_renkleri = [
+            (96, 10, 36),    # -0.236 – 0      bordo
+            (130, 30, 30),   # 0 – 0.236       koyu kırmızı
+            (158, 72, 18),   # 0.236 – 0.382   turuncu-kahve
+            (170, 135, 8),   # 0.382 – 0.5     amber-sarı
+            (160, 150, 10),  # 0.5 – 0.618     sarı
+            (92, 128, 22),   # 0.618 – 0.786   sarı-yeşil
+            (24, 104, 40),   # 0.786 – 1       yeşil
+            (8, 70, 30),     # 1 – 1.236       koyu yeşil
+        ]
+        for _i in range(len(_seviyeler) - 1):
+            _rgb = _bant_renkleri[min(_i, len(_bant_renkleri) - 1)]
+            fig_total.add_hrect(y0=fib_levels[_seviyeler[_i]], y1=fib_levels[_seviyeler[_i + 1]],
+                                fillcolor=f"rgb{_rgb}", opacity=1, line_width=0, layer="below")
         for oran, val in fib_levels.items():
             _ton = "255,235,59" if oran == 0.5 else ("0,255,0" if oran > 0.5 else "255,75,0")
-            fig_total.add_hline(y=val, line_width=0.8, line_dash="dot", line_color=f"rgba({_ton},0.45)")
+            fig_total.add_hline(y=val, line_width=1.0, line_dash="dot", line_color=f"rgba({_ton},0.65)")
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"{oran:g}", showarrow=False,
                                      xanchor="left", xshift=6, font=dict(size=10, color=f"rgb({_ton})"))
 

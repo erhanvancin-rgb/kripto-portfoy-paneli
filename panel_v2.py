@@ -1840,8 +1840,8 @@ with col_orta_grafik:
             (96, 10, 36),    # -0.236 – 0      bordo
             (130, 30, 30),   # 0 – 0.236       koyu kırmızı
             (158, 72, 18),   # 0.236 – 0.382   turuncu-kahve
-            (170, 135, 8),   # 0.382 – 0.5     amber-sarı
-            (160, 150, 10),  # 0.5 – 0.618     sarı
+            (148, 110, 6),   # 0.382 – 0.5     koyu amber
+            (192, 172, 14),  # 0.5 – 0.618     açık sarı
             (92, 128, 22),   # 0.618 – 0.786   sarı-yeşil
             (24, 104, 40),   # 0.786 – 1       yeşil
             (8, 70, 30),     # 1 – 1.236       koyu yeşil
@@ -1853,8 +1853,14 @@ with col_orta_grafik:
         for oran, val in fib_levels.items():
             _ton = "255,235,59" if oran == 0.5 else ("0,255,0" if oran > 0.5 else "255,75,0")
             fig_total.add_hline(y=val, line_width=1.0, line_dash="dot", line_color=f"rgba({_ton},0.65)")
-            fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"{oran:g}", showarrow=False,
-                                     xanchor="left", xshift=6, font=dict(size=10, color=f"rgb({_ton})"))
+            # Etiket: seviyenin altındaki bandın rengiyle dolu kutucuk, okunur yazı (açık zeminde koyu, koyu zeminde beyaz)
+            _j = _seviyeler.index(oran)
+            _cr = _bant_renkleri[max(0, min(_j - 1, len(_bant_renkleri) - 1))]
+            _parlaklik = (0.2126 * _cr[0] + 0.7152 * _cr[1] + 0.0722 * _cr[2]) / 255.0
+            fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"<b>{oran:g}</b>", showarrow=False,
+                                     xanchor="left", xshift=6, borderpad=3,
+                                     bgcolor=f"rgb{_cr}", bordercolor="rgba(255,255,255,0.25)", borderwidth=1,
+                                     font=dict(size=12, color=("#111111" if _parlaklik > 0.5 else "#ffffff")))
 
         MAVI_CIZGI, RSI_CIZGI = "rgb(0, 0, 175)", "rgb(255, 255, 0)"
         fig_total.add_trace(go.Scatter(
@@ -1870,9 +1876,10 @@ with col_orta_grafik:
             marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=28, l=8, r=64), height=340,
-            xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=7200000, tickformat="%H:%M", tickangle=0,
-                       tickfont=dict(size=10, color="#8fa0ba"), showgrid=False, zeroline=False, showline=False),
+            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), height=340,
+            xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
+                       tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
+                       zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False),
             xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             hovermode="x unified", hoverlabel=dict(bgcolor="#101827", bordercolor="#253247", font=dict(color="#e8eef8", size=12)),

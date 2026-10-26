@@ -1683,7 +1683,9 @@ if st.session_state.get("kasa_islem_acik", False):
     with col_onay:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
         if st.button("💾 Onayla", width='stretch', key="kasa_onayla"):
-            basarili, mesaj = kasa_islem_ekle("Para_Yatir" if islem_yatir else "Para_Cek", kasa_tutar, kasa_aciklama)
+            islem_turu_str = "Para_Yatir" if islem_yatir else "Para_Cek"
+            # Eski fonksiyon yerine doğrudan kasa_motoru modülünü çağırıyoruz:
+            basarili, mesaj = kasa_motoru.islem_ekle(islem_turu_str, kasa_tutar, kasa_aciklama)
             if basarili:
                 st.success(mesaj)
                 st.session_state["kasa_islem_acik"] = False

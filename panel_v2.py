@@ -619,29 +619,32 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
         import traceback
         return None, f"{type(e).__name__}: {e} | {traceback.format_exc().splitlines()[-3][:120]}"
 
-def _gmail_sifresi_bul():
-    """GMAIL_PASSWORD'ü sırayla ortam değişkeninde, secrets'ın en üstünde ve secrets bölümlerinin içinde arar.
-    (TOML'da [bölüm] başlığından sonra yazılan anahtarlar o bölüme aittir; örn. gcp_service_account içine düşebilir.)"""
-    sifre = os.environ.get("GMAIL_PASSWORD", "").strip()
-    if sifre:
-        return sifre
+def _secret_bul(anahtar):
+    """Anahtarı sırayla ortam değişkeninde, secrets'ın en üstünde ve secrets bölümlerinin içinde arar.
+    (TOML'da [bölüm] başlığından sonra yazılan anahtarlar o bölüme aittir.)"""
+    deger = os.environ.get(anahtar, "").strip()
+    if deger:
+        return deger
     try:
-        if "GMAIL_PASSWORD" in st.secrets:
-            return str(st.secrets["GMAIL_PASSWORD"]).strip()
+        if anahtar in st.secrets:
+            return str(st.secrets[anahtar]).strip()
         for ad in list(st.secrets.keys()):
             try:
                 bolum = st.secrets[ad]
-                if hasattr(bolum, "keys") and "GMAIL_PASSWORD" in bolum:
-                    return str(bolum["GMAIL_PASSWORD"]).strip()
+                if hasattr(bolum, "keys") and anahtar in bolum:
+                    return str(bolum[anahtar]).strip()
             except Exception:
                 continue
     except Exception:
         pass
     return ""
 
+def _gmail_sifresi_bul():
+    return _secret_bul("GMAIL_PASSWORD")
+
 def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
-    gonderici_mail = "erhanvancin@gmail.com"
-    alici_mail = "erhanvancin@gmail.com"
+    gonderici_mail = _secret_bul("GONDERICI_MAIL") or "erhanvancin@gmail.com"
+    alici_mail = _secret_bul("ALICI_MAIL") or gonderici_mail
     sifre = _gmail_sifresi_bul().replace(" ", "")   # Google uygulama şifresini "abcd efgh ..." diye gösterir
     if not sifre:
         return False, "GMAIL_PASSWORD bulunamadı (Streamlit secrets'ın EN ÜSTÜNE, herhangi bir [bölüm] başlığından önce ekleyin)."
@@ -649,30 +652,58 @@ def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
     govde = (f"<h3>Kripto Portföy Raporu</h3><p>Oluşturulma: {zaman.strftime('%d.%m.%Y %H:%M')}</p>"
              f"<p><b>Toplam kasa:</b> {toplam_kasa:,.2f} $<br><b>Efektif kasa:</b> {efektif_kasa:,.2f} $<br>"
              f"<b>Anlık K/Z (net):</b> {acik_kz:+,.2f} $<br><b>Boş nakit:</b> {bos_bakiye:,.2f} $</p>"
-             "<p>Tüm işlemler, para akışı ve analizler ekteki A4 PDF dosyasındadır.</p>")
-    server = None
+             "<p>Rapor ekteki tek sayfalık A4 PDF dosyasındadır.</p>")
+    msg = MIMEMultipart()
+    msg["From"], msg["To"], msg["Subject"] = gonderici_mail, alici_mail, f"📄 Portföy Raporu - {zaman.strftime('%d.%m.%Y %H:%M')}"
+    msg.attach(MIMEText(govde, "html", "utf-8"))
+    ek = MIMEApplication(pdf_bytes, _subtype="pdf")
+    ek.add_header("Content-Disposition", "attachment", filename=dosya_adi)
+    msg.attach(ek)
+    govde_metni = msg.as_string()
+
+    hatalar = []
+    for yontem, port in (("SSL", 465), ("STARTTLS", 587)):
+        server = None
+        try:
+            if yontem == "SSL":
+                server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30)
+            else:
+                server = smtplib.SMTP("smtp.gmail.com", port, timeout=30)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            server.login(gonderici_mail, sifre)
+            server.sendmail(gonderici_mail, [alici_mail], govde_metni)
+            return True, f"E-posta gönderildi ({yontem}/{port})."
+        except smtplib.SMTPAuthenticationError:
+            return False, ("Gmail girişi reddedildi (535). Normal hesap şifresi kabul edilmez: Google hesabında 2 adımlı doğrulamayı açıp "
+                           "'Uygulama şifresi' oluşturun ve onu GMAIL_PASSWORD olarak girin.")
+        except Exception as e:
+            hatalar.append(f"{port}: {type(e).__name__}: {str(e)[:100]}")
+        finally:
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+    return False, "Gmail'e bağlanılamadı (" + " | ".join(hatalar) + ")"
+
+def rapor_telegram_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
+    """Mail gönderilemezse yedek kanal: PDF'i Telegram'a belge olarak yollar (secrets'ta TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID gerekir)."""
+    token, chat_id = _secret_bul("TELEGRAM_BOT_TOKEN"), _secret_bul("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return False, "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets'ta yok"
+    toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_kz = [float(x) for x in bakiye]
+    aciklama = (f"📄 Portföy Raporu {zaman.strftime('%d.%m.%Y %H:%M')}\nToplam kasa: {toplam_kasa:,.2f} $ · Efektif: {efektif_kasa:,.2f} $ · "
+                f"Anlık K/Z: {acik_kz:+,.2f} $")
     try:
-        msg = MIMEMultipart()
-        msg["From"], msg["To"], msg["Subject"] = gonderici_mail, alici_mail, f"📄 Portföy Raporu - {zaman.strftime('%d.%m.%Y %H:%M')}"
-        msg.attach(MIMEText(govde, "html", "utf-8"))
-        ek = MIMEApplication(pdf_bytes, _subtype="pdf")
-        ek.add_header("Content-Disposition", "attachment", filename=dosya_adi)
-        msg.attach(ek)
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30)
-        server.login(gonderici_mail, sifre)
-        server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
-        return True, "E-posta gönderildi."
-    except smtplib.SMTPAuthenticationError:
-        return False, ("Gmail girişi reddedildi (535). Normal hesap şifresi kabul edilmez: Google hesabında 2 adımlı doğrulamayı açıp "
-                       "'Uygulama şifresi' oluşturun ve onu GMAIL_PASSWORD olarak girin.")
+        yanit = requests.post(f"https://api.telegram.org/bot{token}/sendDocument", data={"chat_id": chat_id, "caption": aciklama},
+                              files={"document": (dosya_adi, pdf_bytes, "application/pdf")}, timeout=40)
+        if yanit.status_code == 200 and yanit.json().get("ok"):
+            return True, "Telegram'a gönderildi."
+        return False, f"Telegram yanıtı: {yanit.status_code} {yanit.text[:100]}"
     except Exception as e:
-        return False, str(e)
-    finally:
-        if server is not None:
-            try:
-                server.quit()
-            except Exception:
-                pass
+        return False, f"{type(e).__name__}: {str(e)[:100]}"
 
 def matris_birlesik_html(nihai_puan, aktif_yon, y_yuzde, k_yuzde):
     """Matris puanı + teyit tek sütunda: yön adı (Long/Short, nötr bölgede de eğilimli yön) ve yönün rengiyle puan,
@@ -990,18 +1021,27 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)
+def _sayfa_nesnesi(sayfa_adi):
+    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
+    if "gcp_service_account" in st.secrets:
+        sec_dict = dict(st.secrets["gcp_service_account"])
+        sec_dict.pop("GMAIL_PASSWORD", None)   # [bölüm] içine düşmüş mail şifresi servis hesabı bilgisine karışmasın
+        if "private_key" in sec_dict:
+            sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
+        client = gspread.service_account_from_dict(sec_dict)
+    else:
+        client = gspread.service_account(filename="credentials.json")
+    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
+
+_SON_SHEETS_HATASI = {"mesaj": ""}
+
 def google_sheets_baglan(sayfa_adi):
     try:
-        if "gcp_service_account" in st.secrets:
-            sec_dict = dict(st.secrets["gcp_service_account"])
-            if "private_key" in sec_dict:
-                sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
-            client = gspread.service_account_from_dict(sec_dict)
-        else:
-            client = gspread.service_account(filename="credentials.json")
-        return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
-    except Exception:
+        return _sayfa_nesnesi(sayfa_adi)
+    except Exception as e:
+        _SON_SHEETS_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
+        print(f"Sheets bağlantı hatası ({sayfa_adi}): {_SON_SHEETS_HATASI['mesaj']}")
         return None
 
 @st.cache_data(ttl=15)
@@ -1150,8 +1190,11 @@ def _defter_id_oku(deger):
     except Exception:
         return None
 
+_SON_DEFTER_HATASI = {"mesaj": ""}
+
 def _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
     """KasaDefteri'ne yalnızca satır EKLER (silip baştan yazmaz; motorla aynı anda yazsa bile satır kaybolmaz)."""
+    _SON_DEFTER_HATASI["mesaj"] = ""
     for deneme in range(1, 4):
         sheet = google_sheets_baglan("KasaDefteri")
         if sheet is not None:
@@ -1166,7 +1209,14 @@ def _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
                 st.cache_data.clear()
                 return True
             except Exception as e:
-                print(f"Kasa defteri kayıt hatası (deneme {deneme}/3): {e}")
+                _SON_DEFTER_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
+                print(f"Kasa defteri kayıt hatası (deneme {deneme}/3): {_SON_DEFTER_HATASI['mesaj']}")
+                try:
+                    _sayfa_nesnesi.clear()      # bayat bağlantı olabilir: bir sonraki denemede yeniden bağlan
+                except Exception:
+                    pass
+        else:
+            _SON_DEFTER_HATASI["mesaj"] = _SON_SHEETS_HATASI["mesaj"] or "Google Sheets'e bağlanılamadı"
         if deneme < 3:
             time.sleep(2 * deneme)
     st.cache_data.clear()
@@ -1177,7 +1227,8 @@ def kasa_islem_ekle(islem_turu, tutar, aciklama):
     net_tutar = float(tutar) * islem_carpan
     if _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
         return True, f"Kasa işlemi başarılı: {islem_turu} -> {net_tutar:.2f} $"
-    return False, "⚠️ Kasa defterine yazılamadı! İşlem kaydedilmedi, lütfen tekrar deneyin."
+    detay = _SON_DEFTER_HATASI["mesaj"] or "bilinmeyen hata"
+    return False, f"⚠️ Kasa defterine yazılamadı! İşlem kaydedilmedi, lütfen tekrar deneyin. Ayrıntı: {detay}"
 
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     return _deftere_satir_ekle(islem_turu, tutar, aciklama)
@@ -2244,8 +2295,13 @@ def _rapor_cb():
             st.session_state.pop("rapor_pdf", None)
             st.session_state["kart_kapat_mesaj"] = (True, f"Rapor e-posta ile gönderildi ({dosya_adi}, {len(pdf_b) / 1024:.0f} KB).")
         else:
-            st.session_state["rapor_pdf"] = (pdf_b, dosya_adi)
-            st.session_state["kart_kapat_mesaj"] = (False, f"Rapor oluşturuldu ama mail gönderilemedi: {msg_m} Raporu aşağıdan indirebilirsiniz.")
+            ok_t, msg_t = rapor_telegram_gonder(pdf_b, dosya_adi, bak, tr_zaman())
+            if ok_t:
+                st.session_state.pop("rapor_pdf", None)
+                st.session_state["kart_kapat_mesaj"] = (True, f"Mail gönderilemedi ({msg_m}) ama rapor Telegram'a gönderildi ({dosya_adi}).")
+            else:
+                st.session_state["rapor_pdf"] = (pdf_b, dosya_adi)
+                st.session_state["kart_kapat_mesaj"] = (False, f"Rapor oluşturuldu ama gönderilemedi. Mail: {msg_m} | Telegram: {msg_t}. Raporu aşağıdan indirebilirsiniz.")
     except Exception as e:
         st.session_state["kart_kapat_mesaj"] = (False, f"Rapor hatası: {e}")
 

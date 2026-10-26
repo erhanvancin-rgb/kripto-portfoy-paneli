@@ -1723,7 +1723,7 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.1, 2.7, 1.2])
 
 with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)
@@ -1775,7 +1775,7 @@ with col_sol_panel:
         st.markdown(f"""<div style="background:#17263b; padding:12px; border-radius:10px; margin-bottom:12px;">💡 Önerilen Tutar: <b>{onerilen_tutar_hesap:,.2f} $</b></div>""", unsafe_allow_html=True)
 
     if not st.session_state.get("islem_emri_kilit_acik", False):
-        if st.button("🔓 İşlem Açma Kilidini Aç", width='stretch', key="btn_islem_kilidi_ac"):
+        if st.button("🔓 İşlem Açma Kilidini Aç", use_container_width=True, key="btn_islem_kilidi_ac"):
             if coin_listesi:
                 st.session_state["islem_emri_kilit_acik"] = True
                 st.rerun()
@@ -1789,9 +1789,9 @@ with col_sol_panel:
             
             col_islem_yap, col_kapat_kilit = st.columns(2)
             with col_islem_yap:
-                submit_islem = st.form_submit_button("🚀 İşlemi Başlat", width='stretch')
+                submit_islem = st.form_submit_button("🚀 İşlemi Başlat", use_container_width=True)
             with col_kapat_kilit:
-                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", width='stretch')
+                kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", use_container_width=True)
             if kapat_kilit_tik:
                 st.session_state["islem_emri_kilit_acik"] = False
                 st.rerun()
@@ -1853,12 +1853,12 @@ with col_orta_grafik:
         fig_total.add_trace(go.Scatter(x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI", line=dict(color=RSI_CIZGI, width=1.5)))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), height=340,
+            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=20), height=340,
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M"),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False),
             xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(fig_total, use_container_width=True, config={"displayModeBar": False})
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
@@ -1871,9 +1871,6 @@ with col_sag_endeks:
     st.markdown(f'<div class="metric-container" style="text-align: center;"><div style="font-size: 12px;">Top 5 Puan: {total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</div></div>', unsafe_allow_html=True)
 
 st.markdown("---")
-
-df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
-col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.5, 1, 1], gap="medium")
 
 with col_sol_analiz:
     st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)

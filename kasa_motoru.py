@@ -4,7 +4,7 @@ from datetime import datetime
 import gspread
 
 KASA_DOSYASI = "kasa_defteri.json"
-GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
+GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani_Yeni"
 BASLANGIC_BAKIYE = 0.0
 KALDIRAC = 5
 KOMISYON_TAKER = 0.0005
@@ -29,7 +29,7 @@ def _sheets_baglan(sayfa_adi):
                 client = gspread.service_account_from_dict(sec)
             else:
                 client = gspread.service_account(filename="credentials.json")
-            return client.open("KriptoPortfoyVeritabani").worksheet(sayfa_adi)
+            return client.open("KriptoPortfoyVeritabani_Yeni").worksheet(sayfa_adi)
         except Exception as ex:
             print(f"Sheets bağlantı hatası: {ex}")
             return None

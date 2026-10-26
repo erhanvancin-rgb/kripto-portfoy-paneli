@@ -9,7 +9,6 @@ def _sheets_baglan(sayfa_adi):
     try:
         import gspread
         
-        # Doğrudan proje içindeki gizli py dosyasından alıyoruz
         try:
             from credentials import GCP_SECRETS
             sec = dict(GCP_SECRETS)
@@ -31,47 +30,57 @@ def _sheets_baglan(sayfa_adi):
         return None, str(e)
 
 def _verileri_tablodan_oku():
-    """
-    Tüm geçmişi ve güncel bakiyeyi SADECE E-Tablodan okur.
-    Böylece e-tabloda elle yapılan her düzeltme panele anında yansır.
-    """
+    """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
     sheet, hata = _sheets_baglan("KasaDefteri")
     if sheet is None:
-        print(f"E-Tablo okuma hatası: {hata}")
+        print(f"E-Tablo bağlantı hatası: {hata}")
         return 0.0, []
         
     try:
         satirlar = sheet.get_all_values()
         if not satirlar or len(satirlar) <= 1:
-            return 0.0, [] # Sadece başlık varsa bakiye 0
+            return 0.0, []
             
         veri_satirlari = satirlar[1:]
         gecmis = []
         bakiye = 0.0
         
-        # Satırları baştan sona okuyup güncel bakiyeyi dinamik hesaplıyoruz
         for row in veri_satirlari:
-            if len(row) < 4: continue
+            if not row or len(row) < 3: 
+                continue
             
-            islem_id = row[0]
-            zaman = row[1]
-            tur = row[2]
+            islem_id = row[0] if len(row) > 0 else ""
+            zaman = row[1] if len(row) > 1 else ""
+            tur = row[2] if len(row) > 2 else ""
+            
+            # Tutar hücresini bulmaya çalışıyoruz (genelde 3. indeks)
+            tutar_str = "0"
+            for col_idx in [3, 4, 2]: # Alternatif sütunları da kontrol et
+                if len(row) > col_idx:
+                    val = str(row[col_idx]).strip()
+                    # Sayı formatına benziyorsa tutar olarak al
+                    if any(char.isdigit() for char in val):
+                        tutar_str = val
+                        break
             
             try:
-                # E-tablodaki virgülleri noktaya çevirip sayıya dönüştürüyoruz
-                tutar = float(str(row[3]).replace(',', '.'))
+                tutar = float(tutar_str.replace(' ', '').replace('₺', '').replace('$', '').replace(',', '.'))
             except ValueError:
                 tutar = 0.0
                 
-            aciklama = row[4] if len(row) > 4 else ""
+            aciklama = row[4] if len(row) > 4 else (row[3] if len(row) > 3 else "")
             
-            # İşlem türüne göre bakiyeye etki
-            if tur in ["Para_Yatir", "SATIM"]:
+            # İşlem türüne göre bakiye hesabı
+            tur_kucuk = tur.lower()
+            if any(k in tur_kucuk for k in ["yatir", "satim", "gelir", "ekle"]):
                 bakiye += tutar
-            elif tur in ["Para_Cek", "ALIM", "Komisyon"]:
+            elif any(k in tur_kucuk for k in ["cek", "alim", "gider", "komisyon"]):
                 bakiye -= abs(tutar)
-            elif tur == "Trade_Sonuc":
-                bakiye += tutar # Kâr artı, zarar zaten eksi olarak gelir
+            elif "trade" in tur_kucuk:
+                bakiye += tutar
+            else:
+                # Varsayılan olarak pozitifse ekle
+                bakiye += tutar
                 
             gecmis.append({
                 "id": islem_id,
@@ -82,12 +91,11 @@ def _verileri_tablodan_oku():
                 "guncel_bakiye": round(bakiye, 2)
             })
             
-        # Panelin en son işlemi en üstte göstermesi için listeyi ters çeviriyoruz
         gecmis.reverse()
         return round(bakiye, 2), gecmis
         
     except Exception as e:
-        print(f"E-tablo verisi işlenirken hata: {e}")
+        print(f"E-tablo okuma hatası: {e}")
         return 0.0, []
 
 def bakiye_getir():
@@ -99,10 +107,7 @@ def gecmis_getir():
     return gecmis
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
-    """
-    Yerel dosyayı tamamen devre dışı bırakır ve
-    yeni işlemi DOĞRUDAN Google E-Tabloya yazar.
-    """
+    """Yeni işlemi doğrudan Google E-Tabloya kaydeder."""
     try:
         sheet, hata = _sheets_baglan("KasaDefteri")
         if sheet is None:
@@ -121,7 +126,6 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
         yeni_id = (max(idler) if idler else 0) + 1
         tarih_str = datetime.now().strftime("%d.%m.%Y %H:%M")
         
-        # Ekstra komisyon açıklamasını ekle
         if komisyon > 0:
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             

@@ -1039,15 +1039,6 @@ def _sayfa_nesnesi(sayfa_adi):
     else:
         client = gspread.service_account(filename="credentials.json")
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
-    else:
-        client = gspread.service_account(filename="credentials.json")
-    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
-    else:
-        client = gspread.service_account(filename="credentials.json")
-    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
-    else:
-        client = gspread.service_account(filename="credentials.json")
-    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
 
 _SON_SHEETS_HATASI = {"mesaj": ""}
 

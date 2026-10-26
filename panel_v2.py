@@ -1023,50 +1023,11 @@ def kurgusal_matris_hesapla(coin_symbol):
 
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
-    """Google servis hesabı kimlik bilgilerini hatasız Python sözlüğü ile okur."""
-    gcp_dict = {
-        "type": "service_account",
-        "project_id": "western-avatar-442315-t7",
-        "private_key_id": "7065d5fc47c901f5ff94edf52b0522b77b1894e4",
-        "private_key": (
-            "-----BEGIN PRIVATE KEY-----\n"
-            "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDGkT/btm4gKlqg\n"
-            "xKt8BlW7ZbE6YZt6A47SqgvbVJ6rZ6DW4e3z4M4QtK4+CpBQ5MBGAo8CLxaGzsJJ\n"
-            "1Rr2TAmAVxktDFArpq/+0ohiW4hUBt4dpt3HaGIPbfwUpXJKA0kcOzV2S8Q3vvO4\n"
-            "JF3U/OyO2flyGDNJ9SjvxJQEa2shLHYEzfXwC1FCK3Df71j5I1nFQaGCi/bm9+/H\n"
-            "w1E1iXKvrtWi3TlQ6DeWEHilVDopRu3gMRW//em09QHsphGSakF2/FemM0ftUNlO\n"
-            "XlZp8K8HAr/hyU8blGX2EiDeJ1H2DnXArb9LpaXCvlIbaDbgGI9kBEMqlH/ZGu/v\n"
-            "BVkHdpuJAgMBAAECggEAEHKzrCApGyJRri4xrkJavlJ8Ixk2vHKoVVb0nc8dSEF7\n"
-            "QebRGSSEApTqN1q/UulqloyxCpNFSxa8DUrzwsx69QCXUJ32fhx+nkho4mIxTBSN\n"
-            "jZM8R7+jxSIX1stQSO/gvHqYa8Yhk3njzQW7fWBouqSKVHh2DH2cTdAmGqpIjiTF\n"
-            "UL3OLLfFlDH2gxeLDhs067nOIM9Txzhk6VOg7xYMIZl4iekwi2g71DAO0nf3dv1Z\n"
-            "E47yEz4ftSox2S6gcu4Rngdb9H28PIrnSJaBBeyZR+7DiooU/ifVSTzwMw6ePSPC\n"
-            "31o8THS/VdfHnwrn48oy2PkJ02KPt1mZoEbxRorYIQKBgQDoVY3ogta3bhRDbGIb\n"
-            "/cMIctrwNY9rqhRRvBPCzSax2LSGdxBMaCHE7Gl0CiyVjqxFWhvsivvitznWeMik\n"
-            "Ta7VTpr/cNIcn5uOS/ONE4BQp+WYtsEUDY3m+TghlniLL/wzVcEwzB1ltesR8aiM\n"
-            "50RuXk3j3mqZN+oyZOFuLAWRpQKBgQDayy1d0gehaBdNJ3AGfCJWFoJFSDPAuDZj\n"
-            "NPA+VTGW8xIZ8bc+PifY+UJGOVBbv5GBt8kA/Sog/hTgqNDOXr0IDe0ebrSqbQeT\n"
-            "FuSwq4cy3h8YdN3Pts8Iwvap7QorKrRaemb2HeYyaNrKIyc9YjRs07s1Hn9UOhMM\n"
-            "XE7qEGi1FQKBgBofrJItTAlaBktCf5GYKfrkNzv1OcgoWpqKJEquGKC8tie8cYe1\n"
-            "2b4zuvPCRRsX7MTrieJCCmqGoak88YqP9Y2khgcc33M6exo37g252J65EjbmrbUc\n"
-            "hQ0ojqgwLCOyZJA9HzjmapPKLcFZw9L8GhSy490wYBoUUHAUKcjiiEnFAoGAM7Ma\n"
-            "7zZ38x3jk6mkAQRIIMuE0NY01G8y+tJBipka9K5PMq45PI33YH/Vtz5HzMZBncNN\n"
-            "nzdwEnnMrf8KkRH+Cb2rLAwvpyPOmfI1GULDXa5+s/VxwJWrvFQTswE5wvq6Cm3ac\n"
-            "6b866+J3AJi55vlTpfuKGw0vzTlD0wHk684gz9kCgYEA0LgvT7wXKSEXrv77r1R5\n"
-            "xZNbGiZSsRxxhTtmI5SqY9EEjtIGWvfvM8hG6OH+Q60AJwzlngIYQ4UtQB5cpdk2\n"
-            "gbRTcpGhe0LeXv9YQQ6xkJlu1zuZ4hMaM+m8qTEmmnegsPT+F8HgF962rpPHCgV4\n"
-            "wtLHFjp5rT9teRNV4FMOGSU=\n"
-            "-----END PRIVATE KEY-----"
-        ),
-        "client_email": "kripto-bot@western-avatar-442315-t7.iam.gserviceaccount.com",
-        "client_id": "116674981434745196964",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kripto-bot%40western-avatar-442315-t7.iam.gserviceaccount.com",
-        "universe_domain": "googleapis.com"
-    }
-    client = gspread.service_account_from_dict(gcp_dict)
+    """credentials.json dosyasını kodun bulunduğu dizinden mutlak yol ile hatasız yükler."""
+    import os
+    import gspread
+    cred_yolu = os.path.join(os.path.dirname(os.path.abspath(__file__)), "credentials.json")
+    client = gspread.service_account(filename=cred_yolu)
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
 
 _SON_SHEETS_HATASI = {"mesaj": ""}

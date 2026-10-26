@@ -658,11 +658,7 @@ def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
         ek = MIMEApplication(pdf_bytes, _subtype="pdf")
         ek.add_header("Content-Disposition", "attachment", filename=dosya_adi)
         msg.attach(ek)
-        
-        # DÜZELTME: timeout kaldırıldı ve el sıkışma (ehlo) eklendi
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.ehlo() 
-        
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30)
         server.login(gonderici_mail, sifre)
         server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
         return True, "E-posta gönderildi."
@@ -824,11 +820,9 @@ def gmail_bildirim_gonder(konu, icerik_html):
         msg["Subject"] = konu
         msg.attach(MIMEText(icerik_html, "html", "utf-8"))
 
-        server = smtplib.SMTP_SSL("://gmail.com", 465)
-        server.ehlo()
-        server.login(gonderici_mail, sifre)
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
+        server.login(gonderici_mail, uygulama_sifresi)
         server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
-
         return True, "E-posta başarıyla gönderildi."
     except Exception as e:
         return False, str(e)

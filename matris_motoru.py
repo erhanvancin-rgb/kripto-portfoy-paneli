@@ -4,9 +4,9 @@ Matris puanlama motoru: panel (panel_v2.py) ve GitHub motoru (check_engine.py) A
 Süre | Ağırlık | Mum aralığı | Mum sayısı
 16 S |  7,30   | 15 dakika   | 64
  8 S | 11,80   |  5 dakika   | 96
- 4 S | 61,80   |  5 dakika   | 48
- 2 S | 11,80   |  1 dakika   | 120
- 1 S |  7,30   |  1 dakika   | 60
+ 4 S | 19,10   |  5 dakika   | 48
+ 2 S | 23,60   |  1 dakika   | 120
+ 1 S | 38,20   |  1 dakika   | 60
 
 Her süre penceresi için 6 kanıt üretilir (her biri -1 = Short ... +1 = Long):
   1) Mum gövdesi baskınlığı      (yeşil/kırmızı gövde büyüklükleri)
@@ -28,12 +28,12 @@ import pandas as pd
 
 # ------------------------------------------------------------------ AYARLAR
 DILIMLER = [
-    # (etiket, mum aralığı, mum sayısı, ağırlık)
+    # (etiket, mum aralığı, mum sayısı, ağırlık) - Günlük Intraday Trade Optimizasyonu
     ("16 S", "15m", 64, 7.30),
     ("8 S", "5m", 96, 11.80),
-    ("4 S", "5m", 48, 61.80),
-    ("2 S", "1m", 120, 11.80),
-    ("1 S", "1m", 60, 7.30),
+    ("4 S", "5m", 48, 19.10),
+    ("2 S", "1m", 120, 23.60),
+    ("1 S", "1m", 60, 38.20),
 ]
 
 # ANA YÖN: net hareketin yönünü belirleyen kanıtlar (gövde baskınlığı + trend verimliliği)

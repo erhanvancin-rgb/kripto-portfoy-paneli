@@ -1061,11 +1061,9 @@ def kapanis_deftere_yaz_tekil(islem_id, etiket, coin, tutar, sonuc_metin):
     return kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin} ({sonuc_metin})")
 
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
-    """Kasanın güncel nakit durumunu, açık pozisyon karlarını ve efektif kasayı hesaplar."""
+    # Tüm bakiye ve kasa hesaplamaları artık doğrudan kasa_motoru üzerinden yönetilir
+    nakit_bakiye = kasa_motoru.bakiye_getir()
     df_trade = islem_gecmisi_getir(sheet_guncelle=False)
-    
-    # Doğrudan yerel kasa motorundan güncel nakit bakiyeyi çekiyoruz
-    toplam_kasa = kasa_motoru.bakiye_getir()
     
     acik_df = pd.DataFrame()
     if not df_trade.empty and "Durum" in df_trade.columns:
@@ -1089,9 +1087,9 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
             f_y = ((anl_F - g_F) / g_F) if "Long" in y_Y else ((g_F - anl_F) / g_F)
             acik_kz_toplam += m_M * KALDIRAC * f_y - cikis_komisyonu(m_M, False)
 
-    efektif_kasa = toplam_kasa + acik_kz_toplam
-    bos_bakiye = toplam_kasa - aktif_marjin_toplami
-    return float(toplam_kasa), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami), float(acik_kz_toplam)
+    efektif_kasa = nakit_bakiye + acik_kz_toplam
+    bos_bakiye = nakit_bakiye - aktif_marjin_toplami
+    return float(nakit_bakiye), float(efektif_kasa), float(bos_bakiye), float(aktif_marjin_toplami), float(acik_kz_toplam)
 
 
 # =====================================================================

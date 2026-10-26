@@ -4,17 +4,13 @@ from datetime import datetime
 import gspread
 
 KASA_DOSYASI = "kasa_defteri.json"
-GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani_Yeni"
+GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 BASLANGIC_BAKIYE = 0.0
-KALDIRAC = 5
-KOMISYON_TAKER = 0.0005
-KOMISYON_MAKER = 0.0002
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets'e doğrudan dosya ID'si ile kusursuz bağlanır."""
+    """Google Sheets'e doğrudan dosya ID'si ve servis hesabı ile güvenli bağlanır."""
     try:
         import streamlit as st
-        import gspread
         if "gcp_service_account" in st.secrets:
             sec = {k: (v.strip() if isinstance(v, str) else v) for k, v in dict(st.secrets["gcp_service_account"]).items()}
             sec.pop("GMAIL_PASSWORD", None)
@@ -27,9 +23,7 @@ def _sheets_baglan(sayfa_adi):
             client = gspread.service_account_from_dict(sec)
         else:
             client = gspread.service_account(filename="credentials.json")
-        
-        # İsmiyle değil, doğrudan ID ile açıyoruz:
-        return client.open_by_key("1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo").worksheet(sayfa_adi)
+        return client.open_by_key(GOOGLE_SHEET_ID).worksheet(sayfa_adi)
     except Exception as e:
         print(f"Sheets bağlantı hatası ({sayfa_adi}): {e}")
         return None
@@ -55,8 +49,8 @@ def bakiye_getir():
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     """
-    Tüm kasa hareketlerini (Para_Yatir, Para_Cek, Komisyon, Trade_Sonuc) kaydeder
-    ve Google Sheets KasaDefteri sekmesine senkronize eder.
+    Tüm kasa ve finansal hareketleri kaydeder, yerel JSON'a yazar 
+    ve yeni e-tablodaki 'KasaDefteri' sekmesine anında senkronize eder.
     """
     veri = kasa_yukle()
     nakit = float(veri.get("nakit_bakiye", BASLANGIC_BAKIYE))
@@ -84,7 +78,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     veri["gecmis"].insert(0, yeni_hareket)
     kasa_kaydet(veri)
 
-    # Google Sheets KasaDefteri Senkronizasyonu
+    # Google Sheets ID tabanlı KasaDefteri Senkronizasyonu
     try:
         sheet = _sheets_baglan("KasaDefteri")
         if sheet is not None:

@@ -96,7 +96,7 @@ html, body, [class*="css"], .stApp { font-family: Inter, ui-sans-serif, system-u
 .block-container { max-width: 1600px; padding-top:1.4rem; padding-bottom:3rem; }
 [data-testid="stVerticalBlockBorderWrapper"] { background:transparent; }
 [data-testid="stMetric"], .metric-container { background:linear-gradient(145deg,#141f31,#0f1726) !important; border:1px solid var(--border) !important; border-radius:16px !important; padding:17px 19px !important; box-shadow:0 8px 28px rgba(0,0,0,.16); }
-.metric-container { min-height:104px; }
+.metric-container { min-height:104px; container-type:inline-size; }
 .metric-container p { color:var(--muted) !important; font-size:12px !important; letter-spacing:.35px; }
 .metric-container h1 { font-size:25px !important; font-weight:750 !important; }
 h1 { color:#f4f7ff !important; font-size:clamp(1.7rem,2.3vw,2.45rem) !important; font-weight:800 !important; letter-spacing:-.7px; }
@@ -619,17 +619,32 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
         import traceback
         return None, f"{type(e).__name__}: {e} | {traceback.format_exc().splitlines()[-3][:120]}"
 
+def _gmail_sifresi_bul():
+    """GMAIL_PASSWORD'ü sırayla ortam değişkeninde, secrets'ın en üstünde ve secrets bölümlerinin içinde arar.
+    (TOML'da [bölüm] başlığından sonra yazılan anahtarlar o bölüme aittir; örn. gcp_service_account içine düşebilir.)"""
+    sifre = os.environ.get("GMAIL_PASSWORD", "").strip()
+    if sifre:
+        return sifre
+    try:
+        if "GMAIL_PASSWORD" in st.secrets:
+            return str(st.secrets["GMAIL_PASSWORD"]).strip()
+        for ad in list(st.secrets.keys()):
+            try:
+                bolum = st.secrets[ad]
+                if hasattr(bolum, "keys") and "GMAIL_PASSWORD" in bolum:
+                    return str(bolum["GMAIL_PASSWORD"]).strip()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return ""
+
 def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
     gonderici_mail = "erhanvancin@gmail.com"
     alici_mail = "erhanvancin@gmail.com"
-    sifre = os.environ.get("GMAIL_PASSWORD", "").strip()
+    sifre = _gmail_sifresi_bul().replace(" ", "")   # Google uygulama şifresini "abcd efgh ..." diye gösterir
     if not sifre:
-        try:
-            sifre = str(st.secrets.get("GMAIL_PASSWORD", "")).strip()
-        except Exception:
-            sifre = ""
-    if not sifre:
-        return False, "GMAIL_PASSWORD tanımlı değil (Streamlit secrets'a ekleyin)."
+        return False, "GMAIL_PASSWORD bulunamadı (Streamlit secrets'ın EN ÜSTÜNE, herhangi bir [bölüm] başlığından önce ekleyin)."
     toplam_kasa, efektif_kasa, bos_bakiye, marjin, acik_kz = [float(x) for x in bakiye]
     govde = (f"<h3>Kripto Portföy Raporu</h3><p>Oluşturulma: {zaman.strftime('%d.%m.%Y %H:%M')}</p>"
              f"<p><b>Toplam kasa:</b> {toplam_kasa:,.2f} $<br><b>Efektif kasa:</b> {efektif_kasa:,.2f} $<br>"
@@ -647,6 +662,9 @@ def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
         server.login(gonderici_mail, sifre)
         server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
         return True, "E-posta gönderildi."
+    except smtplib.SMTPAuthenticationError:
+        return False, ("Gmail girişi reddedildi (535). Normal hesap şifresi kabul edilmez: Google hesabında 2 adımlı doğrulamayı açıp "
+                       "'Uygulama şifresi' oluşturun ve onu GMAIL_PASSWORD olarak girin.")
     except Exception as e:
         return False, str(e)
     finally:
@@ -1832,27 +1850,38 @@ def format_yuzde(val, is_change=False):
         return f"+%{val:.1f}" if val > 0 else f"-%{abs(val):.1f}" if val < 0 else "%0.0"
     return f"%{val:.1f}"
 
+def metrik_kutusu(baslik, deger_metni, renk, yuzde_metni):
+    """Üst özet kutusu. Tutar tek satırda kalır; yazı boyutu kutu genişliğine ve rakam sayısına göre küçülür
+    (100.000 $ ve üzerinde de sığar). cqw desteklemeyen tarayıcılarda tahmini sabit boyut kullanılır."""
+    n_deger, n_yuzde = len(deger_metni), len(yuzde_metni)
+    yuzde_px = n_yuzde * 0.62 * 13.0 + 6.0
+    sabit = max(8.0, min(22.0, (150.0 - yuzde_px) / (n_deger * 0.62)))
+    return (f'<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">{baslik}</div>'
+            f'<div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0; white-space:nowrap;">'
+            f'<div style="color:{renk}; font-size:{sabit:.1f}px; font-size:clamp(8px, calc((100cqw - {yuzde_px:.0f}px) / {n_deger * 0.62:.2f}), 22px); font-weight:800;">{deger_metni}</div>'
+            f'<div style="color:#ffffff; font-size:13px; font-weight:700;">{yuzde_metni}</div></div></div>')
+
 aktif_renk = "#00FF00" if toplam_acik_kz >= 0 else "rgb(255, 75, 0)"
 with col_ust1:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">📊 Aktif Yatırım</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{aktif_renk}; font-size:22px; font-weight:800;">{aktif_yatirim_tutari:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(aktif_oran)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("📊 Aktif Yatırım", f"{aktif_yatirim_tutari:,.2f} $", aktif_renk, format_yuzde(aktif_oran)), unsafe_allow_html=True)
 
 with col_ust2:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">🔥 Aktif Kâr</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{aktif_renk}; font-size:22px; font-weight:800;">{toplam_acik_kz:+,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(aktif_kar_oran, True)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("🔥 Aktif Kâr", f"{toplam_acik_kz:+,.2f} $", aktif_renk, format_yuzde(aktif_kar_oran, True)), unsafe_allow_html=True)
 
 with col_ust3:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">🟢 Boştaki Nakit</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:#e8eef8; font-size:22px; font-weight:800;">{mevcut_bakiye:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(bostaki_oran)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("🟢 Boştaki Nakit", f"{mevcut_bakiye:,.2f} $", "#e8eef8", format_yuzde(bostaki_oran)), unsafe_allow_html=True)
 
 realize_kar_renk = "#00FF00" if realize_kar >= 0 else "rgb(255, 75, 0)"
 with col_ust4:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">⚡ Net Kâr (Realize)</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{realize_kar_renk}; font-size:22px; font-weight:800;">{realize_kar:+,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(realize_kar_oran, True)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("⚡ Net Kâr (Realize)", f"{realize_kar:+,.2f} $", realize_kar_renk, format_yuzde(realize_kar_oran, True)), unsafe_allow_html=True)
 
 efektif_renk = "#00FF00" if efektif_kasa >= toplam_kasa else "rgb(255, 75, 0)"
 with col_ust5:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💎 Efektif Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{efektif_renk}; font-size:22px; font-weight:800;">{efektif_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(ef_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("💎 Efektif Kasa", f"{efektif_kasa:,.2f} $", efektif_renk, format_yuzde(ef_kasa_oran, True)), unsafe_allow_html=True)
 
 toplam_kasa_renk = "#00FF00" if toplam_kasa >= anapara else "rgb(255, 75, 0)"
 with col_ust6:
-    st.markdown(f"""<div class="metric-container"><div style="margin:0; font-size:13px; font-weight:bold; color:#91a0b8;">💼 Toplam Kasa</div><div style="display:flex; align-items:baseline; gap:6px; margin:5px 0 0 0;"><div style="color:{toplam_kasa_renk}; font-size:22px; font-weight:800;">{toplam_kasa:,.2f} $</div><div style="color:#ffffff; font-size:13px; font-weight:700;">{format_yuzde(toplam_kasa_oran, True)}</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(metrik_kutusu("💼 Toplam Kasa", f"{toplam_kasa:,.2f} $", toplam_kasa_renk, format_yuzde(toplam_kasa_oran, True)), unsafe_allow_html=True)
 
 with col_kasa_buton:
     st.markdown(

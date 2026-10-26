@@ -6,12 +6,11 @@ import streamlit as st
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını Streamlit Secrets üzerinden kusursuz kurar."""
+    """Google Sheets bağlantısını Streamlit Secrets üzerinden kurar."""
     try:
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
             
-            # Özel anahtardaki \n karakterlerini gerçek alt satıra dönüştürerek PEM hatasını engelle
             pk = str(sec.get("private_key", ""))
             if "\\n" in pk:
                 pk = pk.replace("\\n", "\n")
@@ -30,6 +29,8 @@ def _verileri_tablodan_oku():
     """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
     sheet, hata = _sheets_baglan("KasaDefteri")
     if sheet is None:
+        # Hatayı artık doğrudan ekranda göreceğiz!
+        st.error(f"⚠️ E-Tablo Bağlantı Hatası: {hata}")
         return 0.0, []
         
     try:
@@ -87,6 +88,7 @@ def _verileri_tablodan_oku():
         return round(bakiye, 2), gecmis
         
     except Exception as e:
+        st.error(f"⚠️ Veri Okuma Hatası: {str(e)}")
         return 0.0, []
 
 def bakiye_getir():

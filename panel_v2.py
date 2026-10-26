@@ -1026,8 +1026,12 @@ def kurgusal_matris_hesapla(coin_symbol):
 # @st.cache_resource(ttl=3600) <-- Bu dekoratör token düşmelerinde 404 RefreshError'a sebep olduğu için kaldırıldı!
 # ====================== RESMI GOOGLE SHEETS BAGLANTI MIMARISI (GÜNCELLENDİ) ======================
 
+# ====================== RESMI GOOGLE SHEETS BAGLANTI MIMARISI (TAM GÜVENLİ) ======================
+
 def _sayfa_nesnesi(sayfa_adi):
     """Her seferinde temiz bir Google Client objesi üreterek alt sekmeleri hatasız açar."""
+    # Bilgisayarınızda credentials.json varsa onu bypass edip doğrudan st.secrets zorlamak
+    # ve proje ID senkronizasyonunu garantilemek için st.secrets kontrolünü en üste alıyoruz.
     if "gcp_service_account" in st.secrets:
         sec_dict = dict(st.secrets["gcp_service_account"])
         sec_dict.pop("GMAIL_PASSWORD", None)   
@@ -1035,30 +1039,29 @@ def _sayfa_nesnesi(sayfa_adi):
             sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
         client = gspread.service_account_from_dict(sec_dict)
     else:
+        # Eğer yerel bilgisayarınızdaki dosya kullanılacaksa
         client = gspread.service_account(filename="credentials.json")
     
-    # DOĞRU MANTIK: Sabit olan ANA DOSYAYI (KriptoPortfoyVeritabani) aç, 
-    # parametre olarak gelen alt sayfayı (sekme adını) seç!
+    # Sabit olan ANA DOSYAYI (KriptoPortfoyVeritabani) aç, parametre gelen alt sekmeyi seç
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
 
 _SON_SHEETS_HATASI = {"mesaj": ""}
 
 def google_sheets_baglan(sayfa_adi):
     try:
-        # Kodun her yerinden gelen istekleri (KasaDefteri veya KriptoPortfoyVeritabani sekmelerini)
-        # aynı döküman havuzundan çekmesi için burayı doğrudan bağlıyoruz.
         return _sayfa_nesnesi(sayfa_adi)
     except Exception as e:
         _SON_SHEETS_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
         print(f"Sheets bağlantı hatası ({sayfa_adi}): {_SON_SHEETS_HATASI['mesaj']}")
+        
+        # 404 RefreshError durumunda Streamlit'in diske yazdığı TÜM verileri ve 
+        # fonksiyon cache'lerini zorla kazı:
         try:
             st.cache_resource.clear()
             st.cache_data.clear()
         except:
             pass
         return None
-
-
 
 @st.cache_data(ttl=15)
 def islem_gecmisi_getir(sheet_guncelle=True):

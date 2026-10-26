@@ -188,7 +188,7 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 )
 
 # --- SABİTLER ---
-GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
+GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani_Yeni"
 BASLANGIC_BAKIYE = 0.0   # kasa sıfırdan başlar; ilk sermaye eklemesiyle belirlenir
 KALDIRAC = 5
 
@@ -928,7 +928,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
         "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"
     ]
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani_Yeni")
     if sheet is None:
         return pd.DataFrame(columns=beklenen_kolonlar)
     try:
@@ -980,7 +980,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     return df
 
 def dataframe_guncelle_gsheets(df):
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani_Yeni")
     basarili = False
     if sheet is not None:
         try:

@@ -8,12 +8,11 @@ GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 BASLANGIC_BAKIYE = 0.0
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını dener ve hatayı detaylı döndürür."""
+    """Google Sheets bağlantısını secrets kullanarak kurar."""
     try:
         import streamlit as st
         import gspread
         
-        client = None
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
             pk = str(sec.get("private_key", "")).replace("\\n", "\n").strip()
@@ -26,7 +25,7 @@ def _sheets_baglan(sayfa_adi):
         elif os.path.exists("credentials.json"):
             client = gspread.service_account(filename="credentials.json")
         else:
-            return None, "Ne Streamlit Secrets ne de credentials.json bulunamadı!"
+            return None, "Streamlit Secrets veya credentials.json bulunamadı!"
             
         sh = client.open_by_key(GOOGLE_SHEET_ID)
         return sh.worksheet(sayfa_adi), None
@@ -49,7 +48,6 @@ def kasa_kaydet(veri):
         json.dump(veri, f, ensure_ascii=False, indent=4)
 
 def bakiye_getir():
-    """Panelin aradığı temel bakiye fonksiyonu"""
     veri = kasa_yukle()
     return float(veri.get("nakit_bakiye", BASLANGIC_BAKIYE))
 
@@ -80,7 +78,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     veri["gecmis"].insert(0, yeni_hareket)
     kasa_kaydet(veri)
 
-    # Google Sheets Senkronizasyonu ve Gerçek Hata Bildirimi
+    # Google Sheets Senkronizasyonu
     try:
         sheet, hata_detayi = _sheets_baglan("KasaDefteri")
         if sheet is not None:

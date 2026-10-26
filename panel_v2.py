@@ -377,7 +377,6 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
         dk["_z"] = pd.to_datetime(dk["Zaman"], format="%d.%m.%Y %H:%M", errors="coerce")
         dk = dk.sort_values("Islem_ID").reset_index(drop=True)
         
-        # Yerel kasa motoru türleri ile uyumlu analiz hesaplama
         toplam_yatirilan = float(dk.loc[dk["Islem_Turu"].isin(["EKLE", "Para_Yatir"]), "Tutar"].sum())
         toplam_cekilen = float(dk.loc[dk["Islem_Turu"].isin(["CEK", "Para_Cek"]), "Tutar"].sum())
         net_para_girisi = toplam_yatirilan - toplam_cekilen
@@ -486,7 +485,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
             d.add(String(x2, h - 124, T(f"Parasal Başarı Oranı: %{parasal:.1f}"), fontName=FONT_B, fontSize=9, fillColor=NEON_Y if parasal >= 50 else NEON_T))
             return d
 
-story = []
+        story = []
         story.append(Paragraph(T("Kripto Portföy Raporu"), st_ba))
         etiket = lambda x: f'<font name="{FONT_B}" color="#5f6b7a">{T(x)}</font>'
         ilk_str = ilk_acilis.strftime("%d.%m.%Y %H:%M") if ilk_acilis is not None else "-"
@@ -513,7 +512,7 @@ story = []
             kpi("Anapara", f"{_rapor_sayi(anapara)} $"),
             kpi("Toplam getiri", ("-" if getiri < 0 else "") + f"%{_rapor_sayi(abs(getiri))}", kz_r(getiri)),
         ]
-        grid = [[hucreler[i], hucreler[i + 1], hucreler[i + 2], hucreler[i + 3]] for i in (0, 4)]
+        grid = [[hucreler[i], hupers[i + 1] if False else hucreler[i+1], hucreler[i + 2], hucreler[i + 3]] for i in (0, 4)]
         kt = Table(grid, colWidths=[W / 4.0] * 4)
         kt.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c9d1dc")), ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dfe5ee")),
                                 ("BACKGROUND", (0, 0), (-1, -1), ACIK), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

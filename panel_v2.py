@@ -1024,34 +1024,40 @@ def kurgusal_matris_hesapla(coin_symbol):
 # ====================== GOOGLE SHEETS GÜVENLİ BAĞLANTI MİMARİSİ ======================
 
 # @st.cache_resource(ttl=3600) <-- Bu dekoratör token düşmelerinde 404 RefreshError'a sebep olduğu için kaldırıldı!
+# ====================== RESMI GOOGLE SHEETS BAGLANTI MIMARISI (GÜNCELLENDİ) ======================
+
 def _sayfa_nesnesi(sayfa_adi):
-    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ."""
+    """Her seferinde temiz bir Google Client objesi üreterek alt sekmeleri hatasız açar."""
     if "gcp_service_account" in st.secrets:
         sec_dict = dict(st.secrets["gcp_service_account"])
-        sec_dict.pop("GMAIL_PASSWORD", None)   # [bölüm] içine düşmüş mail şifresi servis hesabı bilgisine karışmasın
+        sec_dict.pop("GMAIL_PASSWORD", None)   
         if "private_key" in sec_dict:
             sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
         client = gspread.service_account_from_dict(sec_dict)
     else:
         client = gspread.service_account(filename="credentials.json")
+    
+    # DOĞRU MANTIK: Sabit olan ANA DOSYAYI (KriptoPortfoyVeritabani) aç, 
+    # parametre olarak gelen alt sayfayı (sekme adını) seç!
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
 
 _SON_SHEETS_HATASI = {"mesaj": ""}
 
 def google_sheets_baglan(sayfa_adi):
     try:
-        # Her çağırmada canlı kontrol sağlamak için cache mekanizması bypass edildi veya yenileniyor
+        # Kodun her yerinden gelen istekleri (KasaDefteri veya KriptoPortfoyVeritabani sekmelerini)
+        # aynı döküman havuzundan çekmesi için burayı doğrudan bağlıyoruz.
         return _sayfa_nesnesi(sayfa_adi)
     except Exception as e:
         _SON_SHEETS_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
         print(f"Sheets bağlantı hatası ({sayfa_adi}): {_SON_SHEETS_HATASI['mesaj']}")
-        # Bağlantı çöktüğünde Streamlit kaynak önbelleğini tamamen temizle
         try:
             st.cache_resource.clear()
             st.cache_data.clear()
         except:
             pass
         return None
+
 
 
 @st.cache_data(ttl=15)

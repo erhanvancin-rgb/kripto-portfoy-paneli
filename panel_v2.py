@@ -1021,9 +1021,11 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
-@st.cache_resource(ttl=3600)
+# ====================== GOOGLE SHEETS GÜVENLİ BAĞLANTI MİMARİSİ ======================
+
+# @st.cache_resource(ttl=3600) <-- Bu dekoratör token düşmelerinde 404 RefreshError'a sebep olduğu için kaldırıldı!
 def _sayfa_nesnesi(sayfa_adi):
-    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
+    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ."""
     if "gcp_service_account" in st.secrets:
         sec_dict = dict(st.secrets["gcp_service_account"])
         sec_dict.pop("GMAIL_PASSWORD", None)   # [bölüm] içine düşmüş mail şifresi servis hesabı bilgisine karışmasın
@@ -1038,11 +1040,19 @@ _SON_SHEETS_HATASI = {"mesaj": ""}
 
 def google_sheets_baglan(sayfa_adi):
     try:
+        # Her çağırmada canlı kontrol sağlamak için cache mekanizması bypass edildi veya yenileniyor
         return _sayfa_nesnesi(sayfa_adi)
     except Exception as e:
         _SON_SHEETS_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
         print(f"Sheets bağlantı hatası ({sayfa_adi}): {_SON_SHEETS_HATASI['mesaj']}")
+        # Bağlantı çöktüğünde Streamlit kaynak önbelleğini tamamen temizle
+        try:
+            st.cache_resource.clear()
+            st.cache_data.clear()
+        except:
+            pass
         return None
+
 
 @st.cache_data(ttl=15)
 def islem_gecmisi_getir(sheet_guncelle=True):

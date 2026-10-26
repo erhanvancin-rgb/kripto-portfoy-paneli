@@ -1685,9 +1685,9 @@ if st.session_state.get("kasa_islem_acik", False):
         kasa_aciklama = st.text_input("Açıklama", value="Ekstra sermaye" if islem_yatir else "Kasa çekimi", key="k_acik")
     with col_onay:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("💾 Onayla", width='stretch', key="kasa_onayla"):
+        if st.button("💾 Onayla", use_container_width=True, key="kasa_onayla"):
             islem_turu_str = "Para_Yatir" if islem_yatir else "Para_Cek"
-            basarili, mesaj = kasa_islem_ekle(islem_turu_str, kasa_tutar, kasa_aciklama)
+            basarili, mesaj = kasa_motoru.islem_ekle(islem_turu_str, kasa_tutar, kasa_aciklama)
             if basarili:
                 st.success(mesaj)
                 st.session_state["kasa_islem_acik"] = False

@@ -486,7 +486,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
             d.add(String(x2, h - 124, T(f"Parasal Başarı Oranı: %{parasal:.1f}"), fontName=FONT_B, fontSize=9, fillColor=NEON_Y if parasal >= 50 else NEON_T))
             return d
 
-        story = []
+story = []
         story.append(Paragraph(T("Kripto Portföy Raporu"), st_ba))
         etiket = lambda x: f'<font name="{FONT_B}" color="#5f6b7a">{T(x)}</font>'
         ilk_str = ilk_acilis.strftime("%d.%m.%Y %H:%M") if ilk_acilis is not None else "-"
@@ -497,8 +497,9 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
                                f'{etiket("Toplam İşlem:")} <font name="{FONT_B}" color="#222222">{len(dt)}</font>  '
                                f'{etiket("Açık İşlem:")} <font name="{FONT_B}" color="#222222">{len(acik)}</font>  '
                                f'{etiket("Kapanan İşlem:")} <font name="{FONT_B}" color="#222222">{n_kap}</font>', st_ust))
-story.append(Paragraph(T(f"Tüm tutarlar USDT · {KALDIRAC}x kaldıraç · ") + f'{etiket("Id Başlangıç Kasa :")} <font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>', st_ust))                               f'<font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>  '
-story.append(Paragraph(f'{etiket("Id Sonu Kasa :")} <font name="{FONT_B}" color="{sonu_renk}">{_rapor_sayi(id_sonu_kasa, 0 if abs(id_sonu_kasa - round(id_sonu_kasa)) < 0.005 else 2)} $</font>', st_ust))        story.append(Paragraph(T("1. Kasa Durumu"), st_h))
+        story.append(Paragraph(T(f"Tüm tutarlar USDT · {KALDIRAC}x kaldıraç · ") + f'{etiket("Id Başlangıç Kasa :")} <font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>', st_ust))
+        story.append(Paragraph(f'{etiket("Id Sonu Kasa :")} <font name="{FONT_B}" color="{sonu_renk}">{_rapor_sayi(id_sonu_kasa, 0 if abs(id_sonu_kasa - round(id_sonu_kasa)) < 0.005 else 2)} $</font>', st_ust))
+        story.append(Paragraph(T("1. Kasa Durumu"), st_h))
         def kpi(etiket_, deger, renk=colors.black):
             return [Paragraph(f'<font name="{FONT}" size="7" color="#5f6b7a">{T(etiket_)}</font>', st_n),
                     Paragraph(f'<font name="{FONT_B}" size="12" color="{hex_(renk)}">{T(deger)}</font>', st_n)]

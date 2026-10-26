@@ -11,25 +11,28 @@ KOMISYON_TAKER = 0.0005
 KOMISYON_MAKER = 0.0002
 
 def _sheets_baglan(sayfa_adi):
-    """panel_v2.py ile birebir aynı çalışan güvenli Google Sheets bağlantısı."""
+    """Google Sheets bağlantısını panel_v2 ile ortak ve doğrudan sağlar."""
     try:
-        import streamlit as st
-        if "gcp_service_account" in st.secrets:
-            sec = {k: (v.strip() if isinstance(v, str) else v) for k, v in dict(st.secrets["gcp_service_account"]).items()}
-            sec.pop("GMAIL_PASSWORD", None)
-            pk = str(sec.get("private_key", "")).replace("\\n", "\n").strip()
-            if pk:
-                sec["private_key"] = pk + "\n"
-            sec["token_uri"] = "https://oauth2.googleapis.com/token"
-            sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
-            sec["universe_domain"] = "googleapis.com"
-            client = gspread.service_account_from_dict(sec)
-        else:
-            client = gspread.service_account(filename="credentials.json")
-        return client.open("KriptoPortfoyVeritabani").worksheet(sayfa_adi)
+        import panel_v2
+        return panel_v2.google_sheets_baglan(sayfa_adi)
     except Exception as e:
-        print(f"Sheets bağlantı hatası ({sayfa_adi}): {e}")
-        return None
+        # Eğer döngüsel import (circular import) riski olursa doğrudan gspread ile deneriz
+        try:
+            import streamlit as st
+            import gspread
+            if "gcp_service_account" in st.secrets:
+                sec = {k: (v.strip() if isinstance(v, str) else v) for k, v in dict(st.secrets["gcp_service_account"]).items()}
+                sec.pop("GMAIL_PASSWORD", None)
+                pk = str(sec.get("private_key", "")).replace("\\n", "\n").strip()
+                if pk:
+                    sec["private_key"] = pk + "\n"
+                client = gspread.service_account_from_dict(sec)
+            else:
+                client = gspread.service_account(filename="credentials.json")
+            return client.open("KriptoPortfoyVeritabani").worksheet(sayfa_adi)
+        except Exception as ex:
+            print(f"Sheets bağlantı hatası: {ex}")
+            return None
 
 def kasa_yukle():
     if not os.path.exists(KASA_DOSYASI):

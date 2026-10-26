@@ -8,22 +8,16 @@ GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 BASLANGIC_BAKIYE = 0.0
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını PEM formatı hatalarını otomatik düzeltip kurar."""
+    """Google Sheets bağlantısını kurar."""
     try:
         import streamlit as st
         import gspread
         
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
-            pk = str(sec.get("private_key", ""))
-            
-            # --- ZIRHLI PRIVATE KEY DÜZENLEME ---
-            pk = pk.replace("\\n", "\n")
-            pk = pk.strip().strip('"').strip("'")
-            if "BEGIN PRIVATE KEY" not in pk:
-                pk = f"-----BEGIN PRIVATE KEY-----\n{pk}\n-----END PRIVATE KEY-----"
+            # Anahtardaki yeni satırları ve olası gizli karakterleri temizle
+            pk = str(sec.get("private_key", "")).replace("\\n", "\n").replace("\r", "")
             sec["private_key"] = pk
-            # ----------------------------------
             
             sec["token_uri"] = "https://oauth2.googleapis.com/token"
             sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"

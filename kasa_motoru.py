@@ -8,7 +8,7 @@ def kasa_yukle():
     """Kasa defterini yerel JSON dosyasından okur. Dosya yoksa başlangıç bakiyesi oluşturur."""
     if not os.path.exists(KASA_DOSYASI):
         varsayilan = {
-            "nakit_bakiye": 1000.0,  # Başlangıç nakit sermayesi
+            "nakit_bakiye": 0.0,  # Başlangıç nakit sermayesi
             "gecmis": []
         }
         kasa_kaydet(varsayilan)

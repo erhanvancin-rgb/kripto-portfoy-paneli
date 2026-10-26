@@ -1723,7 +1723,7 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.1, 2.7, 1.2])
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
 
 with col_sol_panel:
     st.markdown("<h3>🚀 İşlem Emri Ver</h3>", unsafe_allow_html=True)

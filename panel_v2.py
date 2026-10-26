@@ -658,7 +658,11 @@ def rapor_maili_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
         ek = MIMEApplication(pdf_bytes, _subtype="pdf")
         ek.add_header("Content-Disposition", "attachment", filename=dosya_adi)
         msg.attach(ek)
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30)
+        
+        # DÜZELTME: timeout kaldırıldı ve el sıkışma (ehlo) eklendi
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.ehlo() 
+        
         server.login(gonderici_mail, sifre)
         server.sendmail(gonderici_mail, [alici_mail], msg.as_string())
         return True, "E-posta gönderildi."

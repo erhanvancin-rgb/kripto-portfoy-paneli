@@ -1023,24 +1023,21 @@ def kurgusal_matris_hesapla(coin_symbol):
 
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
-    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
-    import json
-    if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
-        sec_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
-        if "private_key" in sec_dict:
-            pk = str(sec_dict["private_key"])
-            # Hem çift kaçışlı \\n hem de tekli \n ifadelerini gerçek alt alta satırlara dönüştürür
-            pk = pk.replace(r"\\n", "\n").replace(r"\n", "\n")
-            sec_dict["private_key"] = pk
-        client = gspread.service_account_from_dict(sec_dict)
-    elif "gcp_service_account" in st.secrets:
-        sec_dict = dict(st.secrets["gcp_service_account"])
-        sec_dict.pop("GMAIL_PASSWORD", None)
-        if "private_key" in sec_dict:
-            sec_dict["private_key"] = str(sec_dict["private_key"]).replace(r"\\n", "\n").replace(r"\n", "\n")
-        client = gspread.service_account_from_dict(sec_dict)
-    else:
-        client = gspread.service_account(filename="credentials.json")
+    """Google servis hesabı kimlik bilgilerini doğrudan kod içerisinden okur (dosya ve secrets bağımlılığını ortadan kaldırır)."""
+    gcp_dict = {
+        "type": "service_account",
+        "project_id": "western-avatar-442315-t7",
+        "private_key_id": "7065d5fc47c901f5ff94edf52b0522b77b1894e4",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDGkT/btm4gKlqg\nxKt8BlW7ZbE6YZt6A47SqgvbVJ6rZ6DW4e3z4M4QtK4+CpBQ5MBGAo8CLxaGzsJJ\n1Rr2TAmAVxktDFArpq/+0ohiW4hUBt4dpt3HaGIPbfwUpXJKA0kcOzV2S8Q3vvO4\nJF3U/OyO2flyGDNJ9SjvxJQEa2shLHYEzfXwC1FCK3Df71j5I1nFQaGCi/bm9+/H\nw1E1iXKvrtWi3TlQ6DeWEHilVDopRu3gMRW//em09QHsphGSakF2/FemM0ftUNlO\nXlZp8K8HAr/hyU8blGX2EiDeJ1H2DnXArb9LpaXCvlIbaDbgGI9kBEMqlH/ZGu/v\nBVkHdpuJAgMBAAECggEAEHKzrCApGyJRri4xrkJavlJ8Ixk2vHKoVVb0nc8dSEF7\nQebRGSSEApTqN1q/UulqloyxCpNFSxa8DUrzwsx69QCXUJ32fhx+nkho4mIxTBSN\njZM8R7+jxSIX1stQSO/gvHqYa8Yhk3njzQW7fWBouqSKVHh2DH2cTdAmGqpIjiTF\UL3OLLfFlDH2gxeLDhs067nOIM9Txzhk6VOg7xYMIZl4iekwi2g71DAO0nf3dv1Z\nE47yEz4ftSox2S6gcu4Rngdb9H28PIrnSJaBBeyZR+7DiooU/ifVSTzwMw6ePSPC\n31o8THS/VdfHnwrn48oy2PkJ02KPt1mZoEbxRorYIQKBgQDoVY3ogta3bhRDbGIb\n/cMIctrwNY9rqhRRvBPCzSax2LSGdxBMaCHE7Gl0CiyVjqxFWhvsivvitznWeMik\nTa7VTpr/cNIcn5uOS/ONE4BQp+WYtsEUDY3m+TghlniLL/wzVcEwzB1ltesR8aiM\n50RuXk3j3mqZN+oyZOFuLAWRpQKBgQDayy1d0gehaBdNJ3AGfCJWFoJFSDPAuDZj\nNPA+VTGW8xIZ8bc+PifY+UJGOVBbv5GBt8kA/Sog/hTgqNDOXr0IDe0ebrSqbQeT\nFuSwq4cy3h8YdN3Pts8Iwvap7QorKrRaemb2HeYyaNrKIyc9YjRs07s1Hn9UOhMM\nXE7qEGi1FQKBgBofrJItTAlaBktCf5GYKfrkNzv1OcgoWpqKJEquGKC8tie8cYe1\2b4zuvPCRRsX7MTrieJCCmqGoak88YqP9Y2khgcc33M6exo37g252J65EjbmrbUc\nhQ0ojqgwLCOyZJA9HzjmapPKLcFZw9L8GhSy490wYBoUUHAUKcjiiEnFAoGAM7Ma\7zZ38x3jk6mkAQRIIMuE0NY01G8y+tJBipka9K5PMq45PI33YH/Vtz5HzMZBncNN\nzdwEnnMrf8KkRH+Cb2rLAwvpyPOmfI1GULDXa5+s/VxwJWrvFQTswE5wvq6Cm3ac\n6b866+J3AJi55vlTpfuKGw0vzTlD0wHk684gz9kCgYEA0LgvT7wXKSEXrv77r1R5\xZNbGiZSsRxxhTtmI5SqY9EEjtIGWvfvM8hG6OH+Q60AJwzlngIYQ4UtQB5cpdk2\ngbRTcpGhe0LeXv9YQQ6xkJlu1zuZ4hMaM+m8qTEmmnegsPT+F8HgF962rpPHCgV4\nwtLHFjp5rT9teRNV4FMOGSU=\n-----END PRIVATE KEY-----",
+        "client_email": "kripto-bot@western-avatar-442315-t7.iam.gserviceaccount.com",
+        "client_id": "116674981434745196964",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kripto-bot%40western-avatar-442315-t7.iam.gserviceaccount.com",
+        "universe_domain": "googleapis.com"
+    }
+    client = gspread.service_account_from_dict(gcp_dict)
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
 
 _SON_SHEETS_HATASI = {"mesaj": ""}

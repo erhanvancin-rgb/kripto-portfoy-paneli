@@ -6,10 +6,17 @@ import streamlit as st
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını Streamlit Secrets üzerinden kurar."""
+    """Google Sheets bağlantısını Streamlit Secrets üzerinden kusursuz kurar."""
     try:
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
+            
+            # Özel anahtardaki \n karakterlerini gerçek alt satıra dönüştürerek PEM hatasını engelle
+            pk = str(sec.get("private_key", ""))
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            sec["private_key"] = pk.replace("\r", "")
+            
             client = gspread.service_account_from_dict(sec)
         else:
             return None, "Streamlit Secrets içinde 'gcp_service_account' bulunamadı!"
@@ -91,11 +98,9 @@ def gecmis_getir():
     return gecmis
 
 def islem_gecmisi_getir(ortak_fiyat_havuzu=None):
-    """Panelin aradığı alternatif fonksiyon ismi için köprü."""
     return gecmis_getir()
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
-    """Yeni işlemi doğrudan Google E-Tabloya kaydeder."""
     try:
         sheet, hata = _sheets_baglan("KasaDefteri")
         if sheet is None:

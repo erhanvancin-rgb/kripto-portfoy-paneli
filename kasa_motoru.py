@@ -5,9 +5,12 @@ import gspread
 
 KASA_DOSYASI = "kasa_defteri.json"
 GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
+BASLANGIC_BAKIYE = 0.0
+KALDIRAC = 5
+KOMISYON_TAKER = 0.0005
+KOMISYON_MAKER = 0.0002
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets'e bağlanarak ilgili sayfayı döndürür."""
     try:
         import streamlit as st
         if "gcp_service_account" in st.secrets:
@@ -22,26 +25,24 @@ def _sheets_baglan(sayfa_adi):
             return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     except Exception as e:
         print(f"Google Sheets bağlantı hatası ({sayfa_adi}): {e}")
-    
     try:
         if os.path.exists("credentials.json"):
             client = gspread.service_account(filename="credentials.json")
             return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     except Exception as e:
         print(f"credentials.json bağlantı hatası ({sayfa_adi}): {e}")
-        
     return None
 
 def kasa_yukle():
     if not os.path.exists(KASA_DOSYASI):
-        varsayilan = {"nakit_bakiye": 0.0, "gecmis": []}
+        varsayilan = {"nakit_bakiye": BASLANGIC_BAKIYE, "gecmis": []}
         kasa_kaydet(varsayilan)
         return varsayilan
     try:
         with open(KASA_DOSYASI, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"nakit_bakiye": 0.0, "gecmis": []}
+        return {"nakit_bakiye": BASLANGIC_BAKIYE, "gecmis": []}
 
 def kasa_kaydet(veri):
     with open(KASA_DOSYASI, "w", encoding="utf-8") as f:
@@ -49,16 +50,15 @@ def kasa_kaydet(veri):
 
 def bakiye_getir():
     veri = kasa_yukle()
-    return float(veri.get("nakit_bakiye", 0.0))
+    return float(veri.get("nakit_bakiye", BASLANGIC_BAKIYE))
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     """
-    Kasaya para ekleme, çekme veya trade hareketlerini kaydeder,
-    yerel JSON'a işler ve Google E-Tablo'daki KasaDefteri'ne ekler.
-    tur: 'Para_Yatir', 'Para_Cek', 'Komisyon', 'Trade_Sonuc'
+    Tüm kasa hareketlerini (Para_Yatir, Para_Cek, Komisyon, Trade_Sonuc) kaydeder
+    ve Google Sheets KasaDefteri sekmesine senkronize eder.
     """
     veri = kasa_yukle()
-    nakit = float(veri.get("nakit_bakiye", 0.0))
+    nakit = float(veri.get("nakit_bakiye", BASLANGIC_BAKIYE))
     
     net_tutar = float(tutar)
     if tur in ["Para_Yatir", "SATIM"]:
@@ -66,7 +66,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     elif tur in ["Para_Cek", "ALIM", "Komisyon"]:
         nakit -= abs(net_tutar)
     elif tur == "Trade_Sonuc":
-        nakit += net_tutar # Kâr pozitif, zarar negatif gelir
+        nakit += net_tutar  # Kâr +, Zarar -
         
     veri["nakit_bakiye"] = round(nakit, 2)
     
@@ -83,7 +83,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     veri["gecmis"].insert(0, yeni_hareket)
     kasa_kaydet(veri)
 
-    # --- GOOGLE E-TABLO SENKRONİZASYONU (KasaDefteri) ---
+    # Google Sheets KasaDefteri Senkronizasyonu
     try:
         sheet = _sheets_baglan("KasaDefteri")
         if sheet is not None:
@@ -91,19 +91,17 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
             if not ham or len(ham) == 0:
                 sheet.append_row(["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"])
                 ham = [["Islem_ID"]]
-            
             idler = []
             for r in ham[1:]:
                 if r and len(r) > 0 and str(r[0]).replace('.', '', 1).isdigit():
                     idler.append(int(float(r[0])))
             yeni_id = (max(idler) if idler else 0) + 1
-            
             sheet.append_row([yeni_id, tarih_str, tur, round(float(tutar), 2), aciklama])
-            return True, f"Kasa işlemi başarılı ve e-tabloya işlendi."
+            return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
         else:
-            return False, "Yerel kayıt yapıldı fakat Google Sheets 'KasaDefteri' sayfasına bağlanılamadı."
+            return False, "Yerel kayıt yapıldı ancak e-tabloya bağlanılamadı."
     except Exception as e:
-        print(f"E-Tablo Kasa Defteri senkronizasyon hatası: {e}")
+        print(f"E-Tablo senkronizasyon hatası: {e}")
         return False, f"Yerel kayıt yapıldı, e-tablo hatası: {e}"
 
 def gecmis_getir():

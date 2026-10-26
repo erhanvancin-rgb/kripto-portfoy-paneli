@@ -1021,15 +1021,37 @@ def kurgusal_matris_hesapla(coin_symbol):
 
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
+def _servis_hesabi_sozlugu():
+    """Streamlit secrets'taki [gcp_service_account] bilgisini temizleyip normalleştirir.
+    Secrets düzenlenirken bozulabilen alanlar (boşluk, \\n biçimi, adresler) burada düzeltilir; Google'ın sabit adresleri zorlanır."""
+    sec = {k: (v.strip() if isinstance(v, str) else v) for k, v in dict(st.secrets["gcp_service_account"]).items()}
+    sec.pop("GMAIL_PASSWORD", None)   # [bölüm] içine düşmüş mail şifresi servis hesabı bilgisine karışmasın
+    pk = str(sec.get("private_key", "")).replace("\\n", "\n").strip()
+    if pk:
+        sec["private_key"] = pk + "\n"
+    sec["token_uri"] = "https://oauth2.googleapis.com/token"
+    sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
+    sec["universe_domain"] = "googleapis.com"
+    return sec
+
+def _hata_ozeti(e):
+    """Uzun/HTML hata metinlerini kısa ve anlaşılır hale getirir."""
+    metin = str(e)
+    if "<!doctype" in metin.lower() or "<html" in metin.lower():
+        import re as _re
+        m = _re.search(r"<title>(.*?)</title>", metin, _re.S | _re.I)
+        baslik = " ".join(m.group(1).split())[:60] if m else "HTML yanıtı"
+        ipucu = ""
+        if type(e).__name__ == "RefreshError":
+            ipucu = " Google servis hesabı girişi başarısız: secrets içindeki [gcp_service_account] bölümünü (client_email, private_key) kontrol edin."
+        return f"{type(e).__name__}: sunucu hata sayfası döndürdü ({baslik}).{ipucu}"
+    return f"{type(e).__name__}: {metin[:160]}"
+
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
     """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
     if "gcp_service_account" in st.secrets:
-        sec_dict = dict(st.secrets["gcp_service_account"])
-        sec_dict.pop("GMAIL_PASSWORD", None)   # [bölüm] içine düşmüş mail şifresi servis hesabı bilgisine karışmasın
-        if "private_key" in sec_dict:
-            sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
-        client = gspread.service_account_from_dict(sec_dict)
+        client = gspread.service_account_from_dict(_servis_hesabi_sozlugu())
     else:
         client = gspread.service_account(filename="credentials.json")
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
@@ -1040,7 +1062,7 @@ def google_sheets_baglan(sayfa_adi):
     try:
         return _sayfa_nesnesi(sayfa_adi)
     except Exception as e:
-        _SON_SHEETS_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
+        _SON_SHEETS_HATASI["mesaj"] = _hata_ozeti(e)
         print(f"Sheets bağlantı hatası ({sayfa_adi}): {_SON_SHEETS_HATASI['mesaj']}")
         return None
 
@@ -1209,7 +1231,7 @@ def _deftere_satir_ekle(islem_turu, net_tutar, aciklama):
                 st.cache_data.clear()
                 return True
             except Exception as e:
-                _SON_DEFTER_HATASI["mesaj"] = f"{type(e).__name__}: {str(e)[:160]}"
+                _SON_DEFTER_HATASI["mesaj"] = _hata_ozeti(e)
                 print(f"Kasa defteri kayıt hatası (deneme {deneme}/3): {_SON_DEFTER_HATASI['mesaj']}")
                 try:
                     _sayfa_nesnesi.clear()      # bayat bağlantı olabilir: bir sonraki denemede yeniden bağlan

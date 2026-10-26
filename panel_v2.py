@@ -1023,25 +1023,28 @@ def kasa_defteri_getir():
     return pd.DataFrame(satirlar)
 
 def kasa_islem_ekle(islem_turu, tutar, aciklama):
-    """Para yatırma, çekme veya komisyon/trade işlemlerini yerel kasa motoruna kaydeder."""
+    """Kasa işlemlerini yerel JSON'a ve doğrudan Google E-Tablo KasaDefteri'ne yazar."""
     try:
-        tur_map = {
-            "Para_Yatir": "EKLE",
-            "Para_Cek": "CEK",
-            "Komisyon": "ALIM",
-            "Trade_Sonuc": "SATIM" if float(tutar) >= 0 else "ALIM"
-        }
-        motor_tur = tur_map.get(islem_turu, "EKLE")
-        komisyon = 0.0
-        if islem_turu == "Komisyon":
-            komisyon = abs(float(tutar))
-            tutar = 0.0
-            
-        yeni_bakiye = kasa_motoru.islem_ekle(tur=motor_tur, tutar=float(tutar), aciklama=aciklama, komisyon=komisyon)
-        st.cache_data.clear()
-        return True, f"Kasa işlemi başarılı. Güncel Bakiye: {yeni_bakiye:,.2f} $"
+        # 1. Yerel kasa motoru kaydı
+        kasa_motoru.islem_ekle(islem_turu, tutar, aciklama)
+        
+        # 2. Doğrudan panel_v2 Sheets bağlantısı ile E-Tabloya yazma
+        sheet = google_sheets_baglan("KasaDefteri")
+        if sheet is not None:
+            ham = sheet.get_all_values()
+            if not ham:
+                sheet.append_row(["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"])
+                ham = [["Islem_ID"]]
+            idler = []
+            for r in ham[1:]:
+                if r and len(r) > 0 and str(r[0]).replace('.', '', 1).isdigit():
+                    idler.append(int(float(r[0])))
+            yeni_id = (max(idler) if idler else 0) + 1
+            sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 2), aciklama])
+            return True, "Kasa işlemi başarıyla kaydedildi ve e-tabloya işlendi."
+        return True, "Yerel kayıt yapıldı fakat e-tabloya bağlanılamadı."
     except Exception as e:
-        return False, f"Kasa kayıt hatası: {e}"
+        return False, f"Kasa kayıt hatası: {str(e)}"
 
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     basari, _ = kasa_islem_ekle(islem_turu, tutar, aciklama)

@@ -1023,7 +1023,7 @@ def kurgusal_matris_hesapla(coin_symbol):
 
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
-    import json
+    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
     if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
         sec_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
         if "private_key" in sec_dict:
@@ -1035,6 +1035,9 @@ def _sayfa_nesnesi(sayfa_adi):
         if "private_key" in sec_dict:
             sec_dict["private_key"] = str(sec_dict["private_key"]).replace(r"\\n", "\n").replace(r"\n", "\n")
         client = gspread.service_account_from_dict(sec_dict)
+    else:
+        client = gspread.service_account(filename="credentials.json")
+    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     else:
         client = gspread.service_account(filename="credentials.json")
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)

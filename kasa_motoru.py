@@ -5,25 +5,26 @@ import gspread
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını kurar."""
+    """Google Sheets bağlantısını yerel credentials.py üzerinden kurar."""
     try:
-        import streamlit as st
         import gspread
         
-        if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
+        # Doğrudan proje içindeki gizli py dosyasından alıyoruz
+        try:
+            from credentials import GCP_SECRETS
+            sec = dict(GCP_SECRETS)
+        except ImportError:
+            import streamlit as st
             sec = dict(st.secrets["gcp_service_account"])
-            pk = str(sec.get("private_key", "")).replace("\\n", "\n").replace("\r", "")
-            sec["private_key"] = pk
             
-            sec["token_uri"] = "https://oauth2.googleapis.com/token"
-            sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
-            sec["universe_domain"] = "googleapis.com"
-            client = gspread.service_account_from_dict(sec)
-        elif os.path.exists("credentials.json"):
-            client = gspread.service_account(filename="credentials.json")
-        else:
-            return None, "Streamlit Secrets veya credentials.json bulunamadı!"
-            
+        pk = str(sec.get("private_key", "")).replace("\\n", "\n").replace("\r", "")
+        sec["private_key"] = pk
+        
+        sec["token_uri"] = "https://oauth2.googleapis.com/token"
+        sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
+        sec["universe_domain"] = "googleapis.com"
+        
+        client = gspread.service_account_from_dict(sec)
         sh = client.open_by_key(GOOGLE_SHEET_ID)
         return sh.worksheet(sayfa_adi), None
     except Exception as e:

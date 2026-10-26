@@ -497,8 +497,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman):
                                f'{etiket("Toplam İşlem:")} <font name="{FONT_B}" color="#222222">{len(dt)}</font>  '
                                f'{etiket("Açık İşlem:")} <font name="{FONT_B}" color="#222222">{len(acik)}</font>  '
                                f'{etiket("Kapanan İşlem:")} <font name="{FONT_B}" color="#222222">{n_kap}</font>', st_ust))
-        story.append(Paragraph(T(f"Tüm tutarlar USDT · {KALDIRAC}x kaldıraç ·")} {etiket("Id Başlangıç Kasa :")} '
-                               f'<font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>  '
+story.append(Paragraph(T(f"Tüm tutarlar USDT · {KALDIRAC}x kaldıraç · ") + f'{etiket("Id Başlangıç Kasa :")} <font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>', st_ust))                               f'<font name="{FONT_B}" color="#222222">{_rapor_sayi(id_baslangic_kasa, 0 if abs(id_baslangic_kasa - round(id_baslangic_kasa)) < 0.005 else 2)} $</font>  '
                                f'{etiket("Id Sonu Kasa:")} <font name="{FONT_B}" color="{sonu_renk}">{_rapor_sayi(id_sonu_kasa, 0 if abs(id_sonu_kasa - round(id_sonu_kasa)) < 0.005 else 2)} $</font>', st_ust))
         
         story.append(Paragraph(T("1. Kasa Durumu"), st_h))

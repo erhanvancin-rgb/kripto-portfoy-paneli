@@ -1023,17 +1023,21 @@ def kurgusal_matris_hesapla(coin_symbol):
 
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
-    """Hata verirse istisna fırlatır; Streamlit hatalı sonucu önbelleğe ALMAZ (sonraki çağrı yeniden dener)."""
-    if "gcp_service_account" in st.secrets:
-            sec_dict = dict(st.secrets["gcp_service_account"])
-            sec_dict.pop("GMAIL_PASSWORD", None)   
-            if "private_key" in sec_dict:
-                # Hem tekli \n, hem çift kaçışlı \\n, hem de gerçek yeni satırları güvenle yönetir
-                pk = str(sec_dict["private_key"])
-                pk = pk.replace(r"\\n", "\n").replace(r"\n", "\n")
-                sec_dict["private_key"] = pk.strip()
-                
-            client = gspread.service_account_from_dict(sec_dict)
+    import json
+    if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
+        sec_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
+        if "private_key" in sec_dict:
+            sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
+        client = gspread.service_account_from_dict(sec_dict)
+    elif "gcp_service_account" in st.secrets:
+        sec_dict = dict(st.secrets["gcp_service_account"])
+        sec_dict.pop("GMAIL_PASSWORD", None)
+        if "private_key" in sec_dict:
+            sec_dict["private_key"] = str(sec_dict["private_key"]).replace(r"\\n", "\n").replace(r"\n", "\n")
+        client = gspread.service_account_from_dict(sec_dict)
+    else:
+        client = gspread.service_account(filename="credentials.json")
+    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
     else:
         client = gspread.service_account(filename="credentials.json")
     return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)

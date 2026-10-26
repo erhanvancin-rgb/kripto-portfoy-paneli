@@ -6,15 +6,21 @@ import streamlit as st
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını Streamlit Secrets üzerinden kurar."""
+    """Google Sheets bağlantısını Streamlit Secrets üzerinden kurar ve PEM anahtarını otomatik temizler."""
     try:
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
             
+            # Özel anahttaki biçim bozukluklarını ve PEM hatalarını otomatik temizleyen mekanizma
             pk = str(sec.get("private_key", ""))
+            pk = pk.strip()
             if "\\n" in pk:
                 pk = pk.replace("\\n", "\n")
-            sec["private_key"] = pk.replace("\r", "")
+            
+            # Her satırdaki gereksiz boşlukları temizleyerek 'Invalid symbol' hatasını kökten önle
+            lines = pk.splitlines()
+            cleaned_lines = [line.strip() for line in lines if line.strip()]
+            sec["private_key"] = "\n".join(cleaned_lines)
             
             client = gspread.service_account_from_dict(sec)
         else:
@@ -29,7 +35,6 @@ def _verileri_tablodan_oku():
     """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
     sheet, hata = _sheets_baglan("KasaDefteri")
     if sheet is None:
-        # Hatayı artık doğrudan ekranda göreceğiz!
         st.error(f"⚠️ E-Tablo Bağlantı Hatası: {hata}")
         return 0.0, []
         

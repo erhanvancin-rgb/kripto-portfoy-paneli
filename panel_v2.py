@@ -1028,7 +1028,10 @@ def _sayfa_nesnesi(sayfa_adi):
     if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
         sec_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
         if "private_key" in sec_dict:
-            sec_dict["private_key"] = sec_dict["private_key"].replace(r"\n", "\n")
+            pk = str(sec_dict["private_key"])
+            # Hem çift kaçışlı \\n hem de tekli \n ifadelerini gerçek alt alta satırlara dönüştürür
+            pk = pk.replace(r"\\n", "\n").replace(r"\n", "\n")
+            sec_dict["private_key"] = pk
         client = gspread.service_account_from_dict(sec_dict)
     elif "gcp_service_account" in st.secrets:
         sec_dict = dict(st.secrets["gcp_service_account"])

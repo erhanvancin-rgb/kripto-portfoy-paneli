@@ -11,7 +11,7 @@ KOMISYON_TAKER = 0.0005
 KOMISYON_MAKER = 0.0002
 
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets'e panel_v2 ile birebir aynı ve güvenli şekilde bağlanır."""
+    """panel_v2.py ile birebir aynı çalışan güvenli Google Sheets bağlantısı."""
     try:
         import streamlit as st
         if "gcp_service_account" in st.secrets:
@@ -26,9 +26,9 @@ def _sheets_baglan(sayfa_adi):
             client = gspread.service_account_from_dict(sec)
         else:
             client = gspread.service_account(filename="credentials.json")
-        return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
+        return client.open("KriptoPortfoyVeritabani").worksheet(sayfa_adi)
     except Exception as e:
-        print(f"Kasa motoru Sheets bağlantı hatası ({sayfa_adi}): {e}")
+        print(f"Sheets bağlantı hatası ({sayfa_adi}): {e}")
         return None
 
 def kasa_yukle():

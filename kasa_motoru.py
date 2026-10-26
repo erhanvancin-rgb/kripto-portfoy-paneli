@@ -33,15 +33,10 @@ def _sheets_baglan(sayfa_adi):
     return None
 
 def kasa_yukle():
-    """Kasa defterini yerel JSON dosyasından okur. Dosya yoksa başlangıç bakiyesi oluşturur."""
     if not os.path.exists(KASA_DOSYASI):
-        varsayilan = {
-            "nakit_bakiye": 0.0,
-            "gecmis": []
-        }
+        varsayilan = {"nakit_bakiye": 0.0, "gecmis": []}
         kasa_kaydet(varsayilan)
         return varsayilan
-    
     try:
         with open(KASA_DOSYASI, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -49,28 +44,29 @@ def kasa_yukle():
         return {"nakit_bakiye": 0.0, "gecmis": []}
 
 def kasa_kaydet(veri):
-    """Kasa verilerini yerel JSON dosyasına yazar."""
     with open(KASA_DOSYASI, "w", encoding="utf-8") as f:
         json.dump(veri, f, ensure_ascii=False, indent=4)
 
 def bakiye_getir():
-    """Güncel nakit bakiyeyi döndürür."""
     veri = kasa_yukle()
     return float(veri.get("nakit_bakiye", 0.0))
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
     """
-    Kasaya para ekleme, çekme veya trade hareketlerini kaydeder ve Google E-Tablo'ya senkronize eder.
+    Kasaya para ekleme, çekme veya trade hareketlerini kaydeder,
+    yerel JSON'a işler ve Google E-Tablo'daki KasaDefteri'ne ekler.
+    tur: 'Para_Yatir', 'Para_Cek', 'Komisyon', 'Trade_Sonuc'
     """
     veri = kasa_yukle()
     nakit = float(veri.get("nakit_bakiye", 0.0))
     
-    net_tutar = float(tutar) - float(komisyon)
-    
-    if tur in ["EKLE", "SATIM"]:
+    net_tutar = float(tutar)
+    if tur in ["Para_Yatir", "SATIM"]:
         nakit += net_tutar
-    elif tur in ["CEK", "ALIM"]:
-        nakit -= float(tutar)
+    elif tur in ["Para_Cek", "ALIM", "Komisyon"]:
+        nakit -= abs(net_tutar)
+    elif tur == "Trade_Sonuc":
+        nakit += net_tutar # Kâr pozitif, zarar negatif gelir
         
     veri["nakit_bakiye"] = round(nakit, 2)
     
@@ -102,16 +98,14 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
                     idler.append(int(float(r[0])))
             yeni_id = (max(idler) if idler else 0) + 1
             
-            islem_turu_sheet = "Para_Yatir" if tur in ["EKLE", "SATIM"] else "Para_Cek"
-            sheet.append_row([yeni_id, tarih_str, islem_turu_sheet, round(float(tutar), 2), aciklama])
+            sheet.append_row([yeni_id, tarih_str, tur, round(float(tutar), 2), aciklama])
+            return True, f"Kasa işlemi başarılı ve e-tabloya işlendi."
         else:
-            print("Google Sheets 'KasaDefteri' sayfasına bağlanılamadı.")
+            return False, "Yerel kayıt yapıldı fakat Google Sheets 'KasaDefteri' sayfasına bağlanılamadı."
     except Exception as e:
-        print(f"E-Tablo Kasa Defteri senkronizasyon kritik hatası: {e}")
-
-    return veri["nakit_bakiye"]
+        print(f"E-Tablo Kasa Defteri senkronizasyon hatası: {e}")
+        return False, f"Yerel kayıt yapıldı, e-tablo hatası: {e}"
 
 def gecmis_getir():
-    """Tüm kasa hareket geçmişini döndürür."""
     veri = kasa_yukle()
     return veri.get("gecmis", [])

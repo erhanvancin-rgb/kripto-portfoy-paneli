@@ -1,7 +1,11 @@
+# ==========================================
+# kasa_motoru.py
+# ==========================================
 import os
 from datetime import datetime
 import gspread
 import streamlit as st
+import pandas as pd
 
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
@@ -12,8 +16,11 @@ def _sheets_baglan(sayfa_adi):
             sec = dict(st.secrets["gcp_service_account"])
             
             pk = str(sec.get("private_key", ""))
-            pk = pk.replace("\\n", "\n")
-            sec["private_key"] = pk.strip()
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            lines = pk.splitlines()
+            cleaned_lines = [line.strip() for line in lines if line.strip()]
+            sec["private_key"] = "\n".join(cleaned_lines)
             
             client = gspread.service_account_from_dict(sec)
         else:
@@ -28,7 +35,7 @@ def _verileri_tablodan_oku():
     """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
     sheet, hata = _sheets_baglan("KasaDefteri")
     if sheet is None:
-        st.error(f"⚠️ E-Tablo Bağlantı Hatası: {hata}")
+        st.error(f"⚠️ Kasa E-Tablo Bağlantı Hatası: {hata}")
         return 0.0, []
         
     try:
@@ -66,7 +73,7 @@ def _verileri_tablodan_oku():
             tur_kucuk = tur.lower()
             if any(k in tur_kucuk for k in ["yatir", "satim", "gelir", "ekle"]):
                 bakiye += tutar
-            elif any(k in tur_kucuk for k in ["cek", "alim", "gider", "komisyon"]):
+            elif any(k in tur_kucuk for k in ["cek", "alim", "gider", "komisyon", "zarar"]):
                 bakiye -= abs(tutar)
             elif "trade" in tur_kucuk:
                 bakiye += tutar
@@ -82,11 +89,10 @@ def _verileri_tablodan_oku():
                 "guncel_bakiye": round(bakiye, 2)
             })
             
-        gecmis.reverse()
         return round(bakiye, 2), gecmis
         
     except Exception as e:
-        st.error(f"⚠️ Veri Okuma Hatası: {str(e)}")
+        st.error(f"⚠️ Kasa Veri Okuma Hatası: {str(e)}")
         return 0.0, []
 
 def bakiye_getir():
@@ -101,13 +107,12 @@ def islem_gecmisi_getir(ortak_fiyat_havuzu=None):
     return gecmis_getir()
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
-    """Yeni işlemi tutar ve komisyonlardaki virgül hatalarını düzelterek Google Sheets'e yazar."""
+    """Yeni işlemi tutar ve komisyonlardaki format hatalarını düzelterek Google Sheets'e yazar."""
     try:
         sheet, hata = _sheets_baglan("KasaDefteri")
         if sheet is None:
             return False, f"E-Tabloya bağlanılamadı. Hata: {hata}"
             
-        # Virgül girilmişse noktaya çevir
         if isinstance(tutar, str):
             tutar = tutar.replace(',', '.')
         try:
@@ -115,7 +120,6 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
         except ValueError:
             return False, "Hata: Lütfen geçerli bir tutar girin."
         
-        # Komisyon virgül onarımı
         if isinstance(komisyon, str):
             komisyon = komisyon.replace(',', '.')
         try:
@@ -140,7 +144,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             
         sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama])
-        return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
+        return True, "İşlem başarıyla e-tabloya işlendi."
         
     except Exception as e:
         return False, f"E-tablo kayıt hatası: {str(e)}"

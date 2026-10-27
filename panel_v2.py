@@ -1870,7 +1870,7 @@ with col_sol_panel:
         with col_kapat_kilit:
             kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 
-# Butonların sonuç kontrolü FORMUN DIŞINDA yer alır:
+# Butonların sonuç kontrolü formun DIŞINDA (en solda) yer alır:
 if kapat_kilit_tik:
     st.session_state["islem_emri_kilit_acik"] = False
     st.rerun()

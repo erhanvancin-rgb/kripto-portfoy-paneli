@@ -107,7 +107,9 @@ def islem_gecmisi_getir(ortak_fiyat_havuzu=None):
     return gecmis_getir()
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
-    """Yeni işlemi tutar ve komisyonlardaki format hatalarını düzelterek Google Sheets'e yazar."""
+    """Yeni işlemi tutar düzeltmeleri ve kalıcı TR saat dilimi (pytz) uyumuyla Google Sheets'e yazar."""
+    import pytz
+    from datetime import datetime
     try:
         sheet, hata = _sheets_baglan("KasaDefteri")
         if sheet is None:
@@ -138,13 +140,16 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
                 idler.append(int(float(r[0])))
                 
         yeni_id = (max(idler) if idler else 0) + 1
-        tarih_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+        
+        # 🇹🇷 KALICI TÜRKİYE SAATİ (Kış/Yaz fark etmeksizin Europe/Istanbul sabitini çeker)
+        tr_tz = pytz.timezone("Europe/Istanbul")
+        tarih_str = datetime.now(tr_tz).strftime("%d.%m.%Y %H:%M")
         
         if komisyon > 0:
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             
         sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama])
-        return True, "İşlem başarıyla e-tabloya işlendi."
+        return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
         
     except Exception as e:
         return False, f"E-tablo kayıt hatası: {str(e)}"

@@ -275,6 +275,8 @@ def asama_durumu(puan):
 _spreadsheet = None
 
 
+_spreadsheet = None
+
 def spreadsheet_ac():
     global _spreadsheet
     if _spreadsheet is not None:
@@ -284,7 +286,6 @@ def spreadsheet_ac():
             raw_json = os.environ["GCP_SERVICE_ACCOUNT_JSON"].strip()
             sec = json.loads(raw_json)
             if "private_key" in sec:
-                # Private key içindeki hatalı satır başı karakterlerini düzeltir
                 sec["private_key"] = sec["private_key"].replace("\\n", "\n")
             client = gspread.service_account_from_dict(sec)
         else:
@@ -292,7 +293,17 @@ def spreadsheet_ac():
         _spreadsheet = client.open(GOOGLE_SHEET_DOSYA)
         return _spreadsheet
     except Exception as e:
-        print(f"GSheets bağlantı hatası: {e}")
+        print(f"GSheets bağlantı hatası (spreadsheet_ac): {type(e).__name__} - {e}")
+        return None
+
+def google_sheets_baglan(sayfa_adi):
+    ss = spreadsheet_ac()
+    if ss is None:
+        return None
+    try:
+        return ss.worksheet(sayfa_adi)
+    except Exception as e:
+        print(f"GSheets sayfa hatası ({sayfa_adi}): {type(e).__name__} - {e}")
         return None
 
 
@@ -480,14 +491,17 @@ class MailDurumu:
                 self.sheet = ss.add_worksheet(title=MAIL_DURUM_SAYFASI, rows=1000, cols=3)
                 self.sheet.update([self.BASLIK])
                 self.ilk_calisma = True
-            for satir in self.sheet.get_all_values()[1:]:
-                if satir and satir[0]:
-                    satir = satir + [""] * (3 - len(satir))
-                    self.veri[satir[0]] = {"aktif": 1 if str(satir[1]).strip() == "1" else 0, "son": satir[2]}
+            
+            ham_veri = self.sheet.get_all_values()
+            if ham_veri and len(ham_veri) > 1:
+                for satir in ham_veri[1:]:
+                    if satir and len(satir) > 0 and satir[0]:
+                        satir = satir + [""] * (3 - len(satir))
+                        self.veri[satir[0]] = {"aktif": 1 if str(satir[1]).strip() == "1" else 0, "son": satir[2]}
             self.hazir = True
             return True
         except Exception as e:
-            print(f"MailDurumu yüklenemedi: {e}")
+            print(f"MailDurumu yüklenemedi: {type(e).__name__} - {e}")
             return False
 
     def kaydet(self):

@@ -875,6 +875,7 @@ def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)
     sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
 
+    # Verileri doğrudan güncellediğimiz matris_motoru.py dosyasından çeker
     pencereler = [(etiket, kline_cek_binance(sembol_istek, aralik, mum_sayisi), agirlik)
                   for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER]
     sonuc = matris_motoru.matris_hesapla(pencereler)
@@ -887,9 +888,11 @@ def kurgusal_matris_hesapla(coin_symbol):
     min_esik_degeri = aktif_min_puan_esigi_getir()
 
     if nihai_long >= min_esik_degeri:
-        nihai_puan, aktif_yon = nihai_long, "Long"
+        nihai_puan = nihai_long
+        aktif_yon = "Long"
     elif nihai_short >= min_esik_degeri:
-        nihai_puan, aktif_yon = nihai_short, "Short"
+        nihai_puan = nihai_short
+        aktif_yon = "Short"
     else:
         nihai_puan = round(max(nihai_long, nihai_short), 2)
         aktif_yon = "Long" if nihai_long >= nihai_short else "Short"

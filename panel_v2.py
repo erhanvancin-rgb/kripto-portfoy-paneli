@@ -1264,7 +1264,7 @@ else:
             return False, "⚠️ İşlem Google Sheets'e yazılamadı!"
         kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
         return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.4f} $."
-    else:
+else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
             return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"

@@ -193,12 +193,8 @@ def telegram_bildirim_gonder(konu, icerik_html):
 
 
 def bildirim_gonder(konu, icerik_html):
-    """Telegram ve Gmail'den en az biri başarılıysa True döner (tekrar mail olmasın diye 'gönderildi' sayılır)."""
-    telegram_ok = telegram_bildirim_gonder(konu, icerik_html)
-    if telegram_ok:
-        gmail_bildirim_gonder(konu, icerik_html, hizli=True)
-        return True
-    return gmail_bildirim_gonder(konu, icerik_html)
+    """Bildirimleri yalnızca Telegram kanalı üzerinden gönderir."""
+    return telegram_bildirim_gonder(konu, icerik_html)
 
 
 # ----------------------------------------------------------------------------

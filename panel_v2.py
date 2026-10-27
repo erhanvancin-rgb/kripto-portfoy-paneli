@@ -1929,7 +1929,6 @@ st.markdown("---")
 df_gecmis = islem_gecmisi_getir(sheet_guncelle=False)
 acik_islem_listesi = df_gecmis[~durum_kapali_maskesi(df_gecmis["Durum"])]["Islem_ID"].tolist() if not df_gecmis.empty and "Durum" in df_gecmis.columns else []
 
-# EKSİK OLAN VE HATAYA SEBEBİYET VEREN TANIMLAMA:
 col_sol_analiz, col_orta_durum, col_sag_sonlandir = st.columns([2.5, 1, 1], gap="medium")
 with col_sol_analiz:
     st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)

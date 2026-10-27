@@ -1866,7 +1866,7 @@ with col_sol_panel:
 
         # Butonlar doğrudan formun içindedir (girintilidir)
         submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
-            kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
+        kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 
 # Buton kontrolleri formun DIŞINDADIR (en solda, 0 boşluk hizada)
 if kapat_kilit_tik:

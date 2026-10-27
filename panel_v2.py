@@ -1849,17 +1849,20 @@ with col_sol_panel:
                     st.session_state["islem_emri_kilit_acik"] = True
                     st.rerun()
                 else:
-                    st.warning("Uygun işlem yapılacak coin bulunmuyor!")
-        else:
-            with st.form(key="manuel_islem_formu"):
-                hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
-                if acik_pozisyon_var and risk_eklenebilir is not None:
-                    hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
-                guvenli_tutar = max(0.0, float(hesaplanan_tutar))
-                max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 999999.0
-with st.form(key="islem_onay_formu"):
-                manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
-                st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
+        st.warning("Uygun işlem yapılacak coin bulunmuyor!")
+
+    with st.form(key="islem_onay_formu"):
+        hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
+        
+        guvenli_tutar = 0.0
+        max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
+
+        if acik_pozisyon_var and risk_eklenebilir is not None:
+            hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
+            guvenli_tutar = max(0.0, float(hesaplanan_tutar))
+            max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 99999.0
+
+        manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
                 
                 col_islem_yap, col_kapat_kilit = st.columns(2)
 with col_islem_yap:

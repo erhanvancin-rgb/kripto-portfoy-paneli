@@ -281,9 +281,11 @@ def spreadsheet_ac():
         return _spreadsheet
     try:
         if "GCP_SERVICE_ACCOUNT_JSON" in os.environ:
-            sec = json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"])
+            raw_json = os.environ["GCP_SERVICE_ACCOUNT_JSON"].strip()
+            sec = json.loads(raw_json)
             if "private_key" in sec:
-                sec["private_key"] = sec["private_key"].replace(r"\n", "\n")
+                # Private key içindeki hatalı satır başı karakterlerini düzeltir
+                sec["private_key"] = sec["private_key"].replace("\\n", "\n")
             client = gspread.service_account_from_dict(sec)
         else:
             client = gspread.service_account(filename="credentials.json")

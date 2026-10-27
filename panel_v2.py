@@ -1206,7 +1206,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
 
         stop_uzde_guncel, hedef_carpan_guncel, rh_guncel_metin = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
 
-       if "Long" in eski_yon:
+        if "Long" in eski_yon:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_uzde_guncel / 100.0)
             yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + hedef_carpan_guncel / 100.0)
         else:

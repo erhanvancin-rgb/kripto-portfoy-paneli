@@ -1798,13 +1798,14 @@ with col_sol_panel:
             df_islem_yapilabilir = pd.DataFrame()
 
         coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
-        secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi) if coin_listesi else None
+        
+        # SADECE BU SATIRA KEY EKLENDİ:
+        secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi, key="sabit_coin_secici") if coin_listesi else None
 
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,70 / 0,95", None
         if secilen_coin:
             coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
             onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii["Sepet_Orani"]), float(coin_verisii["Skor"]), coin_verisii["Risk_Hedef_Metin"]
-
         acik_pozisyon_var = False
         if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
             acik_mask = ~durum_kapali_maskesi(df_gecmis_temp["Durum"])
@@ -1856,7 +1857,7 @@ with col_sol_panel:
                     hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
                 guvenli_tutar = max(0.0, float(hesaplanan_tutar))
                 max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 999999.0
-
+with st.form(key="islem_onay_formu"):
                 manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
                 st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
                 
@@ -1865,11 +1866,11 @@ with col_sol_panel:
                     submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
                 with col_kapat_kilit:
                     kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
-                if kapat_kilit_tik:
+                    if kapat_kilit_tik:
                     st.session_state["islem_emri_kilit_acik"] = False
                     st.rerun()
 
-            if submit_islem:
+                if submit_islem:
                 if not secilen_coin or coin_listesi == []:
                     st.error("⚠️ Geçerli bir coin seçmelisiniz!")
                 elif coin_verisii is not None:

@@ -2003,6 +2003,7 @@ def _ac_kapat_toggle(anahtar):
     st.session_state[anahtar] = not st.session_state.get(anahtar, False)
 
 def _rapor_cb():
+    """Tüm işlemler + kasa + para akışı + analiz içeren A4 PDF raporunu üretip doğrudan Telegram'a gönderir."""
     try:
         st.cache_data.clear()
         df_t = islem_gecmisi_getir()
@@ -2014,16 +2015,14 @@ def _rapor_cb():
             st.session_state["kart_kapat_mesaj"] = (False, f"Rapor oluşturulamadı: {hata}")
             return
         dosya_adi = f"portfoy_raporu_{tr_zaman().strftime('%Y%m%d_%H%M')}.pdf"
-        ok_m, msg_m = rapor_maili_gonder(pdf_b, dosya_adi, bak, tr_zaman())
-        if ok_m:
-            st.session_state["kart_kapat_mesaj"] = (True, f"Rapor e-posta ile gönderildi ({dosya_adi}).")
+        
+        ok_t, msg_t = rapor_telegram_gonder(pdf_b, dosya_adi, bak, tr_zaman())
+        if ok_t:
+            st.session_state.pop("rapor_pdf", None)
+            st.session_state["kart_kapat_mesaj"] = (True, f"🚀 Rapor başarıyla Telegram'a gönderildi ({dosya_adi}).")
         else:
-            ok_t, msg_t = rapor_telegram_gonder(pdf_b, dosya_adi, bak, tr_zaman())
-            if ok_t:
-                st.session_state["kart_kapat_mesaj"] = (True, f"Rapor Telegram'a gönderildi.")
-            else:
-                st.session_state["rapor_pdf"] = (pdf_b, dosya_adi)
-                st.session_state["kart_kapat_mesaj"] = (False, f"Mail ve Telegram gönderilemedi.")
+            st.session_state["rapor_pdf"] = (pdf_b, dosya_adi)
+            st.session_state["kart_kapat_mesaj"] = (False, f"⚠️ Telegram gönderim hatası: {msg_t}. Raporu aşağıdan indirebilirsiniz.")
     except Exception as e:
         st.session_state["kart_kapat_mesaj"] = (False, f"Rapor hatası: {e}")
 

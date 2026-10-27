@@ -1163,7 +1163,7 @@ if acik_islem_idx is not None:
                 if isinstance(bulunan_zaman, pd.Timestamp):
                     gercek_zaman_str = bulunan_zaman.strftime("%d.%m.%Y %H:%M")
         except Exception as e:
-            print(f"Binance zaman filtreleme hatasi: {e}")
+            print(f"Binance zaman filtreleme hatası: {e}")
 
         try:
             eski_dt = datetime.strptime(eski_zaman_str.strip(), "%d.%m.%Y %H:%M")
@@ -1202,7 +1202,7 @@ if acik_islem_idx is not None:
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop)
         if yeni_toplam_miktar > kap["azami"] + 0.005:
             eklenebilir = max(0.0, kap["azami"] - eski_miktar)
-            return False, f"Risk siniri asiliyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz."
+            return False, f"⚠️ Risk sınırı aşılıyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz."
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
         matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({rh_guncel_metin})"
@@ -1220,21 +1220,21 @@ if acik_islem_idx is not None:
         df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa - giris_kom, 2)
 
         if not dataframe_guncelle_gsheets(df):
-            return False, "Ekleme Google Sheets'e yazilamadi!"
+            return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
-        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giris Komisyonu: #{islem_no} {coin}")
-        return True, f"{coin} pozisyonuna ekleme yapildi! Giris komisyonu: {giris_kom:.4f} $."
+        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
-        if matris_puan < min_esik_kontrol or "Notr" in yon or "Beklemede" in yon:
-            return False, f"Notr veya Min. Esik ({min_esik_kontrol}) altindaki yeni islemler engellenmistir!"
+        if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
+            return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
 
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop)
         if islem_miktari > kap["azami"] + 0.005:
-            return False, f"Risk siniri asiliyor! Azami teminat {kap['azami']:.2f} $."
+            return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $."
 
         basamak = 4 if giris_fiyat < 10 else 2
         giris_kom = round(giris_komisyonu(islem_miktari), 4)
@@ -1261,9 +1261,9 @@ if acik_islem_idx is not None:
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
         if not dataframe_guncelle_gsheets(df):
-            return False, "Islem Google Sheets'e yazilamadi!"
-        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giris Komisyonu: #{yeni_id} {coin}")
-        return True, f"{coin} emri basariyla verildi! Giris komisyonu: {giris_kom:.4f} $."
+            return False, "⚠️ İşlem Google Sheets'e yazılamadı!"
+        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
+        return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.4f} $."
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:

@@ -1864,7 +1864,7 @@ with col_sol_panel:
 
         manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
                 
-                col_islem_yap, col_kapat_kilit = st.columns(2)
+        col_islem_yap, col_kapat_kilit = st.columns(2)
 with col_islem_yap:
         submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
 with col_kapat_kilit:

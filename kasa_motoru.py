@@ -9,37 +9,52 @@ import pandas as pd
 
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
+@st.cache_resource(ttl=3600, show_spinner=False)
+def _sayfa_getir(sayfa_adi):
+    """Google Sheets sayfasına bir kez bağlanır ve 1 saat boyunca önbellekte tutar (hata durumunda önbelleğe alınmaz)."""
+    if not (hasattr(st, "secrets") and "gcp_service_account" in st.secrets):
+        raise RuntimeError("Streamlit Secrets içinde 'gcp_service_account' bulunamadı!")
+
+    sec = dict(st.secrets["gcp_service_account"])
+    pk = str(sec.get("private_key", ""))
+    if "\\n" in pk:
+        pk = pk.replace("\\n", "\n")
+    lines = pk.splitlines()
+    cleaned_lines = [line.strip() for line in lines if line.strip()]
+    sec["private_key"] = "\n".join(cleaned_lines)
+
+    client = gspread.service_account_from_dict(sec)
+    sh = client.open_by_key(GOOGLE_SHEET_ID)
+    return sh.worksheet(sayfa_adi)
+
 def _sheets_baglan(sayfa_adi):
-    """Google Sheets bağlantısını kurar ve PEM anahtarındaki format hatalarını otomatik onarır."""
+    """Eski imza korunur: (sayfa, hata) döndürür."""
     try:
-        if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
-            sec = dict(st.secrets["gcp_service_account"])
-            
-            pk = str(sec.get("private_key", ""))
-            if "\\n" in pk:
-                pk = pk.replace("\\n", "\n")
-            lines = pk.splitlines()
-            cleaned_lines = [line.strip() for line in lines if line.strip()]
-            sec["private_key"] = "\n".join(cleaned_lines)
-            
-            client = gspread.service_account_from_dict(sec)
-        else:
-            return None, "Streamlit Secrets içinde 'gcp_service_account' bulunamadı!"
-            
-        sh = client.open_by_key(GOOGLE_SHEET_ID)
-        return sh.worksheet(sayfa_adi), None
+        return _sayfa_getir(sayfa_adi), None
     except Exception as e:
+        try:
+            _sayfa_getir.clear()
+        except Exception:
+            pass
         return None, str(e)
+
+@st.cache_data(ttl=15, show_spinner=False)
+def _ham_satirlar():
+    """KasaDefteri'nin tüm satırlarını okur; 15 sn önbellekte tutulur. Yazma sonrası temizlenir."""
+    sheet, hata = _sheets_baglan("KasaDefteri")
+    if sheet is None:
+        raise RuntimeError(hata)
+    return sheet.get_all_values()
 
 def _verileri_tablodan_oku():
     """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
-    sheet, hata = _sheets_baglan("KasaDefteri")
-    if sheet is None:
-        st.error(f"⚠️ Kasa E-Tablo Bağlantı Hatası: {hata}")
-        return 0.0, []
-        
     try:
-        satirlar = sheet.get_all_values()
+        satirlar = _ham_satirlar()
+    except Exception as e:
+        st.error(f"⚠️ Kasa E-Tablo Bağlantı Hatası: {e}")
+        return 0.0, []
+
+    try:
         if not satirlar or len(satirlar) <= 1:
             return 0.0, []
             
@@ -130,6 +145,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
 
         # --- YENİ EMNİYET KİLİDİ: KASADA YETERLİ NAKİT VAR MI? ---
         if tur in ["Para_Cek", "CEK"]:
+            _ham_satirlar.clear()  # çekim kontrolü her zaman güncel bakiye ile yapılır
             mevcut_nakit = bakiye_getir() # Mevcut kasadaki bakiye fonksiyonu
             if tutar > mevcut_nakit:
                 return False, f"⚠️ Yetersiz bakiye! Kasada çekilebilecek yalnızca {mevcut_nakit:,.2f} $ var."
@@ -154,6 +170,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             
         sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama])
+        _ham_satirlar.clear()  # sonraki okuma yeni kaydı görsün
         return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
         
     except Exception as e:

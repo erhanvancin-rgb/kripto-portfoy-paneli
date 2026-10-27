@@ -1218,9 +1218,6 @@ if acik_islem_idx is not None:
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
         df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa - giris_kom, 2)
-
-        if not dataframe_guncelle_gsheets(df):
-            return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
         if not dataframe_guncelle_gsheets(df):
             return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])

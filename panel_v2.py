@@ -1206,13 +1206,12 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
 
         stop_uzde_guncel, hedef_carpan_guncel, rh_guncel_metin = calculate_coin_metrics_by_score(yeni_agirlikli_puan)
 
-        if "Long" in eski_yon:
+       if "Long" in eski_yon:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 - stop_uzde_guncel / 100.0)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 + hedef_carpan_guncel / 100.0)
         else:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_uzde_guncel / 100.0)
-            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - (stop_uzde_guncel * hedef_carpan_guncel) / 100.0)
-        beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop)
+            yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - hedef_carpan_guncel / 100.0)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop)
         if yeni_toplam_miktar > kap["azami"] + 0.005:
@@ -1604,10 +1603,10 @@ for item in gecici_islenen_liste:
         sepet_orani = 0.0
 
     if aktif_yon_turu == "Long" or (is_notr and aktif_yon == "Long"):
-        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + (stop_uzde * hedef_carpan) / 100.0)
+        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 - stop_uzde / 100.0), anlik_fiyat * (1.0 + hedef_carpan / 100.0)
     else:
-        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - (stop_uzde * hedef_carpan) / 100.0)
-
+        stop_fiyat, hedef_fiyat = anlik_fiyat * (1.0 + stop_uzde / 100.0), anlik_fiyat * (1.0 - hedef_carpan / 100.0)
+        
     dom_html = f'<div style="text-align: center;"><div style="font-size: 16px; margin-bottom: 2px; letter-spacing: 4px;">{item["c_led"]}{item["d_led"]}</div><div style="font-size: 10px; font-weight: bold; color: #91a0b8;">C &nbsp;&nbsp; D</div></div>'
 
     puan_toplam_h = item["l_puan"] + item["s_puan"]

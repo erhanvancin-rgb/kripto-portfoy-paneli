@@ -1849,7 +1849,7 @@ with col_sol_panel:
                     st.session_state["islem_emri_kilit_acik"] = True
                     st.rerun()
                 else:
-        st.warning("Uygun işlem yapılacak coin bulunmuyor!")
+                    st.warning("Uygun işlem yapılacak coin bulunmuyor!")
 
     with st.form(key="islem_onay_formu"):
         hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)

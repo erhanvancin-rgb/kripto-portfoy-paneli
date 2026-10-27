@@ -706,7 +706,8 @@ def hafta_sonu_mu():
     return False
 
 def aktif_min_puan_esigi_getir():
-    return 60.0 if hafta_sonu_mu() else 55.0
+    # Başlangıç eşiği hafta içi 50, hafta sonu (sığ piyasa) 55 olarak güncellendi.
+    return 55.0 if hafta_sonu_mu() else 50.0
 
 def hafizayi_oku():
     if os.path.exists(HAFIZA_DOSYASI):
@@ -1423,37 +1424,44 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
 
 def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
     hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 55.0
+    min_esik = 55.0 if hsonu else 50.0
 
     if puan < min_esik:
         return "Nötr (Beklemede)", 1.0, False, False
 
+    # Hafta içi (Normal Mod - 50 Tabana Göre)
     if not hsonu:
-        if 55.0 <= puan < 58.75:
-            return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
-        elif 58.75 <= puan < 62.50:
-            return "⭐⭐ 2. Aşama (Orta Trend)", 3.0, False, False
-        elif 62.50 <= puan < 66.25:
-            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", 3.0, False, False
-        elif 66.25 <= puan < 70.00:
-            return "🔥 4. Aşama (Güçlü Trend)", 3.0, False, False
-        elif 70.00 <= puan < 73.75:
-            return "🔥 🔥 5. Aşama (Çok Güçlü Trend)", 4.0, True, False
+        if 50.0 <= puan < 55.0:
+            return "⭐ Zayıf Trend", 2.0, False, False
+        elif 55.0 <= puan < 59.0:
+            return "⭐⭐ Orta Trend", 3.0, False, False
+        elif 59.0 <= puan < 63.0:
+            return "⭐⭐⭐ Güvenli Trend", 3.0, False, False
+        elif 63.0 <= puan < 67.0:
+            return "🔥 Güçlü Trend", 4.0, False, False
+        elif 67.0 <= puan < 71.0:
+            return "🔥 🔥 Orta Güçlü Trend", 4.0, True, False
+        elif 71.0 <= puan < 75.0:
+            return "🔥 🔥 🔥 Çok Güçlü Trend", 5.0, False, True
         else:
-            return "🔥🔥🔥 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", 5.0, False, True
+            return "🔥🔥🔥🔥 Boğa / Ayı Vuruşu", 5.0, False, True
+            
+    # Hafta sonu (Sığ Piyasa Modu - Eşikler 5 puan yukarı ötelenir)
     else:
-        if 60.0 <= puan < 63.75:
-            return "⭐ 1. Aşama (Zayıf Trend)", 3.0, False, False
-        elif 63.75 <= puan < 67.50:
-            return "⭐⭐ 2. Aşama (Orta Trend)", 3.0, False, False
-        elif 67.50 <= puan < 71.25:
-            return "⭐⭐⭐ 3. Aşama (Güvenli Trend)", 3.0, False, False
-        elif 71.25 <= puan < 75.00:
-            return "🔥 4. Aşama (Güçlü Trend)", 3.0, False, False
-        elif 75.00 <= puan < 78.75:
-            return "🔥 🔥 5. Aşama (Çok Güçlü Trend)", 4.0, True, False
+        if 55.0 <= puan < 60.0:
+            return "⭐ Zayıf Trend", 2.0, False, False
+        elif 60.0 <= puan < 64.0:
+            return "⭐⭐ Orta Trend", 3.0, False, False
+        elif 64.0 <= puan < 68.0:
+            return "⭐⭐⭐ Güvenli Trend", 3.0, False, False
+        elif 68.0 <= puan < 72.0:
+            return "🔥 Güçlü Trend", 4.0, False, False
+        elif 72.0 <= puan < 76.0:
+            return "🔥 🔥 Orta Güçlü Trend", 4.0, True, False
+        elif 76.0 <= puan < 80.0:
+            return "🔥 🔥 🔥 Çok Güçlü Trend", 5.0, False, True
         else:
-            return "🔥🔥🔥 6. Aşama (Boğa Vuruşu / Ayı Pençesi)", 5.0, False, True
+            return "🔥🔥🔥🔥 Boğa / Ayı Vuruşu", 5.0, False, True
 
 def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, coin_mi=True):
     pass

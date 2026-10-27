@@ -1866,7 +1866,7 @@ with col_sol_panel:
 
         col_islem_yap, col_kapat_kilit = st.columns(2)
         with col_islem_yap:
-            submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
+        submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
         with col_kapat_kilit:
             kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 

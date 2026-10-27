@@ -206,17 +206,18 @@ def cikis_komisyonu(miktar, hedef_mi):
     return float(miktar) * KALDIRAC * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
 
 def beklenen_ve_olasi(long_mi, miktar, giris, kar_al, stop):
-    """Hedefe/stopa ulaşılırsa kalan K/Z."""
+    """Hedefe/stopa ulaşılırsa kalan K/Z. Sabit 5x Kaldıraç."""
+    kaldirac = 5.0
     if long_mi:
-        brut_kar = miktar * KALDIRAC * ((kar_al - giris) / giris)
-        brut_stop = miktar * KALDIRAC * ((stop - giris) / giris)
+        brut_kar = miktar * kaldirac * ((kar_al - giris) / giris)
+        brut_stop = miktar * kaldirac * ((stop - giris) / giris)
     else:
-        brut_kar = miktar * KALDIRAC * ((giris - kar_al) / giris)
-        brut_stop = miktar * KALDIRAC * ((giris - stop) / giris)
+        brut_kar = miktar * kaldirac * ((giris - kar_al) / giris)
+        brut_stop = miktar * kaldirac * ((giris - stop) / giris)
     return brut_kar - cikis_komisyonu(miktar, True), brut_stop - cikis_komisyonu(miktar, False)
 
 def canli_beklenen_olasi(row):
-    """Açık işlem: hedef/stop değerlerini GÜNCEL kaldıraç ve komisyonla hesaplar. Kapalı işlem: kayıtlı değer."""
+    """Açık işlem: hedef/stop değerlerini GÜNCEL kaldıraç ve komisyonla hesaplar."""
     try:
         if not durum_kapali_mi(row["Durum"]):
             giris = float(row["Giris_Fiyat"])
@@ -228,9 +229,10 @@ def canli_beklenen_olasi(row):
 
 def stop_riski(miktar, giris, stop):
     """Stop vurulursa olası toplam zarar (pozitif): fiyat zararı + giriş ve çıkış komisyonu."""
+    kaldirac = 5.0
     if giris <= 0:
         return 0.0
-    return float(miktar) * KALDIRAC * (abs(stop - giris) / giris + 2 * KOMISYON_TAKER)
+    return float(miktar) * kaldirac * (abs(stop - giris) / giris + 2 * KOMISYON_TAKER)
 
 def acik_pozisyonlar_riski(df, haric_coin=None):
     if df is None or df.empty or "Durum" not in df.columns:

@@ -843,13 +843,14 @@ def calculate_coin_metrics_by_score(matris_puani):
     min_esik = 60.0 if hsonu else 55.0
 
     if matris_puani < min_esik:
-        return 0.70, 1.0, "Nötr"
+        return 0.25, 1.0, "Nötr"
 
-    # Tablonuzdaki logaritmik eğri uydurma sınırları
+    # Tablodaki yeni logaritmik değer noktaları (55 - 75 Puan arası)
     x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.75, 0.70, 0.65, 0.60, 0.55, 0.50])     # Risk Değerleri (Stop %)
-    y_hedef = np.array([0.75, 0.91, 1.08, 1.27, 1.46, 1.50])    # Hedef Değerleri (Çarpan veya oran)
-    
+    y_risk = np.array([0.25, 0.23, 0.22, 0.20, 0.18, 0.17])      # Yeni Risk Değerleri (%)
+    y_hedef = np.array([0.25, 0.30, 0.36, 0.42, 0.49, 0.50])     # Yeni Hedef Değerleri (%)
+
+    # Logaritmik eğri uydurma (Logarithmic curve fitting)
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
@@ -858,14 +859,17 @@ def calculate_coin_metrics_by_score(matris_puani):
     stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
     hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
 
-    # EMNİYET KİLİDİ: Puan 55.2 bile olsa asla tablodaki zayıf sınırın altına düşmesine izin verme
-    stop_uzde = max(0.50, min(0.75, stop_uzde))
-    hedef_uzde = max(0.75, min(2.00, hedef_uzde))
-    
-    # Hedef oranının her zaman riskten (stop oranından) mantıklı bir şekilde büyük olmasını garantile
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.2
+    # Taban emniyet sınırları (Aşırı sapmaları önlemek için)
+    stop_uzde = max(0.15, min(0.27, stop_uzde))
+    hedef_uzde = max(0.25, min(1.00, hedef_uzde))
 
-    return stop_uzde, hedef_carpan, f"{stop_uzde:.2f} / {hedef_uzde:.2f}".replace(".", ",")
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.0
+
+    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
+    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
+    risk_hedef_metin = f"{str_stop} / {str_hedef}"
+
+    return stop_uzde, hedef_carpan, risk_hedef_metin
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)

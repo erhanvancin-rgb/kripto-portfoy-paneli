@@ -838,38 +838,56 @@ def load_15min_market_data(coin_symbol: str):
         "Close": [base_p] * limit,
     })
 
+import numpy as np
+
 def calculate_coin_metrics_by_score(matris_puani):
-    hsonu = hafta_sonu_mu()
-    min_esik = 60.0 if hsonu else 55.0
-
+    """
+    Yeni matris puanlarına ve logaritmik risk/hedef tablosuna göre 
+    stop ve hedef yüzdelerini hesaplar.
+    """
+    min_esik = 50.0
     if matris_puani < min_esik:
-        return 0.25, 1.0, "Nötr"
+        return 0.53, 0.37, "0,53 / 0,37"
 
-    # Tablodaki yeni logaritmik değer noktaları (55 - 75 Puan arası)
-    x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.25, 0.23, 0.22, 0.20, 0.18, 0.17])      # Yeni Risk Değerleri (%)
-    y_hedef = np.array([0.25, 0.30, 0.36, 0.42, 0.49, 0.50])     # Yeni Hedef Değerleri (%)
+    # Yeni paylaşılan tablo verileri
+    x_puanlar = np.array([50.0, 55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
+    y_risk = np.array([0.53, 0.50, 0.46, 0.43, 0.40, 0.36, 0.33])    # Risk (Stop %)
+    y_hedef = np.array([0.37, 0.50, 0.60, 0.71, 0.84, 0.96, 0.99]) # Hedef %
 
-    # Logaritmik eğri uydurma (Logarithmic curve fitting)
+    # Logaritmik eğri uydurma (polyfit)
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
-    puan = max(min_esik, min(100.0, matris_puani))
+    puan = max(min_esik, min(75.0, matris_puani))
 
     stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
     hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
 
-    # Taban emniyet sınırları (Aşırı sapmaları önlemek için)
-    stop_uzde = max(0.15, min(0.27, stop_uzde))
-    hedef_uzde = max(0.25, min(1.00, hedef_uzde))
-
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.0
+    # Taban sınır emniyetleri
+    stop_uzde = max(0.20, min(0.60, stop_uzde))
+    hedef_uzde = max(0.30, min(1.20, hedef_uzde))
 
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
     str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
-    risk_hedef_metin = f"{str_stop} / {str_hedef}"
+    
+    return stop_uzde, hedef_uzde, f"{str_stop} / {str_hedef}"
 
-    return stop_uzde, hedef_carpan, risk_hedef_metin
+def pozisyon_kar_zarar_hesapla(yon, giris_fiyati, guncel_fiyat, yatirim_miktari, kaldirac=1.0):
+    """
+    Long ve Short işlemler için doğru kaldıraçlı Kâr/Zarar (USD) hesaplaması.
+    """
+    if giris_fiyati <= 0:
+        return 0.0
+
+    # Yön bazlı fiyat değişim oranı
+    if yon.strip().lower() in ["long", "alış"]:
+        fiyat_farki_yuzde = (guncel_fiyat - giris_fiyati) / giris_fiyati
+    else:  # Short / Satış
+        fiyat_farki_yuzde = (giris_fiyati - guncel_fiyat) / giris_fiyati
+
+    # PnL = Yatırım Miktarı * Fiyat Değişim Yüzdesi * Kaldıraç
+    pnl_usd = yatirim_miktari * fiyat_farki_yuzde * kaldirac
+    return round(pnl_usd, 2)
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)

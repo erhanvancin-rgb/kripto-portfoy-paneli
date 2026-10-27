@@ -891,25 +891,29 @@ def kurgusal_matris_hesapla(coin_symbol):
 def _servis_hesabi_sozlugu():
     sec = {k: (v.strip() if isinstance(v, str) else v) for k, v in dict(st.secrets["gcp_service_account"]).items()}
     sec.pop("GMAIL_PASSWORD", None)
-    pk = str(sec.get("private_key", "")).replace("\\n", "\n").strip()
-    if pk:
-        sec["private_key"] = pk + "\n"
+    pk = str(sec.get("private_key", ""))
+    pk = pk.replace("\\n", "\n")
+    sec["private_key"] = pk.strip()
     sec["token_uri"] = "https://oauth2.googleapis.com/token"
     sec["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
     sec["universe_domain"] = "googleapis.com"
     return sec
 
 def _hata_ozeti(e):
-    metin = str(e)
-    return f"{type(e).__name__}: {metin[:160]}"
+    return f"{type(e).__name__}: {str(e)[:160]}"
+
+# Dün Kasa Motorunda kullandığımız kusursuz ID bağlantısına geçiyoruz
+GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 @st.cache_resource(ttl=3600)
 def _sayfa_nesnesi(sayfa_adi):
-    if "gcp_service_account" in st.secrets:
-        client = gspread.service_account_from_dict(_servis_hesabi_sozlugu())
-    else:
-        client = gspread.service_account(filename="credentials.json")
-    return client.open(GOOGLE_SHEET_DOSYA).worksheet(sayfa_adi)
+    client = gspread.service_account_from_dict(_servis_hesabi_sozlugu())
+    sh = client.open_by_key(GOOGLE_SHEET_ID)
+    try:
+        return sh.worksheet(sayfa_adi)
+    except gspread.exceptions.WorksheetNotFound:
+        # Eğer sekme (KriptoPortfoyVeritabani_Yeni) henüz E-Tabloda yoksa, çökme; otomatik oluştur!
+        return sh.add_worksheet(title=sayfa_adi, rows="1000", cols="20")
 
 _SON_SHEETS_HATASI = {"mesaj": ""}
 
@@ -989,12 +993,20 @@ def dataframe_guncelle_gsheets(df):
             df = df.sort_values(by="Islem_ID").reset_index(drop=True)
             veri_listesi = [df.columns.tolist()] + df.values.tolist()
             eski_satir_sayisi = len(sheet.get_all_values())
-            sheet.update(veri_listesi)
+            
+            try:
+                sheet.update(values=veri_listesi, range_name="A1")
+            except TypeError:
+                sheet.update(veri_listesi)
+                
             if eski_satir_sayisi > len(veri_listesi):
                 sheet.batch_clear([f"A{len(veri_listesi) + 1}:Z{eski_satir_sayisi}"])
             basarili = True
         except Exception as e:
-            print(f"GSheets Güncelleme Hatası: {e}")
+            st.error(f"GSheets Yazma Hatası: {e}")
+    else:
+        st.error(f"Bağlantı Hatası: {_SON_SHEETS_HATASI['mesaj']}")
+        
     st.cache_data.clear()
     return basarili
 

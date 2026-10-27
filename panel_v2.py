@@ -1862,27 +1862,38 @@ with st.form(key="islem_onay_formu"):
                 st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
                 
                 col_islem_yap, col_kapat_kilit = st.columns(2)
-                with col_islem_yap:
-                    submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
-                with col_kapat_kilit:
-                    kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
-                    if kapat_kilit_tik:
-                    st.session_state["islem_emri_kilit_acik"] = False
-                    st.rerun()
+    with col_islem_yap:
+        submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
+    with col_kapat_kilit:
+        kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 
-                if submit_islem:
-                if not secilen_coin or coin_listesi == []:
-                    st.error("⚠️ Geçerli bir coin seçmelisiniz!")
-                elif coin_verisii is not None:
-                    basari, mesaj = yeni_islem_ekle(secilen_coin, coin_verisii["Aktif_Yon"], coin_verisii["Fiyat"], manuel_girilen_tutar, coin_verisii["Stopla"], coin_verisii["Kar_Al"], "Oransal_Matris", anlik_matris_puani, anlik_risk_hedef_metin)
-                    if basari:
-                        st.session_state["islem_emri_kilit_acik"] = False
-                        st.success(mesaj)
-                        st.balloons()
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(mesaj)
+if kapat_kilit_tik:
+    st.session_state["islem_emri_kilit_acik"] = False
+    st.rerun()
+
+if submit_islem:
+    if not secilen_coin or coin_listesi == []:
+        st.error("⚠️ Geçerli bir coin seçmelisiniz!")
+    elif coin_verisii is not None:
+        basari, mesaj = yeni_islem_ekle(
+            secilen_coin, 
+            coin_verisii["Aktif_Yon"], 
+            coin_verisii["Fiyat"], 
+            manuel_girilen_tutar, 
+            coin_verisii["Stopla"], 
+            coin_verisii["Kar_Al"], 
+            "Oransal_Matris", 
+            anlik_matris_puani, 
+            anlik_risk_hedef_metin
+        )
+        if basari:
+            st.session_state["islem_emri_kilit_acik"] = False
+            st.success(mesaj)
+            st.balloons()
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error(mesaj)
 
 with col_orta_grafik:
     st.markdown("<h3>🌐 Top 5 Coin (Oransal Omurga & Teknik Mıknatıs)</h3>", unsafe_allow_html=True)

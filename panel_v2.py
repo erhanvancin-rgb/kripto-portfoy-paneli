@@ -1953,26 +1953,41 @@ with col_sol_analiz:
     kapananlar_df = pd.DataFrame() if df_gecmis.empty or "Durum" not in df_gecmis.columns else df_gecmis[durum_kapali_maskesi(df_gecmis["Durum"])]
 
     if not kapananlar_df.empty:
-        karli_sayisi, zararli_sayisi = 0, 0
-        toplam_kazanc_dolar, toplam_kayip_dolar = 0.0, 0.0
-        for _, r in kapananlar_df.iterrows():
-            val = float(pd.to_numeric(r["Net_Kar_Zarar"], errors="coerce") or 0.0)
-            if val >= 0:
-                karli_sayisi += 1
-                toplam_kazanc_dolar += val
-            else:
-                zararli_sayisi += 1
-                toplam_kayip_dolar += abs(val)
+        net = pd.to_numeric(kapananlar_df["Net_Kar_Zarar"], errors="coerce").fillna(0.0)
+        n_kap = len(kapananlar_df)
+        kaz, kay = net[net >= 0], net[net < 0]
+        karli_sayisi, zararli_sayisi = len(kaz), len(kay)
+        kazanc, kayip = float(kaz.sum()), float(abs(kay.sum()))
+        net_fark = kazanc - kayip
+        isabet = (karli_sayisi / n_kap * 100.0) if n_kap else 0.0
 
-        toplam_kapanan = len(kapananlar_df)
-        net_fark_dolar = toplam_kazanc_dolar - toplam_kayip_dolar
-        kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
-        st.info(f"Kapanan Toplam: {toplam_kapanan} | Net K/Z: {net_fark_dolar:+,.2f} $")
+        col_met1, col_met2 = st.columns(2)
+        with col_met1:
+            st.metric("Toplam Kapanan", f"{n_kap} Adet")
+            st.metric("Kârlı İşlem", f"{karli_sayisi} (%{isabet:.1f})", delta=f"+{kazanc:,.2f} $")
+        with col_met2:
+            st.metric("Net K/Z", f"{net_fark:+,.2f} $")
+            st.metric("Zararlı İşlem", f"{zararli_sayisi} (%{100-isabet:.1f})", delta=f"-{kayip:,.2f} $", delta_color="inverse")
+
+        # Kapanan İşlemler İçin Pasta Grafiği (Pie / Donut Chart)
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=['Kârlı İşlemler', 'Zararlı İşlemler'],
+            values=[karli_sayisi, zararli_sayisi],
+            hole=.4,
+            marker_colors=['#00FF00', 'rgb(255, 75, 0)']
+        )])
+        fig_pie.update_layout(
+            template="plotly_dark",
+            margin=dict(t=10, b=10, l=10, r=10),
+            height=180,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5, font=dict(color="#e8eef8", size=11))
+        )
+        st.plotly_chart(fig_pie, width='stretch', config={"displayModeBar": False})
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
-
-def _ac_kapat_toggle(anahtar):
-    st.session_state[anahtar] = not st.session_state.get(anahtar, False)
 
 def _rapor_cb():
     try:

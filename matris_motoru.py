@@ -29,11 +29,11 @@ import pandas as pd
 # ------------------------------------------------------------------ AYARLAR
 DILIMLER = [
     # (etiket, mum aralığı, mum sayısı, ağırlık) - Günlük Intraday Trade Optimizasyonu
-    ("16 S", "15m", 64, 7.30),
-    ("8 S", "5m", 96, 11.80),
-    ("4 S", "5m", 48, 19.10),
-    ("2 S", "1m", 120, 23.60),
-    ("1 S", "1m", 60, 38.20),
+    ("16 Saat", "15m", 64, 5.91),
+    ("8 Saat", "5m", 96, 9.55),
+    ("4 Saat", "5m", 48, 15.45),
+    ("2 Saat", "1m", 120, 19.09),
+    ("1 Saat", "1m", 60, 50.00),
 ]
 
 # ANA YÖN: net hareketin yönünü belirleyen kanıtlar (gövde baskınlığı + trend verimliliği)

@@ -1865,8 +1865,7 @@ with col_sol_panel:
         manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
 
         # Butonlar doğrudan formun içindedir (girintilidir)
-        manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
-
+        manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0, key="manuel_girilen_tutar_input")
         with st.form(key="islem_onay_formu"):
             submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
             kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")

@@ -845,11 +845,12 @@ def calculate_coin_metrics_by_score(matris_puani):
     if matris_puani < min_esik:
         return 0.70, 1.0, "Nötr"
 
+    # Tablonuzdaki logaritmik eğri uydurma sınırları
     x_puanlar = np.array([55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.70, 0.66, 0.62, 0.58, 0.54, 0.50])
+    y_risk = np.array([0.75, 0.70, 0.65, 0.60, 0.55, 0.50])     # Risk Değerleri (Stop %)
+    y_hedef = np.array([0.75, 0.91, 1.08, 1.27, 1.46, 1.50])    # Hedef Değerleri (Çarpan veya oran)
+    
     risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
-
-    y_hedef = np.array([0.70, 0.84, 1.00, 1.17, 1.35, 1.50])
     hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
 
     puan = max(min_esik, min(100.0, matris_puani))
@@ -857,9 +858,12 @@ def calculate_coin_metrics_by_score(matris_puani):
     stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
     hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
 
-    stop_uzde = max(0.40, min(0.70, stop_uzde))
-    hedef_uzde = max(0.60, min(2.50, hedef_uzde))
-    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.5
+    # EMNİYET KİLİDİ: Puan 55.2 bile olsa asla tablodaki zayıf sınırın altına düşmesine izin verme
+    stop_uzde = max(0.50, min(0.75, stop_uzde))
+    hedef_uzde = max(0.75, min(2.00, hedef_uzde))
+    
+    # Hedef oranının her zaman riskten (stop oranından) mantıklı bir şekilde büyük olmasını garantile
+    hedef_carpan = hedef_uzde / stop_uzde if stop_uzde > 0 else 1.2
 
     return stop_uzde, hedef_carpan, f"{stop_uzde:.2f} / {hedef_uzde:.2f}".replace(".", ",")
 

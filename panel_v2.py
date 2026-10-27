@@ -1852,10 +1852,10 @@ with col_sol_panel:
                     st.warning("Uygun işlem yapılacak coin bulunmuyor!")
 
         with st.form(key="islem_onay_formu"):
-            hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
+        hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
         
-            guvenli_tutar = 0.0
-            max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
+        guvenli_tutar = 0.0
+        max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
 
         if acik_pozisyon_var and risk_eklenebilir is not None:
             hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
@@ -1863,13 +1863,14 @@ with col_sol_panel:
             max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 99999.0
 
         manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
-                
-        col_islem_yap, col_kapat_kilit = st.columns(2)
-with col_islem_yap:
-        submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
-with col_kapat_kilit:
-        kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 
+        col_islem_yap, col_kapat_kilit = st.columns(2)
+        with col_islem_yap:
+            submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
+        with col_kapat_kilit:
+            kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
+
+# Butonların sonuç kontrolü FORMUN DIŞINDA yer alır:
 if kapat_kilit_tik:
     st.session_state["islem_emri_kilit_acik"] = False
     st.rerun()

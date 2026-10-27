@@ -1147,26 +1147,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
 # İŞLEM VE RAPORLAMA FONKSİYONLARI
 # =====================================================================
 
-def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin):
-    df = islem_gecmisi_getir()
-    toplam_kasa_risk, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
-    gereken_nakit = islem_miktari + giris_komisyonu(islem_miktari)
-    if round(gereken_nakit, 2) > round(mevcut_bakiye, 2):
-        return False, f"Bakiye yetersiz! Mevcut Bakiye: {mevcut_bakiye:.2f} $, Girilen: {islem_miktari:.2f} $ + giriş komisyonu {giris_komisyonu(islem_miktari):.2f} $"
-    if islem_miktari <= 0:
-        return False, "İşlem miktarı 0 $'dan büyük olmalıdır!"
-
-    suan_tr = tr_zaman()
-    suan_tr_str = suan_tr.strftime("%d.%m.%Y %H:%M")
-    
-    acik_islem_idx = None
-    if not df.empty and "Durum" in df.columns:
-        acik_mask = ~durum_kapali_maskesi(df["Durum"])
-        acik_df = df[acik_mask]
-        if not acik_df.empty and coin in acik_df["Coin"].values:
-            acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
-
-    if acik_islem_idx is not None:
+if acik_islem_idx is not None:
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
         eski_miktar = float(df.loc[acik_islem_idx, "Islem_Miktari"])
         eski_yon = str(df.loc[acik_islem_idx, "Yon"])
@@ -1215,6 +1196,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         else:
             yeni_stop = yeni_agirlikli_ortalama * (1.0 + stop_uzde_guncel / 100.0)
             yeni_kar_al = yeni_agirlikli_ortalama * (1.0 - hedef_carpan_guncel / 100.0)
+            
+        # ⚠️ HATA ÇÖZÜMÜ: beklenen_kar ve olasi_stop burada eksiksiz hesaplanıyor
+        beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop)
         if yeni_toplam_miktar > kap["azami"] + 0.005:

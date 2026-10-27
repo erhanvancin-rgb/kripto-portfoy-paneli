@@ -1798,13 +1798,22 @@ with col_sol_panel:
             df_islem_yapilabilir = pd.DataFrame()
 
         coin_listesi = df_islem_yapilabilir["Coin"].tolist() if not df_islem_yapilabilir.empty else []
+
+        # Kilit açıkken coin listesi dondurulur: canlı veri değişse bile seçili coin kaybolup sıfırlanmaz.
+        if st.session_state.get("islem_emri_kilit_acik", False):
+            if "kilit_coin_listesi" not in st.session_state:
+                st.session_state["kilit_coin_listesi"] = list(coin_listesi)
+            coin_listesi = list(st.session_state["kilit_coin_listesi"])
+        else:
+            st.session_state.pop("kilit_coin_listesi", None)
         
         # SADECE BU SATIRA KEY EKLENDİ:
         secilen_coin = st.selectbox("İşlem Yapılacak Coin:", coin_listesi, key="sabit_coin_secici") if coin_listesi else None
 
         onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, 0.0, "0,70 / 0,95", None
         if secilen_coin:
-            coin_verisii = df_islem_yapilabilir[df_islem_yapilabilir["Coin"] == secilen_coin].iloc[0]
+            _kaynak_df = df_gosterge if (not df_gosterge.empty and secilen_coin in df_gosterge["Coin"].values) else df_islem_yapilabilir
+            coin_verisii = _kaynak_df[_kaynak_df["Coin"] == secilen_coin].iloc[0]
             onerilen_oran_val, anlik_matris_puani, anlik_risk_hedef_metin = float(coin_verisii["Sepet_Orani"]), float(coin_verisii["Skor"]), coin_verisii["Risk_Hedef_Metin"]
         acik_pozisyon_var = False
         if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
@@ -1851,24 +1860,28 @@ with col_sol_panel:
                 else:
                     st.warning("Uygun işlem yapılacak coin bulunmuyor!")
 
-        with st.form(key="islem_onay_formu"):
-            hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
-        
-            guvenli_tutar = 0.0
-            max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
+        # Form dışında hesaplamalar
+        hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
+        guvenli_tutar = 0.0
+        max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
 
         if acik_pozisyon_var and risk_eklenebilir is not None:
             hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))
             guvenli_tutar = max(0.0, float(hesaplanan_tutar))
             max_tutar = max(float(guvenli_tutar), float(mevcut_bakiye)) if mevcut_bakiye > 0 else 99999.0
 
-        manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0)
-
-        # Butonlar doğrudan formun içindedir (girintilidir)
-        manuel_girilen_tutar = st.number_input("Tutar ($ Giriniz):", min_value=0.0, max_value=float(max_tutar), value=float(guvenli_tutar), step=10.0, key="manuel_girilen_tutar_input")
-
-        submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
-        kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
+        # Tüm widget'lar ve submit butonları formun İÇİNDE
+        with st.form(key="islem_onay_formu"):
+            manuel_girilen_tutar = st.number_input(
+                "Tutar ($ Giriniz):",
+                min_value=0.0,
+                max_value=float(max_tutar),
+                value=float(min(guvenli_tutar, max_tutar)),
+                step=10.0,
+                key="manuel_girilen_tutar_input",
+            )
+            submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
+            kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 # Buton kontrolleri formun DIŞINDADIR (en solda, 0 boşluk hizada)
 if kapat_kilit_tik:
     st.session_state["islem_emri_kilit_acik"] = False

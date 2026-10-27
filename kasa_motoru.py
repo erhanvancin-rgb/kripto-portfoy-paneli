@@ -107,7 +107,6 @@ def islem_gecmisi_getir(ortak_fiyat_havuzu=None):
     return gecmis_getir()
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
-    """Yeni işlemi tutar düzeltmeleri ve kalıcı TR saat dilimi (pytz) uyumuyla Google Sheets'e yazar."""
     import pytz
     from datetime import datetime
     try:
@@ -128,6 +127,13 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
             komisyon = float(komisyon)
         except ValueError:
             komisyon = 0.0
+
+        # --- YENİ EMNİYET KİLİDİ: KASADA YETERLİ NAKİT VAR MI? ---
+        if tur in ["Para_Cek", "CEK"]:
+            mevcut_nakit = bakiye_getir() # Mevcut kasadaki bakiye fonksiyonu
+            if tutar > mevcut_nakit:
+                return False, f"⚠️ Yetersiz bakiye! Kasada çekilebilecek yalnızca {mevcut_nakit:,.2f} $ var."
+        # ---------------------------------------------------------
             
         ham = sheet.get_all_values()
         if not ham or len(ham) == 0:
@@ -141,7 +147,6 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
                 
         yeni_id = (max(idler) if idler else 0) + 1
         
-        # 🇹🇷 KALICI TÜRKİYE SAATİ (Kış/Yaz fark etmeksizin Europe/Istanbul sabitini çeker)
         tr_tz = pytz.timezone("Europe/Istanbul")
         tarih_str = datetime.now(tr_tz).strftime("%d.%m.%Y %H:%M")
         

@@ -1967,7 +1967,28 @@ with col_sol_analiz:
         toplam_kapanan = len(kapananlar_df)
         net_fark_dolar = toplam_kazanc_dolar - toplam_kayip_dolar
         kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
-        st.info(f"Kapanan Toplam: {toplam_kapanan} | Net K/Z: {net_fark_dolar:+,.2f} $")
+        zarar_yuzde = (zararli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
+
+        sub_p1, sub_p2, sub_p3 = st.columns([1.35, 1.35, 1.35], gap="medium")
+        with sub_p1:
+            fig = px.pie(
+                pd.DataFrame({"Durum": ["Kârlı", "Zararlı"], "Adet": [karli_sayisi, zararli_sayisi]}),
+                names="Durum", values="Adet", hole=0.50, color="Durum",
+                color_discrete_map={"Kârlı": "#00FF00", "Zararlı": "rgb(255, 75, 0)"}
+            )
+            fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13), margin=dict(t=10, b=10, l=10, r=10), height=210, showlegend=False)
+            fig.update_traces(textfont_size=13, textinfo="percent", marker=dict(line=dict(width=0)))
+            st.plotly_chart(fig, width='stretch', config={"responsive": True, "displayModeBar": False})
+
+        with sub_p2:
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">📈 Strateji Metrikleri</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Toplam Kapanan</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: #e8eef8;">{toplam_kapanan} Adet</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">🟢 Kârlı: {karli_sayisi} (%{kar_yuzde:.1f})</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">🔴 Zararlı: {zararli_sayisi} (%{zarar_yuzde:.1f})</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {'#00FF00' if kar_yuzde >= 50 else 'rgb(255, 75, 0)'};">🎯 Başarı Oranı: %{kar_yuzde:.1f}</p>""", unsafe_allow_html=True)
+
+        with sub_p3:
+            net_renk = "#00FF00" if net_fark_dolar >= 0 else "rgb(255, 75, 0)"
+            toplam_hareket_dolar = toplam_kazanc_dolar + toplam_kayip_dolar
+            parasal_basari_yuzde = (toplam_kazanc_dolar / toplam_hareket_dolar * 100.0) if toplam_hareket_dolar > 0 else 0.0
+            parasal_renk = "#00FF00" if parasal_basari_yuzde >= 50 else "rgb(255, 75, 0)"
+            st.markdown(f"""<div style="font-size: 15px; font-weight: bold; color: #e8eef8; margin-bottom: 4px;">💰 Finansal Metrikler</div><p style="margin: 4px 0px 0px 0px; font-size: 13px; color: #91a0b8;">Net Fark</p><p style="margin: 0px; font-size: 18px; font-weight: bold; color: {net_renk};">{net_fark_dolar:+,.2f} $</p><p style="margin: 8px 0px 0px 0px; font-size: 14px; color: #00FF00; font-weight: bold;">Toplam Kâr: +{toplam_kazanc_dolar:,.2f} $</p><p style="margin: 5px 0px 0px 0px; font-size: 14px; color: rgb(255, 75, 0); font-weight: bold;">Toplam Zarar: -{toplam_kayip_dolar:,.2f} $</p><p style="margin: 10px 0px 0px 0px; padding-top: 6px; border-top: 1px solid #30415b; font-size: 14px; font-weight: bold; color: {parasal_renk};">💵 Parasal Başarı Oranı: %{parasal_basari_yuzde:.1f}</p>""", unsafe_allow_html=True)
     else:
         st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 

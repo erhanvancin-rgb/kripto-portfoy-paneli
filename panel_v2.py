@@ -1862,9 +1862,9 @@ with st.form(key="islem_onay_formu"):
                 st.markdown(f'<div style="font-size: 14px; font-weight: 800; color: #00FF00; padding: 5px 0 10px 0;">Boştaki Nakit: {mevcut_bakiye:,.2f} $</div>', unsafe_allow_html=True)
                 
                 col_islem_yap, col_kapat_kilit = st.columns(2)
-    with col_islem_yap:
+with col_islem_yap:
         submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
-    with col_kapat_kilit:
+with col_kapat_kilit:
         kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
 
 if kapat_kilit_tik:

@@ -1224,7 +1224,7 @@ if acik_islem_idx is not None:
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
         kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
         return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
-    else:
+        else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
             return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
@@ -1864,7 +1864,7 @@ with col_sol_panel:
         st.markdown('<div style="height: 5px;"></div>', unsafe_allow_html=True)
 
         if not st.session_state.get("islem_emri_kilit_acik", False):
-            if st.button("🔓 İşlem Açma Kilidini Aç", width='stretch', key="btn_islem_kilidi_ac"):
+            if st.button("🔓 İşlem Açma Kilidini Aç", key="btn_islem_kilidi_ac"):
                 if coin_listesi:
                     st.session_state["islem_emri_kilit_acik"] = True
                     st.rerun()
@@ -1883,9 +1883,9 @@ with col_sol_panel:
                 
                 col_islem_yap, col_kapat_kilit = st.columns(2)
                 with col_islem_yap:
-                    submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat", width='stretch')
+                    submit_islem = st.form_submit_button("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
                 with col_kapat_kilit:
-                    kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat", width='stretch')
+                    kapat_kilit_tik = st.form_submit_button("🔒 Kilidi Kapat")
                 if kapat_kilit_tik:
                     st.session_state["islem_emri_kilit_acik"] = False
                     st.rerun()

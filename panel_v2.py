@@ -924,6 +924,20 @@ def pozisyon_kar_zarar_hesapla(yon, giris_fiyati, guncel_fiyat, yatirim_miktari,
     pnl_usd = yatirim_miktari * fiyat_farki_yuzde * kaldirac
     return round(pnl_usd, 2)
 
+def _kline_limitleri():
+    """Her mum aralığı için gereken en uzun pencere (5m grafik için en az 192). Kısa pencereler bundan kesilir."""
+    lim = {"5m": 192}
+    for _e, _aralik, _mum, _w in matris_motoru.DILIMLER:
+        lim[_aralik] = max(lim.get(_aralik, 0), int(_mum))
+    return lim
+
+KLINE_LIMITLERI = _kline_limitleri()
+
+def kline_pencere(sembol, aralik, mum):
+    """Aralık başına tek istekle çekilen mumdan son 'mum' adedini döndürür (ayrı istek yerine önbellekten kesim)."""
+    df = kline_cek_binance(sembol, aralik, KLINE_LIMITLERI.get(aralik, mum))
+    return df.tail(mum) if df is not None and not df.empty else df
+
 def piyasa_verisini_paralel_isit(semboller):
     """Fiyat ve mum verilerini paralel çekip önbelleğe alır; sonraki sıralı hesaplar önbellekten gelir."""
     gorevler, goruldu = [], set()
@@ -937,9 +951,8 @@ def piyasa_verisini_paralel_isit(semboller):
     for sembol_ in semboller:
         ekle(fiyat_cek_binance, sembol_)
         kaynak_ = sembol_ if sembol_ != "TOTAL" else "BTC/USDT"
-        for _etiket, _aralik, _mum, _agirlik in matris_motoru.DILIMLER:
-            ekle(kline_cek_binance, kaynak_, _aralik, _mum)
-        ekle(kline_cek_binance, kaynak_, "5m", 192)
+        for _aralik, _limit in KLINE_LIMITLERI.items():
+            ekle(kline_cek_binance, kaynak_, _aralik, _limit)
 
     ctx_ = get_script_run_ctx() if get_script_run_ctx is not None else None
 
@@ -955,12 +968,10 @@ def piyasa_verisini_paralel_isit(semboller):
     with ThreadPoolExecutor(max_workers=12) as havuz:
         list(havuz.map(calistir, gorevler))
 
-def kurgusal_matris_hesapla(coin_symbol):
-    anlik_fiyat = fiyat_cek_binance(coin_symbol)
-    sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
-
-    # Verileri doğrudan güncellediğimiz matris_motoru.py dosyasından çeker
-    pencereler = [(etiket, kline_cek_binance(sembol_istek, aralik, mum_sayisi), agirlik)
+@st.cache_data(ttl=60, show_spinner=False)
+def _matris_puanlari(sembol_istek):
+    """Mum verisinden matris puanlarını hesaplar (veri zaten 60 sn önbellekte olduğundan sonuç da öyle tutulur)."""
+    pencereler = [(etiket, kline_pencere(sembol_istek, aralik, mum_sayisi), agirlik)
                   for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER]
     sonuc = matris_motoru.matris_hesapla(pencereler)
 
@@ -980,7 +991,12 @@ def kurgusal_matris_hesapla(coin_symbol):
     else:
         nihai_puan = round(max(nihai_long, nihai_short), 2)
         aktif_yon = "Long" if nihai_long >= nihai_short else "Short"
+    return nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
+def kurgusal_matris_hesapla(coin_symbol):
+    anlik_fiyat = fiyat_cek_binance(coin_symbol)          # fiyat her zaman 30 sn'den taze
+    sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
+    nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari = _matris_puanlari(sembol_istek)
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
 def _servis_hesabi_sozlugu():
@@ -1895,9 +1911,25 @@ div[data-testid="column"]:has(.st-key-islem_sol_kap) > div[data-testid="stVertic
 """
 for _c in coinler:
     _sym = _c.split("/")[0]
-    _sol_css += (f".st-key-coin_btn_{_sym} button {{ justify-content: flex-start !important; padding-left: 54px !important; "
-                 f"background-image: url('{logo_urls.get(_c, '')}'); background-repeat: no-repeat; background-position: 16px center; "
-                 f"background-size: 26px 26px; font-weight: 700; min-height: 48px; }}\n")
+    _secili_mi = (_c == secilen_coin)
+    _arka = ("linear-gradient(135deg,#3977f6,#5b8cff)" if _secili_mi else "linear-gradient(#111b2b,#111b2b)")
+    _kenar = ("3px solid #ffd166" if _secili_mi else "1px solid #30415b")
+    _renk = ("#ffffff" if _secili_mi else "#91a0b8")
+    _golge = ("0 0 14px rgba(255,209,102,0.55)" if _secili_mi else "none")
+    _sol_css += (
+        f"div.st-key-coin_btn_{_sym} button {{ "
+        f"background-color: transparent !important; "
+        f"background-image: url('{logo_urls.get(_c, '')}'), {_arka} !important; "
+        f"background-repeat: no-repeat, no-repeat !important; "
+        f"background-position: 16px center, center !important; "
+        f"background-size: 26px 26px, cover !important; "
+        f"border: {_kenar} !important; color: {_renk} !important; box-shadow: {_golge} !important; "
+        f"display: flex !important; align-items: center !important; justify-content: center !important; "
+        f"padding: 0 56px !important; min-height: 48px !important; "
+        f"opacity: {1.0 if _secili_mi else 0.85}; }}\n"
+        f"div.st-key-coin_btn_{_sym} button p {{ width: 100% !important; text-align: center !important; margin: 0 !important; "
+        f"font-weight: {800 if _secili_mi else 600} !important; color: {_renk} !important; }}\n"
+    )
 _sol_css += "</style>"
 st.markdown(_sol_css, unsafe_allow_html=True)
 
@@ -1908,8 +1940,7 @@ with col_sol_panel:
         # --- 5 coin butonu (logolu, hacim sırasıyla) ---
         for _c in coin_listesi:
             _sym = _c.split("/")[0]
-            if st.button(_c, key=f"coin_btn_{_sym}", width='stretch',
-                         type=("primary" if _c == secilen_coin else "secondary")):
+            if st.button(("✔ " + _c) if _c == secilen_coin else _c, key=f"coin_btn_{_sym}", width='stretch'):
                 if _c != secilen_coin:
                     st.session_state["secili_coin"] = _c
                     st.rerun()
@@ -1948,9 +1979,9 @@ with col_sol_panel:
 
                 _ls, _ss = (secilen_yon == "Long"), (secilen_yon == "Short")
                 st.markdown(f"""<style>
-.st-key-yon_long button {{ background: {RENK_LONG} !important; border: 3px solid {'#ffffff' if _ls else 'transparent'} !important; opacity: {1.0 if _ls else 0.4}; min-height: 64px; }}
-.st-key-yon_short button {{ background: {RENK_SHORT} !important; border: 3px solid {'#ffffff' if _ss else 'transparent'} !important; opacity: {1.0 if _ss else 0.4}; min-height: 64px; }}
-.st-key-yon_long button p, .st-key-yon_short button p {{ color: #000000 !important; font-weight: 800 !important; font-size: 15px !important; }}
+div.st-key-yon_long button {{ background: {RENK_LONG} !important; border: 3px solid {'#ffffff' if _ls else 'transparent'} !important; opacity: {1.0 if _ls else 0.4}; min-height: 64px; }}
+div.st-key-yon_short button {{ background: {RENK_SHORT} !important; border: 3px solid {'#ffffff' if _ss else 'transparent'} !important; opacity: {1.0 if _ss else 0.4}; min-height: 64px; }}
+div.st-key-yon_long button p, div.st-key-yon_short button p {{ color: #000000 !important; font-weight: 800 !important; font-size: 15px !important; }}
 </style>""", unsafe_allow_html=True)
                 _kl, _ks = st.columns(2, gap="small")
                 with _kl:

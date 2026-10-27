@@ -54,6 +54,7 @@ st.set_page_config(
 # --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
+    if not st.session_state.get("islem_emri_kilit_acik", False):
     st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
     
 # --- TABLET YATAY: masaüstü %100 düzeniyle göster (dar ekranda sütunlar sıkışmasın) ---
@@ -1963,12 +1964,12 @@ with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
     t_toplam_puan = t_l_puan + t_s_puan
     t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
-    t_yesil_led = max(0, min(10, round((t_yuzde / 100.0) * 10.0)))
-    t_kirmizi_led = 10 - t_yesil_led
 
+    # --- YENİ SLİDER / ÇUBUK GÖSTERİMİ ---
     t_k_yuzde = 100.0 - t_yuzde
     t_slider_html = matris_birlesik_html(t_puan_val, total_ham_veri["aktif_yon"], t_yuzde, t_k_yuzde)
     st.markdown(f'<div style="margin-bottom: 8px;">{t_slider_html}</div>', unsafe_allow_html=True)
+
     t_zaman_kat = total_ham_veri["zaman_katkilari"]
     boxes_listesi = []
     for etk, veri in t_zaman_kat.items():

@@ -188,7 +188,7 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 )
 
 # --- SABİTLER ---
-GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani_Yeni"
+GOOGLE_SHEET_DOSYA = "KriptoPortfoyVeritabani"
 BASLANGIC_BAKIYE = 0.0   # kasa sıfırdan başlar; ilk sermaye eklemesiyle belirlenir
 KALDIRAC = 5
 
@@ -923,7 +923,7 @@ def _sayfa_nesnesi(sayfa_adi):
     try:
         return sh.worksheet(sayfa_adi)
     except gspread.exceptions.WorksheetNotFound:
-        # Eğer sekme (KriptoPortfoyVeritabani_Yeni) henüz E-Tabloda yoksa, çökme; otomatik oluştur!
+        # Eğer sekme (KriptoPortfoyVeritabani) henüz E-Tabloda yoksa, çökme; otomatik oluştur!
         return sh.add_worksheet(title=sayfa_adi, rows="1000", cols="20")
 
 _SON_SHEETS_HATASI = {"mesaj": ""}
@@ -943,7 +943,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
         "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati"
     ]
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani_Yeni")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
         return pd.DataFrame(columns=beklenen_kolonlar)
     try:
@@ -995,7 +995,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     return df
 
 def dataframe_guncelle_gsheets(df):
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani_Yeni")
+    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     basarili = False
     if sheet is not None:
         try:

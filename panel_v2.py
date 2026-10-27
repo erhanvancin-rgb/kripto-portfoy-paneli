@@ -1852,10 +1852,10 @@ with col_sol_panel:
                     st.warning("Uygun işlem yapılacak coin bulunmuyor!")
 
         with st.form(key="islem_onay_formu"):
-        hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
+            hesaplanan_tutar = min(100.0, float(mevcut_bakiye)) if acik_pozisyon_var else float(onerilen_tutar_hesap)
         
-        guvenli_tutar = 0.0
-        max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
+            guvenli_tutar = 0.0
+            max_tutar = float(mevcut_bakiye) if mevcut_bakiye > 0 else 99999.0
 
         if acik_pozisyon_var and risk_eklenebilir is not None:
             hesaplanan_tutar = min(hesaplanan_tutar, float(risk_eklenebilir))

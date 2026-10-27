@@ -6,11 +6,11 @@ import streamlit as st
 GOOGLE_SHEET_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 
 def _sheets_baglan(sayfa_adi):
+    """Google Sheets bağlantısını kurar ve PEM anahtarındaki format hatalarını otomatik onarır."""
     try:
         if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
             sec = dict(st.secrets["gcp_service_account"])
             
-            # Anahtarı hatasız okuyan ve tüm PEM sorunlarını engelleyen kesin yöntem
             pk = str(sec.get("private_key", ""))
             pk = pk.replace("\\n", "\n")
             sec["private_key"] = pk.strip()
@@ -25,6 +25,7 @@ def _sheets_baglan(sayfa_adi):
         return None, str(e)
 
 def _verileri_tablodan_oku():
+    """Tüm geçmişi ve güncel bakiyeyi doğrudan Google E-Tablodan okur."""
     sheet, hata = _sheets_baglan("KasaDefteri")
     if sheet is None:
         st.error(f"⚠️ E-Tablo Bağlantı Hatası: {hata}")
@@ -100,10 +101,27 @@ def islem_gecmisi_getir(ortak_fiyat_havuzu=None):
     return gecmis_getir()
 
 def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
+    """Yeni işlemi tutar ve komisyonlardaki virgül hatalarını düzelterek Google Sheets'e yazar."""
     try:
         sheet, hata = _sheets_baglan("KasaDefteri")
         if sheet is None:
             return False, f"E-Tabloya bağlanılamadı. Hata: {hata}"
+            
+        # Virgül girilmişse noktaya çevir
+        if isinstance(tutar, str):
+            tutar = tutar.replace(',', '.')
+        try:
+            tutar = float(tutar)
+        except ValueError:
+            return False, "Hata: Lütfen geçerli bir tutar girin."
+        
+        # Komisyon virgül onarımı
+        if isinstance(komisyon, str):
+            komisyon = komisyon.replace(',', '.')
+        try:
+            komisyon = float(komisyon)
+        except ValueError:
+            komisyon = 0.0
             
         ham = sheet.get_all_values()
         if not ham or len(ham) == 0:
@@ -121,7 +139,7 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
         if komisyon > 0:
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             
-        sheet.append_row([yeni_id, tarih_str, tur, round(float(tutar), 2), aciklama])
+        sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama])
         return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
         
     except Exception as e:

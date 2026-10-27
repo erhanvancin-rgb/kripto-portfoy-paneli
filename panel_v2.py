@@ -54,7 +54,7 @@ st.set_page_config(
 # --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
-    if not st.session_state.get("islem_emri_kilit_acik", False):
+if not st.session_state.get("islem_emri_kilit_acik", False):
     st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
     
 # --- TABLET YATAY: masaüstü %100 düzeniyle göster (dar ekranda sütunlar sıkışmasın) ---

@@ -750,17 +750,14 @@ def motoru_calistir():
     try:
         acik_islemleri_kontrol_et()
     except Exception as e:
-        # Bir hata kapanış/sinyal maillerini engellemesin
         import traceback
-        print(f"HATA: acik_islemleri_kontrol_et çöktü, mail aşamasına devam ediliyor: {type(e).__name__}: {e}")
+        print(f"HATA: acik_islemleri_kontrol_et çöktü: {type(e).__name__}: {e}")
         traceback.print_exc()
 
     durum = MailDurumu()
     if not durum.yukle():
-        print("MailDurumu yüklenemedi; mailler bu tur gönderilmedi (tekrar mail olmaması için).")
+        print("MailDurumu (Telegram bildirim takip sekmesi) yüklenemedi, tablo paylaşımlarını kontrol edin.")
         return
-    if durum.ilk_calisma:
-        print("İlk çalışma: mevcut durumlar mail atılmadan kaydedilecek.")
 
     for adim in (kapanis_maillerini_gonder, sinyal_maillerini_gonder):
         try:

@@ -1035,10 +1035,12 @@ def kasa_defteri_getir():
     return pd.DataFrame(satirlar)
 
 def kasa_islem_ekle(islem_turu, tutar, aciklama):
-    """Kasa işlemlerini yerel JSON'a ve doğrudan Google E-Tablo KasaDefteri'ne yazar."""
+    """Kasa işlemlerini doğrudan entegre Kasa Motoru üzerinden tek seferde yazar (Çifte kaydı engeller)."""
     try:
-        # 1. Yerel kasa motoru kaydı
-        kasa_motoru.islem_ekle(islem_turu, tutar, aciklama)
+        basarili, mesaj = kasa_motoru.islem_ekle(islem_turu, tutar, aciklama)
+        return basarili, mesaj
+    except Exception as e:
+        return False, f"Kasa kayıt hatası: {str(e)}"
         
         # 2. Doğrudan panel_v2 Sheets bağlantısı ile E-Tabloya yazma
         sheet = google_sheets_baglan("KasaDefteri")

@@ -1221,6 +1221,8 @@ if acik_islem_idx is not None:
 
         if not dataframe_guncelle_gsheets(df):
             return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
+        if not dataframe_guncelle_gsheets(df):
+            return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
         kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
         return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
@@ -1228,7 +1230,6 @@ if acik_islem_idx is not None:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
             return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"
-
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop)
 
@@ -1261,9 +1262,10 @@ if acik_islem_idx is not None:
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
         if not dataframe_guncelle_gsheets(df):
-            return False, "⚠️ İşlem Google Sheets'e yazılamadı!"
-        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
-        return True, f"✅ {coin} emri başarıyla verildi! Giriş komisyonu: {giris_kom:.4f} $."
+            return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
+        islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
+        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:

@@ -1220,11 +1220,11 @@ if acik_islem_idx is not None:
         df.at[acik_islem_idx, "Guncel_Kasa"] = round(toplam_kasa - giris_kom, 2)
 
         if not dataframe_guncelle_gsheets(df):
-            return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
+            return False, "Ekleme Google Sheets'e yazılamadi!"
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
-        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
-        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
-        else:
+        kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giris Komisyonu: #{islem_no} {coin}")
+        return True, f"{coin} pozisyonuna ekleme yapildi! Giris komisyonu: {giris_kom:.4f} $."
+    else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if matris_puan < min_esik_kontrol or "Nötr" in yon or "Beklemede" in yon:
             return False, f"⚠️ Nötr veya Min. Eşik ({min_esik_kontrol}) altındaki yeni işlemler engellenmiştir!"

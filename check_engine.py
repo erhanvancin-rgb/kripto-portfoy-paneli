@@ -43,13 +43,24 @@ ISLEM_BASINA_RISK_YUZDE = 1.0   # tek işlemin (komisyon dahil) stop riski: kasa
 TOPLAM_RISK_LIMIT_YUZDE = 3.0   # tüm açık işlemlerin toplam stop riski: kasanın en fazla %3'ü
 
 
-def giris_komisyonu(miktar):
-    return float(miktar) * KALDIRAC * KOMISYON_TAKER
+def satir_kaldiraci(row):
+    """İşlem satırının kaldıracı (Kaldirac kolonu). Kayıt yoksa/geçersizse varsayılan KALDIRAC (panelle aynı)."""
+    try:
+        v = float(row.get("Kaldirac", 0) or 0)
+    except Exception:
+        v = 0.0
+    return v if v >= 1 else float(KALDIRAC)
 
 
-def cikis_komisyonu(miktar, hedef_mi):
+def giris_komisyonu(miktar, kaldirac=None):
+    k = float(kaldirac) if kaldirac else float(KALDIRAC)
+    return float(miktar) * k * KOMISYON_TAKER
+
+
+def cikis_komisyonu(miktar, hedef_mi, kaldirac=None):
     """Hedef (limit emir) maker, stop (piyasa emri) taker öder."""
-    return float(miktar) * KALDIRAC * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
+    k = float(kaldirac) if kaldirac else float(KALDIRAC)
+    return float(miktar) * k * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
 
 
 BASLANGIC_BAKIYE = 0.0
@@ -340,7 +351,7 @@ def islem_gecmisi_getir():
         "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
-        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati",
+        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac",
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
@@ -363,8 +374,10 @@ def islem_gecmisi_getir():
     df = df[df["Islem_ID"].notna() & (df["Islem_ID"] != "") & (df["Islem_ID"].astype(str) != "Islem_ID")]
     df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
     for col in ["Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-                "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati"]:
+                "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac"]:
         df[col] = df[col].map(sayi_cevir).fillna(0.0).astype(float)
+    # Eski kayıtlarda Kaldirac boştur: varsayılan kaldıraç atanır (sheet'e geri yazılırken de korunur)
+    df["Kaldirac"] = df["Kaldirac"].where(df["Kaldirac"] >= 1, float(KALDIRAC))
     return df
 
 
@@ -583,9 +596,10 @@ def acik_islemleri_kontrol_et():
             continue
 
         fark = ((kapanis - giris) / giris) if "Long" in yon else ((giris - kapanis) / giris)
-        brut_kar = miktar * KALDIRAC * fark
+        lev = satir_kaldiraci(row)
+        brut_kar = miktar * lev * fark
         # Giriş komisyonu açılışta kasadan zaten düşüldü; çıkış komisyonu burada düşülür.
-        net_kar = brut_kar - cikis_komisyonu(miktar, hedef)
+        net_kar = brut_kar - cikis_komisyonu(miktar, hedef, lev)
         df.at[idx, "Durum"] = "Kapandi (Kar)" if hedef else "Kapandi (Zarar)"
         df.at[idx, "Kapanis_Zamani"] = suan
         df.at[idx, "Net_Kar_Zarar"] = float(round(net_kar, 2))

@@ -1908,6 +1908,24 @@ div[data-testid="stColumn"]:has(.st-key-islem_sol_kap) > div[data-testid="stVert
 div[data-testid="column"]:has(.st-key-islem_sol_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
 .st-key-islem_sol_kap { flex: 1 1 auto; }
 .st-key-btn_islem_kilidi_ac { margin-top: auto; }
+/* --- orta sütun: grafik alanı sütunun altına kadar uzar --- */
+div[data-testid="stColumn"]:has(.st-key-grafik_total) > div[data-testid="stVerticalBlock"],
+div[data-testid="column"]:has(.st-key-grafik_total) > div[data-testid="stVerticalBlock"] { height: 100%; }
+.st-key-grafik_total { flex: 1 1 auto; min-height: 340px; }
+.st-key-grafik_total > div,
+.st-key-grafik_total [data-testid="stElementContainer"],
+.st-key-grafik_total [data-testid="stPlotlyChart"],
+.st-key-grafik_total .js-plotly-plot,
+.st-key-grafik_total .plot-container,
+.st-key-grafik_total .svg-container { height: 100% !important; box-sizing: border-box; }
+.st-key-grafik_total [data-testid="stPlotlyChart"] { min-height: 340px; }
+/* --- sağ sütun: son kart sütunun altına kadar uzar --- */
+div[data-testid="stColumn"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"],
+div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
+.st-key-islem_sag_kap { flex: 1 1 auto; }
+.st-key-islem_sag_kap > div:last-child { flex: 1 1 auto; }
+.st-key-islem_sag_kap > div:last-child [data-testid="stMarkdownContainer"],
+.st-key-islem_sag_kap > div:last-child .metric-container { height: 100%; box-sizing: border-box; }
 """
 for _c in coinler:
     _sym = _c.split("/")[0]
@@ -2161,7 +2179,7 @@ with col_orta_grafik:
             marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), height=340,
+            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), autosize=True,
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
@@ -2179,23 +2197,34 @@ with col_orta_grafik:
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
-    t_toplam_puan = t_l_puan + t_s_puan
-    t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
+    try:
+        _sag_kap = st.container(key="islem_sag_kap")
+    except TypeError:
+        _sag_kap = st.container()
+    with _sag_kap:
+        t_toplam_puan = t_l_puan + t_s_puan
+        t_yuzde = (t_l_puan / t_toplam_puan * 100.0) if t_toplam_puan > 0 else 50.0
 
-    # --- YENİ SLİDER / ÇUBUK GÖSTERİMİ ---
-    t_k_yuzde = 100.0 - t_yuzde
-    t_slider_html = matris_birlesik_html(t_puan_val, total_ham_veri["aktif_yon"], t_yuzde, t_k_yuzde)
-    st.markdown(f'<div style="margin-bottom: 8px;">{t_slider_html}</div>', unsafe_allow_html=True)
+        # --- YENİ SLİDER / ÇUBUK GÖSTERİMİ ---
+        t_k_yuzde = 100.0 - t_yuzde
+        t_slider_html = matris_birlesik_html(t_puan_val, total_ham_veri["aktif_yon"], t_yuzde, t_k_yuzde)
+        st.markdown(f'<div style="margin-bottom: 8px;">{t_slider_html}</div>', unsafe_allow_html=True)
 
-    t_zaman_kat = total_ham_veri["zaman_katkilari"]
-    boxes_listesi = []
-    for etk, veri in t_zaman_kat.items():
-        sl, ss = veri["sl"], veri["ss"]
-        kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
-        boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
-    boxes_birlestirilmis = "".join(boxes_listesi)
+        t_zaman_kat = total_ham_veri["zaman_katkilari"]
+        boxes_listesi = []
+        for etk, veri in t_zaman_kat.items():
+            sl, ss = veri["sl"], veri["ss"]
+            kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
+            boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
+        boxes_birlestirilmis = "".join(boxes_listesi)
 
-    st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+
+# Plotly'nin grafik alanına yeni boyutuyla oturması için pencere yeniden boyutlandırma sinyali (sütun dışında, hizayı bozmaz)
+try:
+    components.html("""<script>(function(){function n(){try{window.parent.dispatchEvent(new Event('resize'));}catch(e){}}setTimeout(n,300);setTimeout(n,1200);})();</script>""", height=0)
+except Exception:
+    pass
 
 st.markdown("---")
 

@@ -138,28 +138,28 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .pos-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:14px; padding:12px 12px 10px; font-variant-numeric:tabular-nums; margin-bottom:8px; }
 .pos-head { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; }
 .pos-left { display:flex; align-items:center; gap:7px; min-width:0; }
-.pos-logo { width:22px; height:22px; object-fit:contain; flex:none; }
-.pos-name { font-size:15px; font-weight:800; color:#e8eef8; white-space:nowrap; }
+.pos-logo { width:26px; height:26px; object-fit:contain; flex:none; }
+.pos-name { font-size:17px; font-weight:800; color:#e8eef8; white-space:nowrap; }
 .pos-sub { display:flex; align-items:center; gap:5px; margin-top:2px; }
-.pos-id { color:var(--muted); font-size:12px; }
-.pill { padding:1px 8px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid; }
+.pos-id { color:var(--muted); font-size:13px; }
+.pill { padding:1px 8px; border-radius:999px; font-size:13px; font-weight:700; border:1px solid; }
 .pill-long { color:#00FF00; border-color:rgba(0,255,0,.45); background:rgba(0,255,0,.08); }
 .pill-short { color:rgb(255,75,0); border-color:rgba(255,75,0,.5); background:rgba(255,75,0,.10); }
-.pos-kz { font-size:20px; font-weight:800; text-align:right; line-height:1.1; white-space:nowrap; }
-.pos-kz small { display:block; font-size:12px; font-weight:600; opacity:.8; }
+.pos-kz { font-size:23px; font-weight:800; text-align:right; line-height:1.1; white-space:nowrap; }
+.pos-kz small { display:block; font-size:13px; font-weight:600; opacity:.8; }
 .range-wrap { margin:14px 0 8px; }
 .range-bar { position:relative; height:7px; border-radius:6px; background:linear-gradient(90deg,rgba(255,75,0,.60),rgba(145,160,184,.22) 50%,rgba(0,255,0,.50)); }
 .range-tick { position:absolute; top:-4px; width:2px; height:15px; background:#91a0b8; border-radius:2px; transform:translateX(-1px); }
 .range-dot { position:absolute; top:-5px; width:17px; height:17px; border-radius:50%; background:#e8eef8; border:3px solid #5b8cff; transform:translateX(-8px); box-shadow:0 0 0 3px rgba(91,140,255,.18); }
-.range-lbl { display:flex; justify-content:space-between; margin-top:11px; font-size:12px; font-weight:700; gap:4px; }
-.range-dist { display:flex; justify-content:space-between; align-items:baseline; margin-top:3px; font-size:12px; color:var(--muted); gap:4px; }
-.range-mid { color:#e8eef8; font-weight:800; font-size:13px; }
-.pos-meta { display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:7px; }
+.range-lbl { display:flex; justify-content:space-between; margin-top:11px; font-size:14px; font-weight:700; gap:4px; }
+.range-dist { display:flex; justify-content:space-between; align-items:baseline; margin-top:3px; font-size:14px; color:var(--muted); gap:4px; }
+.range-mid { color:#e8eef8; font-weight:800; font-size:16px; }
+.pos-meta { display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap; font-size:14px; color:var(--muted); margin-top:8px; }
 .pos-meta b { color:#e8eef8; font-weight:700; }
 .bar-bg { height:6px; border-radius:6px; background:#1b2a40; overflow:hidden; }
 .bar-mini { height:4px; margin-top:5px; }
 .bar-fill { height:100%; border-radius:6px; transition:width .4s; }
-.pos-detay { margin-top:8px; font-size:12px; color:var(--muted); }
+.pos-detay { margin-top:8px; font-size:14px; color:var(--muted); }
 .pos-detay summary { cursor:pointer; color:#8fa0ba; }
 .pos-detay-ic { padding-top:5px; line-height:1.6; }
 .risk-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:16px; padding:14px 18px; margin:6px 0 14px; }
@@ -169,18 +169,20 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .risk-val small { font-weight:600; color:var(--muted); }
 .risk-note { font-size:10px; color:var(--muted); margin-top:7px; }
 .ozet-card { background:linear-gradient(145deg,#141f31,#0f1726); border:1px solid var(--border); border-radius:14px; padding:14px 16px; font-variant-numeric:tabular-nums; }
-.ozet-satir { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:12px; color:var(--muted); padding:6px 0; border-bottom:1px solid #1d2a40; }
+.ozet-satir { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:15px; color:var(--muted); padding:8px 0; border-bottom:1px solid #1d2a40; }
 .ozet-satir:last-child { border-bottom:none; }
-.ozet-alt { text-align:center; font-size:10px; color:var(--muted); margin-top:6px; }
-.ozet-bos { text-align:center; color:var(--muted); font-size:12px; padding:8px 0 12px; }
+.ozet-alt { text-align:center; font-size:13px; color:var(--muted); margin-top:6px; }
+.ozet-bos { text-align:center; color:var(--muted); font-size:14px; padding:8px 0 12px; }
 .ozet-card .range-wrap { margin:6px 0 10px; padding-bottom:6px; border-bottom:1px solid #1d2a40; }
-.ozet-satir b { font-size:13px; font-weight:800; white-space:nowrap; }
+.ozet-satir b { font-size:17px; font-weight:800; white-space:nowrap; }
+.ozet-card .range-lbl, .ozet-card .range-dist { font-size:13px; }
+.ozet-card .range-mid { font-size:17px; }
 .mx-wrap { min-width:118px; font-variant-numeric:tabular-nums; }
-.mx-puan { font-weight:800; font-size:13px; }
-.mx-yon { font-size:11px; font-weight:700; }
+.mx-puan { font-weight:800; font-size:16px; }
+.mx-yon { font-size:13px; font-weight:700; }
 .mx-bar { position:relative; height:6px; border-radius:6px; margin:8px 6px 5px; background:linear-gradient(90deg,rgba(255,75,0,.60),rgba(145,160,184,.22) 50%,rgba(0,255,0,.50)); }
 .mx-dot { position:absolute; top:-4px; width:14px; height:14px; border-radius:50%; background:#e8eef8; border:3px solid #5b8cff; transform:translateX(-7px); box-shadow:0 0 0 2px rgba(91,140,255,.18); }
-.mx-lbl { display:flex; justify-content:space-between; font-size:10px; font-weight:700; }
+.mx-lbl { display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
 .st-key-btn_tum_kapat button { background:rgb(255,75,0) !important; color:#000 !important; font-weight:800 !important; border:none !important; }
 .risk-line { font-size:13px; line-height:1.55; color:#e8eef8; margin:4px 0 8px; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] { border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden; }
@@ -1901,19 +1903,22 @@ with col_ust6:
 with col_kasa_buton:
     st.markdown(
         """<style>
-        .st-key-ana_kasa_butonu { width: 100% !important; margin: 0 !important; padding: 0 !important; position: relative !important; top: -16px !important; }
+        .st-key-ana_kasa_butonu { width: 100% !important; margin: 0 !important; padding: 0 !important; height: 100% !important; }
         .st-key-ana_kasa_butonu [data-testid="stButton"] { width: 100% !important; margin: 0 !important; padding: 0 !important; }
-        .st-key-ana_kasa_butonu button { box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 104px !important; min-height: 104px !important; padding: 12px 8px !important; margin: 0 !important; flex-direction: column !important; background: #252569 !important; color: #ffffff !important; border: 1px solid #3a3a9a !important; border-radius: 16px !important; font-size: 16px !important; font-weight: 800 !important; line-height: 1.25 !important; white-space: normal !important; text-align: center !important; box-shadow: 0 4px 12px rgba(37,37,105,.45) !important; }
-        .st-key-ana_kasa_butonu button p { margin: 0 !important; width: 100% !important; text-align: center !important; font-size: 16px !important; font-weight: 800 !important; line-height: 1.25 !important; color: #ffffff !important; }
-        .st-key-ana_kasa_butonu button p:first-child { font-size: 28px !important; line-height: 1.1 !important; }
+        .st-key-ana_kasa_butonu button { box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 100% !important; min-height: 0 !important; padding: 8px 8px !important; margin: 0 !important; flex-direction: column !important; background: #252569 !important; color: #ffffff !important; border: 1px solid #3a3a9a !important; border-radius: 16px !important; font-size: 15px !important; font-weight: 800 !important; line-height: 1.25 !important; white-space: normal !important; text-align: center !important; box-shadow: 0 4px 12px rgba(37,37,105,.45) !important; }
+        .st-key-ana_kasa_butonu button p { margin: 0 !important; width: 100% !important; text-align: center !important; font-size: 15px !important; font-weight: 800 !important; line-height: 1.25 !important; color: #ffffff !important; }
+        .st-key-ana_kasa_butonu button p:first-child { font-size: 24px !important; line-height: 1.1 !important; }
+        .st-key-ana_kasa_butonu [data-testid="stButton"] { height: 100% !important; }
+        div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) { align-items: stretch !important; }
+        div[data-testid="stColumn"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stVerticalBlock"], div[data-testid="column"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stVerticalBlock"] { height: 100%; }
         </style>""",
         unsafe_allow_html=True,
     )
-    if st.button("🏦\n\nKasa İşlemleri\n\nve Kaldıraç Belirleme", width='stretch', key="ana_kasa_butonu"):
+    if st.button("🏦\n\nKasa İşlemleri &\n\nKaldıraç Belirleme", width='stretch', key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 
-RENK_NAVY, RENK_BTN_SARI, RENK_BTN_YESIL, RENK_BTN_TURUNCU = "#252569", "#ead518", "#69bd45", "#f15a29"
+RENK_NAVY, RENK_BTN_SARI, RENK_BTN_YESIL, RENK_BTN_TURUNCU = "#252569", "#ead518", "#00FF00", "rgb(255, 75, 0)"   # yeşil/turuncu: sayfadaki kâr/zarar renkleri
 
 if st.session_state.get("kasa_islem_acik", False):
     st.session_state.setdefault("kasa_islem_secim", "Kasaya Para Ekleme")
@@ -2031,7 +2036,8 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns([1.2, 2.5, 1.0])
+SUTUN_ORANLARI = [1.15, 2.2, 1.45]
+col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns(SUTUN_ORANLARI)
 
 # Hacim sırası: BTC en üstte, SOL en altta
 HACIM_SIRASI = ["BTC/USDT", "ETH/USDT", "XRP/USDT", "BNB/USDT", "SOL/USDT"]
@@ -2245,15 +2251,15 @@ with col_sag_endeks:
         for etk, veri in t_zaman_kat.items():
             sl, ss = veri["sl"], veri["ss"]
             kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
-            boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 5px; line-height: 1.3;">{etk}<br>L: {sl:.2f}p | S: {ss:.2f}p</div>')
+            boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: 800; font-size: 14px; margin-bottom: 6px; line-height: 1.3; white-space: nowrap;">{etk} · L: {sl:.2f}p | S: {ss:.2f}p</div>')
         boxes_birlestirilmis = "".join(boxes_listesi)
 
-        st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 12px; font-weight: bold; margin-bottom: 6px;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 15px; font-weight: bold; margin-bottom: 8px; line-height: 1.5;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
 
 
 # ================== KİLİT AÇIKKEN: ANA SATIRIN ALTINDA AÇILAN İŞLEM ALANI ==================
 if kilit_acik:
-    _s2_sol, _s2_orta, _s2_sag = st.columns([1.2, 2.5, 1.0])
+    _s2_sol, _s2_orta, _s2_sag = st.columns(SUTUN_ORANLARI)
     with _s2_sol:
         if secilen_coin:
             coin_verisii = df_gosterge[df_gosterge["Coin"] == secilen_coin].iloc[0]
@@ -2419,7 +2425,16 @@ try:
 (function(){
   var P; try { P = window.parent; var d = P.document; } catch(e) { return; }
   function q(x){ return d.querySelector(x); }
+  function fitUst(){
+    var bt=q('.st-key-ana_kasa_butonu button'); if(!bt) return;
+    var hb=bt.closest('[data-testid="stHorizontalBlock"]'); if(!hb) return;
+    var mcs=hb.querySelectorAll('.metric-container'); if(!mcs.length) return;
+    var mc=mcs[mcs.length-1]; bt.style.removeProperty('height');
+    var dB=mc.getBoundingClientRect().bottom-bt.getBoundingClientRect().bottom;
+    if(Math.abs(dB)>1) bt.style.setProperty('height',(bt.offsetHeight+dB)+'px','important');
+  }
   function fit(){
+    fitUst();
     var sol=q('.st-key-islem_sol_kap'), gr=q('.st-key-grafik_total'), sg=q('.st-key-islem_sag_kap');
     if(!sol||!gr||!sg) return;
     var sgSon = sg.lastElementChild, pc = gr.querySelector('[data-testid="stPlotlyChart"]');
@@ -2538,7 +2553,7 @@ def _donem_rapor_cb():
 st.markdown(f"""<style>
 .st-key-btn_sun_tum button, .st-key-btn_rapor button, .st-key-btn_tum_ac button {{ background:#252569 !important; border:1px solid #3a3a9a !important; min-height:44px; }}
 .st-key-btn_sun_tum button p, .st-key-btn_rapor button p, .st-key-btn_tum_ac button p {{ color:#ffffff !important; font-weight:800 !important; }}
-.st-key-btn_sun_aktif button, .st-key-btn_donem_ac button, .st-key-btn_donem_onay button {{ background:#69bd45 !important; border:none !important; min-height:44px; }}
+.st-key-btn_sun_aktif button, .st-key-btn_donem_ac button, .st-key-btn_donem_onay button {{ background:#ead518 !important; border:none !important; min-height:44px; }}
 .st-key-btn_sun_aktif button p, .st-key-btn_donem_ac button p, .st-key-btn_donem_onay button p {{ color:#000000 !important; font-weight:800 !important; }}
 .grp-etiket {{ display:flex; align-items:center; justify-content:flex-end; min-height:44px; font-size:15px; font-weight:800; color:#e8eef8; text-align:right; }}
 </style>""", unsafe_allow_html=True)

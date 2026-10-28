@@ -264,24 +264,24 @@ def stop_riski(miktar, giris, stop, kaldirac=None):
         return 0.0
     return float(miktar) * kaldirac * (abs(stop - giris) / giris + 2 * KOMISYON_TAKER)
 
-def acik_pozisyonlar_riski(df, haric_coin=None):
+def acik_pozisyonlar_riski(df, haric_coin=None, haric_yon=None):
     if df is None or df.empty or "Durum" not in df.columns:
         return 0.0
     acik = df[~durum_kapali_maskesi(df["Durum"])]
     toplam = 0.0
     for _, r in acik.iterrows():
-        if haric_coin is not None and r["Coin"] == haric_coin:
+        if haric_coin is not None and r["Coin"] == haric_coin and (haric_yon is None or haric_yon in str(r["Yon"])):
             continue
         toplam += stop_riski(float(r["Islem_Miktari"]), float(r["Giris_Fiyat"]), float(r["Stop"]), satir_kaldiraci(r))
     return toplam
 
-def risk_kapasitesi(toplam_kasa, df, coin, giris, stop, kaldirac=None):
+def risk_kapasitesi(toplam_kasa, df, coin, giris, stop, kaldirac=None, yon=None):
     """Bu coin için izin verilen azami toplam teminat."""
     stop_oran = abs(stop - giris) / giris if giris > 0 else 0.0
     birim = (float(kaldirac) if kaldirac else float(KALDIRAC)) * (stop_oran + 2 * KOMISYON_TAKER)
     islem_limit = max(0.0, toplam_kasa) * ISLEM_BASINA_RISK_YUZDE / 100.0
     toplam_limit = max(0.0, toplam_kasa) * TOPLAM_RISK_LIMIT_YUZDE / 100.0
-    diger = acik_pozisyonlar_riski(df, haric_coin=coin)
+    diger = acik_pozisyonlar_riski(df, haric_coin=coin, haric_yon=("Long" if yon and "Long" in str(yon) else ("Short" if yon else None)))
     kalan = max(0.0, toplam_limit - diger)
     azami = min(islem_limit, kalan) / birim if birim > 0 else 0.0
     return {"azami": azami, "islem_limit": islem_limit, "kalan_toplam_risk": kalan, "diger_risk": diger, "birim": birim}
@@ -1329,7 +1329,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     _lev = max(1.0, min(float(KALDIRAC_MAX), float(kaldirac) if kaldirac else float(KALDIRAC)))
     if not df.empty and "Durum" in df.columns:
         _acik_l = df[~durum_kapali_maskesi(df["Durum"])]
-        _acik_c = _acik_l[_acik_l["Coin"] == coin]
+        _acik_c = _acik_l[(_acik_l["Coin"] == coin) & _acik_l["Yon"].astype(str).str.contains("Long" if "Long" in yon else "Short", regex=False)]
         if not _acik_c.empty:
             _lev = satir_kaldiraci(_acik_c.iloc[0])
     gereken_nakit = islem_miktari + giris_komisyonu(islem_miktari, _lev)
@@ -1345,8 +1345,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
     if not df.empty and "Durum" in df.columns:
         acik_mask = ~durum_kapali_maskesi(df["Durum"])
         acik_df = df[acik_mask]
-        if not acik_df.empty and coin in acik_df["Coin"].values:
-            acik_islem_idx = acik_df[acik_df["Coin"] == coin].index[0]
+        _ayni_yon = acik_df[(acik_df["Coin"] == coin) & acik_df["Yon"].astype(str).str.contains("Long" if "Long" in yon else "Short", regex=False)] if not acik_df.empty else acik_df
+        if not _ayni_yon.empty:   # aynı coin + aynı yön: ekleme; zıt yön: ayrı yeni işlem
+            acik_islem_idx = _ayni_yon.index[0]
 
     if acik_islem_idx is not None:
         eski_giris = float(df.loc[acik_islem_idx, "Giris_Fiyat"])
@@ -1400,7 +1401,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop, _lev)
 
-        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop, _lev)
+        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop, _lev, eski_yon)
         if yeni_toplam_miktar > kap["azami"] + 0.005:
             eklenebilir = max(0.0, kap["azami"] - eski_miktar)
             return False, f"⚠️ Risk sınırı aşılıyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz."
@@ -1433,7 +1434,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         yeni_id = 1 if df.empty else int(pd.to_numeric(df["Islem_ID"], errors="coerce").max() or 0) + 1
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop, _lev)
 
-        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop, _lev)
+        kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop, _lev, yon)
         if islem_miktari > kap["azami"] + 0.005:
             return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $."
 
@@ -1901,20 +1902,7 @@ with col_ust6:
     st.markdown(metrik_kutusu("💼 Toplam Kasa", f"{toplam_kasa:,.2f} $", toplam_kasa_renk, format_yuzde(toplam_kasa_oran, True)), unsafe_allow_html=True)
 
 with col_kasa_buton:
-    st.markdown(
-        """<style>
-        .st-key-ana_kasa_butonu { width: 100% !important; margin: 0 !important; padding: 0 !important; height: 100% !important; }
-        .st-key-ana_kasa_butonu [data-testid="stButton"] { width: 100% !important; margin: 0 !important; padding: 0 !important; }
-        .st-key-ana_kasa_butonu button { box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 100% !important; min-height: 0 !important; padding: 8px 8px !important; margin: 0 !important; flex-direction: column !important; background: #252569 !important; color: #ffffff !important; border: 1px solid #3a3a9a !important; border-radius: 16px !important; font-size: 15px !important; font-weight: 800 !important; line-height: 1.25 !important; white-space: normal !important; text-align: center !important; box-shadow: 0 4px 12px rgba(37,37,105,.45) !important; }
-        .st-key-ana_kasa_butonu button p { margin: 0 !important; width: 100% !important; text-align: center !important; font-size: 15px !important; font-weight: 800 !important; line-height: 1.25 !important; color: #ffffff !important; }
-        .st-key-ana_kasa_butonu button p:first-child { font-size: 24px !important; line-height: 1.1 !important; }
-        .st-key-ana_kasa_butonu [data-testid="stButton"] { height: 100% !important; }
-        div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) { align-items: stretch !important; }
-        div[data-testid="stColumn"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stVerticalBlock"], div[data-testid="column"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stVerticalBlock"] { height: 100%; }
-        </style>""",
-        unsafe_allow_html=True,
-    )
-    if st.button("🏦\n\nKasa İşlemleri &\n\nKaldıraç Belirleme", width='stretch', key="ana_kasa_butonu"):
+    if st.button("Kasa\u00a0İşlemleri\u00a0& Kaldıraç\u00a0Belirleme", width='stretch', key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
 
@@ -1939,7 +1927,7 @@ if st.session_state.get("kasa_islem_acik", False):
             st.session_state["kaldirac_slider"] = int(st.session_state["kaldirac_secim"])
 
     def _secili(kosul):
-        return ("3px solid #ffffff", "1") if kosul else ("1px solid rgba(255,255,255,.25)", ".55")
+        return ("3px solid #ffffff", "1") if kosul else ("1px solid rgba(255,255,255,.25)", "1")
 
     _k_ekle, _o_ekle = _secili(_ekle_mi)
     _k_cek, _o_cek = _secili(not _ekle_mi)
@@ -1961,6 +1949,9 @@ if st.session_state.get("kasa_islem_acik", False):
 div[class*="st-key-kasa_acik_sec"] [data-baseweb="select"] > div {{ background:{_sb_renk} !important; border:1px solid rgba(255,255,255,.35) !important; }}
 div[class*="st-key-kasa_acik_sec"] [data-baseweb="select"] * {{ color:{_sb_yazi} !important; font-weight:700 !important; }}
 div[class*="st-key-kasa_acik_sec"] [data-baseweb="select"] svg {{ fill:{_sb_yazi} !important; }}
+div[data-testid="stHorizontalBlock"]:has(.st-key-kld_3) {{ align-items:stretch !important; }}
+div[data-testid="stColumn"]:has(.st-key-kld_3) > div[data-testid="stVerticalBlock"], div[data-testid="column"]:has(.st-key-kld_3) > div[data-testid="stVerticalBlock"] {{ height:100%; }}
+div[data-testid="stColumn"]:has(.st-key-kld_3) > div[data-testid="stVerticalBlock"] > *:last-child, div[data-testid="column"]:has(.st-key-kld_3) > div[data-testid="stVerticalBlock"] > *:last-child {{ margin-top:auto; }}
 </style>""", unsafe_allow_html=True)
 
     col_kasa_sol, col_kasa_sag = st.columns([2.2, 1.3], gap="medium")
@@ -1997,6 +1988,12 @@ div[class*="st-key-kasa_acik_sec"] [data-baseweb="select"] svg {{ fill:{_sb_yazi
 
     with col_kasa_sag:
         _lev_baslik = st.empty()
+        if _lev_mod == "sec":
+            st.session_state.setdefault("kaldirac_slider", int(st.session_state["kaldirac_secim"]))
+            _sec_deger = st.slider(f"Kaldıraç (en fazla {KALDIRAC_MAX}x)", 1, KALDIRAC_MAX, key="kaldirac_slider")
+            if int(_sec_deger) != int(st.session_state["kaldirac_secim"]):
+                kaldirac_kaydet(_sec_deger)
+                st.session_state["kaldirac_mod"] = "sec"
         _l1, _l2, _l3 = st.columns(3, gap="small")
         with _l1:
             st.button("3x Kaldıraç", key="kld_3", width='stretch', on_click=_kaldirac_sec, args=("3x", 3))
@@ -2004,12 +2001,6 @@ div[class*="st-key-kasa_acik_sec"] [data-baseweb="select"] svg {{ fill:{_sb_yazi
             st.button("5x Kaldıraç", key="kld_5", width='stretch', on_click=_kaldirac_sec, args=("5x", 5))
         with _l3:
             st.button("Kaldıraç Seç", key="kld_sec", width='stretch', on_click=_kaldirac_sec, args=("sec",))
-        if _lev_mod == "sec":
-            st.session_state.setdefault("kaldirac_slider", int(st.session_state["kaldirac_secim"]))
-            _sec_deger = st.slider(f"Kaldıraç (en fazla {KALDIRAC_MAX}x)", 1, KALDIRAC_MAX, key="kaldirac_slider")
-            if int(_sec_deger) != int(st.session_state["kaldirac_secim"]):
-                kaldirac_kaydet(_sec_deger)
-                st.session_state["kaldirac_mod"] = "sec"
         _lev_baslik.markdown(f"""<div style="border:1px solid #344765; border-radius:14px; padding:12px 15px; margin-bottom:8px; background:linear-gradient(145deg,#121e30,#0e1726);"><div style="font-size:18px; font-weight:800; color:#f0f5ff;">⚙️ Kaldıraç Belirle</div><div style="font-size:15px; font-weight:700; color:#e8eef8; margin-top:6px;">Kaldıraç Seçimi: <span style="color:{RENK_BTN_SARI};">{int(st.session_state['kaldirac_secim'])}x Kaldıraçlı İşlem</span></div></div>""", unsafe_allow_html=True)
 
 st.markdown("---")
@@ -2036,7 +2027,7 @@ for v in islenen_veriler:
 table_html += "</tbody></table>"
 st.markdown(f'<div class="table-container">{table_html}</div>', unsafe_allow_html=True)
 
-SUTUN_ORANLARI = [1.15, 2.2, 1.45]
+SUTUN_ORANLARI = [1.2, 2.5, 1.0]
 col_sol_panel, col_orta_grafik, col_sag_endeks = st.columns(SUTUN_ORANLARI)
 
 # Hacim sırası: BTC en üstte, SOL en altta
@@ -2075,8 +2066,24 @@ div[data-testid="stColumn"]:has(.st-key-islem_sol_kap) > div[data-testid="stVert
 div[data-testid="column"]:has(.st-key-islem_sol_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
 .st-key-islem_sol_kap { flex: 1 1 auto; }
 .st-key-btn_islem_kilidi_ac { margin-top: auto; }
-.st-key-islem_kilit_durum { margin-top: auto; }
-.islem-kilit-durum { display:flex; align-items:center; justify-content:center; min-height:42px; border-radius:8px; background:#ead518; color:#000000; font-weight:800; font-size:14px; text-align:center; padding:4px 8px; }
+/* --- üst sağ buton: soldaki bilgi kutusuyla aynı yükseklik ve alt hiza --- */
+.st-key-ana_kasa_butonu { width:100% !important; margin:0 !important; padding:0 !important; height:112px !important; }
+.st-key-ana_kasa_butonu [data-testid="stButton"] { width:100% !important; height:112px !important; margin:0 !important; padding:0 !important; }
+.st-key-ana_kasa_butonu button { box-sizing:border-box !important; display:flex !important; align-items:center !important; justify-content:center !important; width:100% !important; height:112px !important; min-height:112px !important; padding:6px 8px !important; margin:0 !important; background:#252569 !important; color:#ffffff !important; border:1px solid #3a3a9a !important; border-radius:16px !important; box-shadow:0 4px 12px rgba(37,37,105,.45) !important; }
+.st-key-ana_kasa_butonu button [data-testid="stMarkdownContainer"] { width:100%; }
+.st-key-ana_kasa_butonu button p { margin:0 auto !important; width:100% !important; max-width:12em; text-align:center !important; font-size:15px !important; font-weight:800 !important; line-height:1.25 !important; color:#ffffff !important; white-space:normal !important; }
+.st-key-ana_kasa_butonu button p::before { content:"🏦"; display:block; font-size:26px; line-height:1.15; }
+div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) .metric-container { height:112px; box-sizing:border-box; }
+/* --- işlem kilidi açık durumu (devre dışı sarı buton, en altta) --- */
+.st-key-btn_kilit_durum { margin-top:auto; }
+.st-key-btn_kilit_durum button { background:#ead518 !important; border:none !important; opacity:1 !important; cursor:default !important; min-height:44px; }
+.st-key-btn_kilit_durum button p { color:#000000 !important; font-weight:800 !important; }
+/* --- Long / Short kutuları (seçili: beyaz çerçeve; seçilmeyen: soluk) --- */
+div.st-key-yon_long button, div.st-key-yon_long_sec button { background:#00FF00 !important; min-height:64px; }
+div.st-key-yon_short button, div.st-key-yon_short_sec button { background:rgb(255, 75, 0) !important; min-height:64px; }
+div.st-key-yon_long button, div.st-key-yon_short button { border:3px solid transparent !important; opacity:.55; }
+div.st-key-yon_long_sec button, div.st-key-yon_short_sec button { border:3px solid #ffffff !important; opacity:1; }
+div[class*="st-key-yon_"] button p { color:#000000 !important; font-weight:800 !important; font-size:15px !important; }
 .st-key-islem_form_kap [data-testid="stForm"] { border:none !important; padding:0 !important; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(1) button { background:#252569 !important; border:1px solid #3a3a9a !important; min-height:46px; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(1) button p { color:#ffffff !important; font-weight:800 !important; }
@@ -2097,9 +2104,10 @@ div[data-testid="column"]:has(.st-key-grafik_total) > div[data-testid="stVertica
 div[data-testid="stColumn"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"],
 div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
 .st-key-islem_sag_kap { flex: 1 1 auto; }
-.st-key-islem_sag_kap > div:last-child { flex: 1 1 auto; }
-.st-key-islem_sag_kap > div:last-child [data-testid="stMarkdownContainer"],
-.st-key-islem_sag_kap > div:last-child .metric-container { height: 100%; box-sizing: border-box; }
+.st-key-islem_sag_kap > *:last-child,
+.st-key-islem_sag_kap > *:last-child > div,
+.st-key-islem_sag_kap > *:last-child [data-testid="stMarkdownContainer"] { flex: 1 1 auto; display: flex; flex-direction: column; }
+.st-key-islem_sag_kap > *:last-child .metric-container { flex: 1 1 auto; box-sizing: border-box; }
 """
 for _c in coinler:
     _sym = _c.split("/")[0]
@@ -2146,12 +2154,7 @@ with col_sol_panel:
                 else:
                     st.warning("Uygun işlem yapılacak coin bulunmuyor!")
         else:
-            try:
-                _durum_kap = st.container(key="islem_kilit_durum")
-            except TypeError:
-                _durum_kap = st.container()
-            with _durum_kap:
-                st.markdown('<div class="islem-kilit-durum">🔓 İşlem kilidi açık · işlem alanı aşağıda</div>', unsafe_allow_html=True)
+            st.button("🔓 İşlem kilidi açık · işlem alanı aşağıda", key="btn_kilit_durum", width='stretch', disabled=True)
 
 with col_orta_grafik:
     st.markdown("<h3>🌐 Top 5 Coin (Oransal Omurga & Teknik Mıknatıs)</h3>", unsafe_allow_html=True)
@@ -2251,7 +2254,7 @@ with col_sag_endeks:
         for etk, veri in t_zaman_kat.items():
             sl, ss = veri["sl"], veri["ss"]
             kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
-            boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: 800; font-size: 14px; margin-bottom: 6px; line-height: 1.3; white-space: nowrap;">{etk} · L: {sl:.2f}p | S: {ss:.2f}p</div>')
+            boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: 800; font-size: 13px; margin-bottom: 6px; line-height: 1.3; white-space: nowrap;">{etk} · L: {sl:.2f}p | S: {ss:.2f}p</div>')
         boxes_birlestirilmis = "".join(boxes_listesi)
 
         st.markdown(f'<div class="metric-container" style="text-align: center; padding: 10px !important;"><div style="font-size: 15px; font-weight: bold; margin-bottom: 8px; line-height: 1.5;">Top 5 Ortalama Değeri: <span style="color: #5b8cff;">${total_ham_veri["anlik_fiyat"] / 1e12:.2f}T</span><br>Puan: <span style="color: {"#00FF00" if total_ham_veri["aktif_yon"] == "Long" else ("rgb(255, 75, 0)" if total_ham_veri["aktif_yon"] == "Short" else "#ffc107")};">{total_ham_veri["nihai_puan"]:.1f} / 100 ({total_ham_veri["aktif_yon"]})</span></div>{boxes_birlestirilmis}</div>', unsafe_allow_html=True)
@@ -2266,44 +2269,44 @@ if kilit_acik:
             long_puani, short_puani = float(coin_verisii["L_Puan"]), float(coin_verisii["S_Puan"])
             onerilen_yon = coin_verisii["Aktif_Yon"] if coin_verisii["Aktif_Yon"] in ("Long", "Short") else ("Long" if long_puani >= short_puani else "Short")
 
-            acik_pozisyon_var, _acik_yon_ham = False, ""
+            # --- Yön seçimi (renkli Long / Short kutuları): her zaman serbest ---
+            _yon_key = f"islem_yonu_{secilen_coin}"
+            st.session_state.setdefault(_yon_key, onerilen_yon)
+            secilen_yon = st.session_state[_yon_key]
+            yon_manuel_ters = (secilen_yon != onerilen_yon)
+
+            # Aynı coinde AYNI yönde açık pozisyon varsa ekleme; zıt yönde varsa ayrı (hedge) yeni işlem açılır
+            acik_pozisyon_var, _karsi_acik = False, False
+            _acik_satir = pd.DataFrame()
             if not df_gecmis_temp.empty and "Durum" in df_gecmis_temp.columns:
                 _acik_df_yon = df_gecmis_temp[~durum_kapali_maskesi(df_gecmis_temp["Durum"])]
-                _acik_satir = _acik_df_yon[_acik_df_yon["Coin"] == secilen_coin]
-                if not _acik_satir.empty:
-                    acik_pozisyon_var, _acik_yon_ham = True, str(_acik_satir["Yon"].iloc[0])
+                _acik_coin = _acik_df_yon[_acik_df_yon["Coin"] == secilen_coin]
+                _ayni_maske = _acik_coin["Yon"].astype(str).str.contains(secilen_yon, regex=False)
+                _acik_satir = _acik_coin[_ayni_maske]
+                acik_pozisyon_var = not _acik_satir.empty
+                _karsi_acik = (not _acik_coin.empty) and _acik_satir.empty
 
             islem_kaldiraci = float(st.session_state.get("kaldirac_secim", KALDIRAC))
             if acik_pozisyon_var:
                 islem_kaldiraci = satir_kaldiraci(_acik_satir.iloc[0])
 
-            # --- Yön seçimi (renkli Long / Short kutuları) ---
-            _yon_key = f"islem_yonu_{secilen_coin}"
-            if acik_pozisyon_var:
-                secilen_yon = "Long" if "Long" in _acik_yon_ham else "Short"
-                st.session_state[_yon_key] = secilen_yon
-            else:
-                st.session_state.setdefault(_yon_key, onerilen_yon)
-                secilen_yon = st.session_state[_yon_key]
-            yon_manuel_ters = (secilen_yon != onerilen_yon)
-
             _ls, _ss = (secilen_yon == "Long"), (secilen_yon == "Short")
-            st.markdown(f"""<style>
-div.st-key-yon_long button {{ background: {RENK_LONG} !important; border: 3px solid {'#ffffff' if _ls else 'transparent'} !important; opacity: {1.0 if _ls else 0.4}; min-height: 64px; }}
-div.st-key-yon_short button {{ background: {RENK_SHORT} !important; border: 3px solid {'#ffffff' if _ss else 'transparent'} !important; opacity: {1.0 if _ss else 0.4}; min-height: 64px; }}
-div.st-key-yon_long button p, div.st-key-yon_short button p {{ color: #000000 !important; font-weight: 800 !important; font-size: 15px !important; }}
-</style>""", unsafe_allow_html=True)
             _kl, _ks = st.columns(2, gap="small")
             with _kl:
-                if st.button(f"LONG • {long_puani:.1f}p" + (" ⭐" if onerilen_yon == "Long" else ""), key="yon_long", width='stretch', disabled=(acik_pozisyon_var and not _ls)):
+                if st.button(f"LONG • {long_puani:.1f}p" + (" ⭐" if onerilen_yon == "Long" else ""), key="yon_long_sec" if _ls else "yon_long", width='stretch'):
                     st.session_state[_yon_key] = "Long"
                     st.rerun()
             with _ks:
-                if st.button(f"SHORT • {short_puani:.1f}p" + (" ⭐" if onerilen_yon == "Short" else ""), key="yon_short", width='stretch', disabled=(acik_pozisyon_var and not _ss)):
+                if st.button(f"SHORT • {short_puani:.1f}p" + (" ⭐" if onerilen_yon == "Short" else ""), key="yon_short_sec" if _ss else "yon_short", width='stretch'):
                     st.session_state[_yon_key] = "Short"
                     st.rerun()
-            st.caption("⭐ matrisin önerdiği yön" + (" · açık pozisyon olduğu için yön kilitli" if acik_pozisyon_var else ""))
-            st.caption(f"⚙️ Kaldıraç: {islem_kaldiraci:g}x" + (" (açık pozisyonun kaldıracı)" if acik_pozisyon_var else " · 'Kasa İşlemleri ve Kaldıraç Belirleme' bölümünden değiştirilir"))
+            _not = "⭐ matrisin önerdiği yön"
+            if acik_pozisyon_var:
+                _not += " · bu yönde açık pozisyon var: ekleme yapılır"
+            elif _karsi_acik:
+                _not += " · zıt yönde açık pozisyon var: ters yönde AYRI yeni işlem açılır"
+            st.caption(_not)
+            st.caption(f"⚙️ Kaldıraç: {islem_kaldiraci:g}x" + (" (açık pozisyonun kaldıracı)" if acik_pozisyon_var else " · 'Kasa İşlemleri & Kaldıraç Belirleme' bölümünden değiştirilir"))
 
             # --- Seçilen yöne göre puan / stop / hedef ---
             anlik_matris_puani = round(long_puani if secilen_yon == "Long" else short_puani, 2)
@@ -2334,7 +2337,7 @@ div.st-key-yon_long button p, div.st-key-yon_short button p {{ color: #000000 !i
 
             risk_mesaji, risk_eklenebilir = "", None
             try:
-                _kap = risk_kapasitesi(toplam_kasa, df_gecmis_temp, secilen_coin, islem_fiyat, islem_stop, islem_kaldiraci)
+                _kap = risk_kapasitesi(toplam_kasa, df_gecmis_temp, secilen_coin, islem_fiyat, islem_stop, islem_kaldiraci, secilen_yon)
                 _mevcut_miktar = 0.0
                 if acik_pozisyon_var:
                     _mevcut_miktar = float(_acik_satir["Islem_Miktari"].iloc[0])
@@ -2437,7 +2440,8 @@ try:
     fitUst();
     var sol=q('.st-key-islem_sol_kap'), gr=q('.st-key-grafik_total'), sg=q('.st-key-islem_sag_kap');
     if(!sol||!gr||!sg) return;
-    var sgSon = sg.lastElementChild, pc = gr.querySelector('[data-testid="stPlotlyChart"]');
+    var kartlar = sg.querySelectorAll('.metric-container'), sgSon = kartlar.length ? kartlar[kartlar.length-1] : null;
+    var pc = gr.querySelector('[data-testid="stPlotlyChart"]');
     sol.style.minHeight=''; if(sgSon) sgSon.style.minHeight='';
     function alt(e){ return e.getBoundingClientRect().bottom; }
     var hedef = Math.max(alt(sol), alt(gr), alt(sg));

@@ -51,10 +51,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- OTOMATİK YENİLEME (60 SANİYE) ---
+# --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
-    st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
+    st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
     
 # --- TABLET YATAY: masaüstü %100 düzeniyle göster (dar ekranda sütunlar sıkışmasın) ---
 try:
@@ -492,11 +492,15 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
                 baslangic = bitis
 
         def metrik_paneli(kdf):
-            h = 140
+            """Panelle aynı düzen: solda Finansal (kâr/zarar $) donutu + metinleri, sağda Strateji (kârlı/zararlı adet) donutu + metinleri."""
+            import math as _m
+            from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+            h = 150
             d = Drawing(W, h)
             d.add(Rect(0, 0, W, h, rx=12, ry=12, fillColor=colors.HexColor("#070b14"), strokeColor=colors.HexColor("#1b2a40"), strokeWidth=0.8))
+            ac_gri, beyaz = colors.HexColor("#91a0b8"), colors.HexColor("#e8eef8")
             if kdf is None or len(kdf) == 0:
-                d.add(String(W / 2 - 60, h / 2, T("Kapanan işlem yok"), fontName=FONT, fontSize=10, fillColor=colors.HexColor("#91a0b8")))
+                d.add(String(W / 2 - 60, h / 2, T("Kapanan işlem yok"), fontName=FONT, fontSize=10, fillColor=ac_gri))
                 return d
             v = pd.to_numeric(kdf["Net_Kar_Zarar"], errors="coerce").fillna(0.0)
             karli, zararli = int((v >= 0).sum()), int((v < 0).sum())
@@ -504,38 +508,69 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
             kazanc, kayip = float(v[v >= 0].sum()), float(abs(v[v < 0].sum()))
             net_fark = kazanc - kayip - giris_kom_top
             k_y, z_y = (karli / toplam * 100.0), (zararli / toplam * 100.0)
-            parasal = (kazanc / (kazanc + kayip) * 100.0) if (kazanc + kayip) > 0 else 0.0
-            cx, cy, r_dis, r_ic = 78, h / 2, 54, 30
-            halka(d, cx, cy, r_dis, r_ic, [(karli / toplam, NEON_Y), (zararli / toplam, NEON_T)])
-            import math as _m
+            hareket = kazanc + kayip
+            parasal = (kazanc / hareket * 100.0) if hareket > 0 else 0.0
+            sayi = lambda x, isaretli=True: (f"{x:+,.2f}" if isaretli else f"{x:,.2f}").replace(",", "X").replace(".", ",").replace("X", ".")
+            r_dis, r_ic, cy = 46, 21, h / 2 - 2
             r_orta = (r_dis + r_ic) / 2.0
-            baslangic_a = 90.0
-            for oran_, yazi_, renk_ in ((karli / toplam, f"%{k_y:.1f}", colors.HexColor("#0b3d0b")), (zararli / toplam, f"%{z_y:.1f}", colors.white)):
-                if oran_ <= 0:
-                    continue
-                orta_a = baslangic_a - 360.0 * oran_ / 2.0
-                d.add(String(cx + r_orta * _m.cos(_m.radians(orta_a)), cy + r_orta * _m.sin(_m.radians(orta_a)) - 3, yazi_,
-                             fontName=FONT_B, fontSize=8, fillColor=renk_, textAnchor="middle"))
-                baslangic_a -= 360.0 * oran_
-            x1, x2 = 160, W * 0.58
-            ac_gri, beyaz = colors.HexColor("#91a0b8"), colors.HexColor("#e8eef8")
-            d.add(String(x1, h - 22, T("Strateji Metrikleri"), fontName=FONT_B, fontSize=10, fillColor=beyaz))
-            d.add(String(x1, h - 40, T("Toplam Kapanan"), fontName=FONT, fontSize=8, fillColor=ac_gri))
-            d.add(String(x1, h - 57, f"{toplam} Adet", fontName=FONT_B, fontSize=14, fillColor=beyaz))
-            d.add(Circle(x1 + 4, h - 76, 3.4, fillColor=NEON_Y, strokeColor=None))
-            d.add(String(x1 + 12, h - 79, T(f"Kârlı: {karli} (%{k_y:.1f})"), fontName=FONT_B, fontSize=9, fillColor=NEON_Y))
-            d.add(Circle(x1 + 4, h - 94, 3.4, fillColor=NEON_T, strokeColor=None))
-            d.add(String(x1 + 12, h - 97, T(f"Zararlı: {zararli} (%{z_y:.1f})"), fontName=FONT_B, fontSize=9, fillColor=NEON_T))
-            d.add(Line(x1, h - 108, x1 + (x2 - x1) - 24, h - 108, strokeColor=colors.HexColor("#25344d"), strokeWidth=0.6))
-            d.add(String(x1, h - 124, T(f"Başarı Oranı: %{k_y:.1f}"), fontName=FONT_B, fontSize=9, fillColor=NEON_Y if k_y >= 50 else NEON_T))
-            d.add(String(x2, h - 22, T("Finansal Metrikler"), fontName=FONT_B, fontSize=10, fillColor=beyaz))
-            d.add(String(x2, h - 40, T("Net Fark (giriş kom. dahil)"), fontName=FONT, fontSize=8, fillColor=ac_gri))
-            d.add(String(x2, h - 57, T(f"{net_fark:+,.2f} $".replace(",", "X").replace(".", ",").replace("X", ".")), fontName=FONT_B, fontSize=14,
-                         fillColor=NEON_Y if net_fark >= 0 else NEON_T))
-            d.add(String(x2, h - 79, T(f"Toplam Kâr: {kazanc:+,.2f} $".replace(",", "X").replace(".", ",").replace("X", ".")), fontName=FONT_B, fontSize=9, fillColor=NEON_Y))
-            d.add(String(x2, h - 97, T(f"Toplam Zarar: {-kayip:+,.2f} $".replace(",", "X").replace(".", ",").replace("X", ".")), fontName=FONT_B, fontSize=9, fillColor=NEON_T))
-            d.add(Line(x2, h - 108, W - 18, h - 108, strokeColor=colors.HexColor("#25344d"), strokeWidth=0.6))
-            d.add(String(x2, h - 124, T(f"Parasal Başarı Oranı: %{parasal:.1f}"), fontName=FONT_B, fontSize=9, fillColor=NEON_Y if parasal >= 50 else NEON_T))
+            yarim = W / 2.0
+
+            def donut(cx, oran_k, etiket_k, etiket_z):
+                """oran_k: yeşil (kâr) dilim oranı 0..1. Veri yoksa gri halka."""
+                if oran_k is None:
+                    halka(d, cx, cy, r_dis, r_ic, [(1.0, colors.HexColor("#25344d"))])
+                    return
+                oran_z = 1.0 - oran_k
+                halka(d, cx, cy, r_dis, r_ic, [(oran_k, NEON_Y), (oran_z, NEON_T)])
+                baslangic_a = 90.0
+                for oran_, yazi_, renk_ in ((oran_k, etiket_k, colors.HexColor("#0b3d0b")), (oran_z, etiket_z, colors.white)):
+                    if oran_ <= 0.06:      # çok ince dilimde yazı sığmaz
+                        baslangic_a -= 360.0 * oran_
+                        continue
+                    orta_a = baslangic_a - 360.0 * oran_ / 2.0
+                    d.add(String(cx + r_orta * _m.cos(_m.radians(orta_a)), cy + r_orta * _m.sin(_m.radians(orta_a)) - 2.5, yazi_,
+                                 fontName=FONT_B, fontSize=6.8, fillColor=renk_, textAnchor="middle"))
+                    baslangic_a -= 360.0 * oran_
+
+            def uygun_fs(x, sag_kenar, kalemler, fs=9.0):
+                """Etiket + değer en uzun satırda bile yarım panele sığacak yazı boyutu."""
+                bosluk, kullanilabilir = 4.0, sag_kenar - x - 12
+                en_uzun = max(_sw(T(e), FONT, fs) + bosluk + _sw(T(dg), FONT_B, fs) for e, dg, _ in kalemler)
+                return fs if en_uzun <= kullanilabilir else max(6.5, fs * kullanilabilir / en_uzun)
+
+            def satirlar(x, baslik, kalemler, fs):
+                d.add(String(x, h - 22, T(baslik), fontName=FONT_B, fontSize=10.5, fillColor=beyaz))
+                y = h - 44
+                for etiket_, deger_, renk_ in kalemler:
+                    d.add(String(x, y, T(etiket_), fontName=FONT, fontSize=fs, fillColor=ac_gri))
+                    d.add(String(x + _sw(T(etiket_), FONT, fs) + 4.0, y, T(deger_), fontName=FONT_B, fontSize=fs, fillColor=renk_))
+                    y -= 18
+
+            d.add(Line(yarim, 14, yarim, h - 14, strokeColor=colors.HexColor("#25344d"), strokeWidth=0.6))
+            renk_p = NEON_Y if parasal >= 50 else NEON_T
+            renk_b = NEON_Y if k_y >= 50 else NEON_T
+
+            # --- sol yarı: Finansal Metrikler ---
+            fin_kalem = [
+                ("Net Kâr:", sayi(net_fark) + " $", NEON_Y if net_fark >= 0 else NEON_T),
+                ("Giriş Komisyonu:", "-" + sayi(giris_kom_top, False) + " $", NEON_T),
+                ("Toplam Kâr:", sayi(kazanc) + " $", NEON_Y),
+                ("Toplam Zarar:", sayi(-kayip) + " $", NEON_T),
+                ("Parasal Başarı:", f"%{parasal:.1f}", renk_p),
+            ]
+            str_kalem = [
+                ("Toplam Kapanan:", f"{toplam} Adet", beyaz),
+                ("Kârlı:", f"{karli} Adet (%{k_y:.1f})", NEON_Y),
+                ("Zararlı:", f"{zararli} Adet (%{z_y:.1f})", NEON_T),
+                ("Başarı Oranı:", f"%{k_y:.1f}", renk_b),
+            ]
+            # iki yarıda da aynı yazı boyutu (ikisine de sığan en büyük)
+            fs_ortak = min(uygun_fs(122, yarim, fin_kalem), uygun_fs(yarim + 122, W, str_kalem))
+            donut(60, (kazanc / hareket) if hareket > 0 else None, f"%{parasal:.1f}", f"%{100 - parasal:.1f}")
+            satirlar(122, "Finansal Metrikler", fin_kalem, fs_ortak)
+            # --- sağ yarı: Strateji Metrikleri ---
+            donut(yarim + 60, karli / toplam, f"%{k_y:.1f}", f"%{z_y:.1f}")
+            satirlar(yarim + 122, "Strateji Metrikleri", str_kalem, fs_ortak)
             return d
 
         story = []
@@ -1322,7 +1357,7 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
 # İŞLEM VE RAPORLAMA FONKSİYONLARI
 # =====================================================================
 
-def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin, esik_atla=False, kaldirac=None):
+def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin, esik_atla=False, kaldirac=None, risk_asimi=False):
     df = islem_gecmisi_getir()
     toplam_kasa_risk, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
     # Kaldıraç: coinde açık pozisyon varsa onunki korunur, yoksa seçilen değer kullanılır (1..KALDIRAC_MAX)
@@ -1402,9 +1437,10 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop, _lev, eski_yon)
-        if yeni_toplam_miktar > kap["azami"] + 0.005:
+        _risk_asildi = yeni_toplam_miktar > kap["azami"] + 0.005
+        if _risk_asildi and not risk_asimi:
             eklenebilir = max(0.0, kap["azami"] - eski_miktar)
-            return False, f"⚠️ Risk sınırı aşılıyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz."
+            return False, f"⚠️ Risk sınırı aşılıyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz. Bilerek aşmak için formdaki 'Risk sınırını aşarak ekle' kutusunu işaretleyin."
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
         matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({rh_guncel_metin})"
@@ -1425,7 +1461,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             return False, "⚠️ Ekleme Google Sheets'e yazılamadı!"
         islem_no = int(df.at[acik_islem_idx, "Islem_ID"])
         kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{islem_no} {coin}")
-        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $."
+        return True, f"🔄 {coin} pozisyonuna ekleme yapıldı! Giriş komisyonu: {giris_kom:.4f} $." + (" ⚠️ Risk sınırı bilinçli olarak aşıldı." if _risk_asildi else "")
     else:
         min_esik_kontrol = aktif_min_puan_esigi_getir()
         if (matris_puan < min_esik_kontrol and not esik_atla) or "Nötr" in yon or "Beklemede" in yon:
@@ -1435,8 +1471,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop, _lev, yon)
-        if islem_miktari > kap["azami"] + 0.005:
-            return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $."
+        _risk_asildi = islem_miktari > kap["azami"] + 0.005
+        if _risk_asildi and not risk_asimi:
+            return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $. Bilerek aşmak için formdaki 'Risk sınırını aşarak işlem aç' kutusunu işaretleyin."
 
         basamak = 4 if giris_fiyat < 10 else 2
         giris_kom = round(giris_komisyonu(islem_miktari, _lev), 4)
@@ -1466,7 +1503,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         if not dataframe_guncelle_gsheets(df):
             return False, "⚠️ İşlem Google Sheets'e yazılamadı!"
         kasa_islem_ekle_deftere("Komisyon", -giris_kom, f"Giriş Komisyonu: #{yeni_id} {coin}")
-        return True, f"✅ {coin} emri {_lev:g}x kaldıraçla verildi! Giriş komisyonu: {giris_kom:.4f} $."
+        return True, f"✅ {coin} emri {_lev:g}x kaldıraçla verildi! Giriş komisyonu: {giris_kom:.4f} $." + (" ⚠️ Risk sınırı bilinçli olarak aşıldı." if _risk_asildi else "")
 
 def _islem_acik_mi(durum):
     return not bool(durum_kapali_maskesi(pd.Series([durum])).iloc[0])
@@ -2041,6 +2078,7 @@ def _form_butonu(etiket):
         return st.form_submit_button(etiket, use_container_width=True)
 
 def yon_secimlerini_temizle():
+    st.session_state["risk_asimi_sayac"] = st.session_state.get("risk_asimi_sayac", 0) + 1   # risk aşımı onay kutusu işaretsiz başlasın
     for _k in [k for k in st.session_state.keys() if str(k).startswith("islem_yonu_")]:
         st.session_state.pop(_k, None)
 
@@ -2051,6 +2089,7 @@ secilen_yon, onerilen_yon, yon_manuel_ters, esik_atla = None, None, False, False
 islem_fiyat, islem_stop, islem_kar_al = 0.0, 0.0, 0.0
 anlik_matris_puani, anlik_risk_hedef_metin, coin_verisii = 0.0, "0,70 / 0,95", None
 islem_kaldiraci = float(KALDIRAC)
+risk_asimi_onay = False
 kilit_acik = st.session_state.get("islem_emri_kilit_acik", False)
 
 df_gosterge = pd.DataFrame(islenen_veriler)
@@ -2089,17 +2128,8 @@ div[class*="st-key-yon_"] button p { color:#000000 !important; font-weight:800 !
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(1) button p { color:#ffffff !important; font-weight:800 !important; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button { background:#ead518 !important; border:1px solid #c9b800 !important; min-height:46px; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button p { color:#000000 !important; font-weight:800 !important; }
-/* --- orta sütun: grafik alanı sütunun altına kadar uzar --- */
-div[data-testid="stColumn"]:has(.st-key-grafik_total) > div[data-testid="stVerticalBlock"],
-div[data-testid="column"]:has(.st-key-grafik_total) > div[data-testid="stVerticalBlock"] { height: 100%; }
-.st-key-grafik_total { flex: 1 1 auto; min-height: 340px; }
-.st-key-grafik_total > div,
-.st-key-grafik_total [data-testid="stElementContainer"],
-.st-key-grafik_total [data-testid="stPlotlyChart"],
-.st-key-grafik_total .js-plotly-plot,
-.st-key-grafik_total .plot-container,
-.st-key-grafik_total .svg-container { height: 100% !important; box-sizing: border-box; }
-.st-key-grafik_total [data-testid="stPlotlyChart"] { min-height: 340px; }
+/* --- ana satır: üç blok aynı sabit yükseklikte (alt çizgileri aynı) --- */
+.st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 400px; }
 /* --- sağ sütun: son kart sütunun altına kadar uzar --- */
 div[data-testid="stColumn"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"],
 div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
@@ -2108,6 +2138,17 @@ div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVertic
 .st-key-islem_sag_kap > *:last-child > div,
 .st-key-islem_sag_kap > *:last-child [data-testid="stMarkdownContainer"] { flex: 1 1 auto; display: flex; flex-direction: column; }
 .st-key-islem_sag_kap > *:last-child .metric-container { flex: 1 1 auto; box-sizing: border-box; }
+/* --- analiz kartı ve risk kartı: aynı alt çizgi --- */
+div[data-testid="stHorizontalBlock"]:has(.st-key-analiz_kart) { align-items: stretch !important; }
+div[data-testid="stColumn"]:has(.st-key-analiz_kart) > div[data-testid="stVerticalBlock"],
+div[data-testid="column"]:has(.st-key-analiz_kart) > div[data-testid="stVerticalBlock"],
+div[data-testid="stColumn"]:has(.st-key-risk_kart_kap) > div[data-testid="stVerticalBlock"],
+div[data-testid="column"]:has(.st-key-risk_kart_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
+.st-key-analiz_kart, .st-key-risk_kart_kap { flex: 1 1 auto; }
+.st-key-risk_kart_kap > *:last-child,
+.st-key-risk_kart_kap > *:last-child > div,
+.st-key-risk_kart_kap > *:last-child [data-testid="stMarkdownContainer"] { flex: 1 1 auto; display: flex; flex-direction: column; }
+.st-key-risk_kart_kap .ozet-card { flex: 1 1 auto; box-sizing: border-box; }
 """
 for _c in coinler:
     _sym = _c.split("/")[0]
@@ -2218,7 +2259,7 @@ with col_orta_grafik:
             marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), autosize=True,
+            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), height=392,
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
@@ -2381,6 +2422,11 @@ if kilit_acik:
                         step=10.0,
                         key="manuel_girilen_tutar_input",
                     )
+                    risk_asimi_onay = st.checkbox(
+                        "⚠️ Risk sınırını aşarak ekle (bilinçli onay)" if acik_pozisyon_var else "⚠️ Risk sınırını aşarak işlem aç (bilinçli onay)",
+                        key=f"risk_asimi_{st.session_state.get('risk_asimi_sayac', 0)}",
+                        help="İşaretlersen bu emir için işlem başı ve toplam risk sınırı uygulanmaz; yalnızca bakiye kontrolü sürer. Her emirden sonra kutu sıfırlanır.",
+                    )
                     _fb1, _fb2 = st.columns(2, gap="small")
                     with _fb1:
                         submit_islem = _form_butonu("🔄 Ekleme Yap" if acik_pozisyon_var else "🚀 İşlemi Başlat")
@@ -2410,7 +2456,8 @@ if submit_islem:
             anlik_matris_puani,
             anlik_risk_hedef_metin,
             esik_atla=esik_atla,
-            kaldirac=islem_kaldiraci
+            kaldirac=islem_kaldiraci,
+            risk_asimi=risk_asimi_onay
         )
         if basari:
             yon_secimlerini_temizle()
@@ -2436,16 +2483,26 @@ try:
     var dB=mc.getBoundingClientRect().bottom-bt.getBoundingClientRect().bottom;
     if(Math.abs(dB)>1) bt.style.setProperty('height',(bt.offsetHeight+dB)+'px','important');
   }
+  function fitAnaliz(){
+    var ak=q('.st-key-analiz_kart'), rk=q('.st-key-risk_kart_kap'); if(!ak||!rk) return;
+    var oc=rk.querySelector('.ozet-card'); if(!oc) return;
+    oc.style.minHeight=''; ak.style.minHeight='';
+    var a=ak.getBoundingClientRect().bottom, r=oc.getBoundingClientRect().bottom, t=Math.max(a,r);
+    if(t-r>1) oc.style.minHeight=(oc.offsetHeight+t-r)+'px';
+    if(t-a>1) ak.style.minHeight=(ak.offsetHeight+t-a)+'px';
+  }
   function fit(){
-    fitUst();
+    fitUst(); fitAnaliz();
     var sol=q('.st-key-islem_sol_kap'), gr=q('.st-key-grafik_total'), sg=q('.st-key-islem_sag_kap');
     if(!sol||!gr||!sg) return;
     var kartlar = sg.querySelectorAll('.metric-container'), sgSon = kartlar.length ? kartlar[kartlar.length-1] : null;
     var pc = gr.querySelector('[data-testid="stPlotlyChart"]');
     sol.style.minHeight=''; if(sgSon) sgSon.style.minHeight='';
     function alt(e){ return e.getBoundingClientRect().bottom; }
-    var hedef = Math.max(alt(sol), alt(gr), alt(sg));
-    var dS=hedef-alt(sol), dG=hedef-alt(gr), dR=hedef-alt(sg);
+    var grAlt = pc || gr;
+    var sgAlt = sgSon || sg;
+    var hedef = Math.max(alt(sol), alt(grAlt), alt(sgAlt));
+    var dS=hedef-alt(sol), dG=hedef-alt(grAlt), dR=hedef-alt(sgAlt);
     if(dS>1) sol.style.minHeight=(sol.offsetHeight+dS)+'px';
     if(sgSon && dR>1) sgSon.style.minHeight=(sgSon.offsetHeight+dR)+'px';
     if(pc && dG>1){
@@ -2564,7 +2621,11 @@ st.markdown(f"""<style>
 
 col_sol_analiz, col_sag_sonlandir = st.columns([3.3, 1], gap="medium")
 with col_sol_analiz:
-    with st.container(border=True):
+    try:
+        _analiz_kap = st.container(border=True, key="analiz_kart")
+    except TypeError:
+        _analiz_kap = st.container(border=True)
+    with _analiz_kap:
         st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)
         kapananlar_df = pd.DataFrame() if df_gecmis.empty or "Durum" not in df_gecmis.columns else df_gecmis[durum_kapali_maskesi(df_gecmis["Durum"])]
 
@@ -2595,20 +2656,20 @@ with col_sol_analiz:
                 f_ = px.pie(pd.DataFrame({"Durum": etiketler, "Deger": degerler}), names="Durum", values="Deger", hole=0.55,
                             color="Durum", color_discrete_map={etiketler[0]: "#00FF00", etiketler[1]: "rgb(255, 75, 0)"})
                 f_.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13),
-                                 margin=dict(t=6, b=6, l=6, r=6), height=190, showlegend=False)
-                f_.update_traces(textfont_size=13, textinfo="percent", marker=dict(line=dict(width=0)), sort=False)
+                                 margin=dict(t=6, b=6, l=6, r=6), height=270, showlegend=False)
+                f_.update_traces(textfont_size=15, textinfo="percent", marker=dict(line=dict(width=0)), sort=False)
                 return f_
 
             g_fin, g_str = st.columns(2, gap="medium")
             with g_fin:
-                _d1, _t1 = st.columns([1, 1.3], gap="small")
+                _d1, _t1 = st.columns([1.2, 1], gap="small")
                 with _d1:
                     st.plotly_chart(_donut(["Toplam Kâr", "Toplam Zarar"], [max(toplam_kazanc_dolar, 0.0001), max(toplam_kayip_dolar, 0.0001)]),
                                     width='stretch', config={"responsive": True, "displayModeBar": False})
                 with _t1:
                     st.markdown(f"""<div style="font-size:16px; font-weight:bold; color:#e8eef8; margin-bottom:6px;">💰 Finansal Metrikler</div><div style="font-size:14px; line-height:1.95; color:#cfd9ea;">• Net Kâr: <b style="color:{net_renk};">{net_fark_dolar:+,.2f} $</b><br>• Giriş Komisyonu: <b style="color:{RENK_KIRMIZI};">-{giris_kom_uygulama:,.2f} $</b><br>• Toplam Kâr: <b style="color:{RENK_YESIL};">+{toplam_kazanc_dolar:,.2f} $</b><br>• Toplam Zarar: <b style="color:{RENK_KIRMIZI};">-{toplam_kayip_dolar:,.2f} $</b><br>• Parasal Başarı Oranı: <b style="color:{parasal_renk};">%{parasal_basari_yuzde:.1f}</b></div>""", unsafe_allow_html=True)
             with g_str:
-                _d2, _t2 = st.columns([1, 1.3], gap="small")
+                _d2, _t2 = st.columns([1.2, 1], gap="small")
                 with _d2:
                     st.plotly_chart(_donut(["Kârlı", "Zararlı"], [max(karli_sayisi, 0.0001), max(zararli_sayisi, 0.0001)]),
                                     width='stretch', config={"responsive": True, "displayModeBar": False})
@@ -2651,7 +2712,12 @@ with col_sol_analiz:
 
 with col_sag_sonlandir:
     st.markdown("<h3>🛡️ Risk & Kâr Özeti</h3>", unsafe_allow_html=True)
-    st.markdown(risk_kar_ozeti_html(df_gecmis, toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz), unsafe_allow_html=True)
+    try:
+        _risk_kap = st.container(key="risk_kart_kap")
+    except TypeError:
+        _risk_kap = st.container()
+    with _risk_kap:
+        st.markdown(risk_kar_ozeti_html(df_gecmis, toplam_kasa, efektif_kasa, mevcut_bakiye, aktif_yatirim_tutari, toplam_acik_kz), unsafe_allow_html=True)
 
 st.markdown("---")
 

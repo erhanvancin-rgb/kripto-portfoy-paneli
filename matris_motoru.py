@@ -1,12 +1,18 @@
 """
 Matris puanlama motoru: panel (panel_v2.py) ve GitHub motoru (check_engine.py) AYNI hesabı kullanır.
 
-Süre | Ağırlık | Mum aralığı | Mum sayısı
-16 S |  7,30   | 15 dakika   | 64
- 8 S | 11,80   |  5 dakika   | 96
- 4 S | 19,10   |  5 dakika   | 48
- 2 S | 23,60   |  1 dakika   | 120
- 1 S | 38,20   |  1 dakika   | 60
+Süre      | Ağırlık | Mum aralığı | Puanlanan mum sayısı
+8 Saat    |  15     | 15 dakika   | 32
+4 Saat    |  20     |  5 dakika   | 48
+2 Saat    |  30     |  3 dakika   | 40
+1 Saat    |  20     |  1 dakika   | 60
+30 Dakika |  15     |  1 dakika   | 30
+
+ISINMA: EMA (9/20/50), RSI ve ATR yalnızca pencerenin kendi mumlarıyla hesaplanırsa oturmaz (ör. 30 mumda EMA50 anlamsızdır).
+Bu yüzden her aralıkta puanlanan mumların ÖNCESİNDE ISITMA_MUM kadar ek geçmiş mum çekilir; EMA/RSI/ATR bu uzun seriyle
+hesaplanır, gövde/fibonacci/mıknatıs/verimlilik ise yalnızca son N (puanlanan) mumdan çıkarılır.
+
+TOTAL (Top 5) puanı BTC mumlarıyla değil, 5 coinin piyasa değeri ağırlıklı endeksiyle (Σ arz × fiyat) hesaplanır.
 
 Her süre penceresi için 6 kanıt üretilir (her biri -1 = Short ... +1 = Long):
   1) Mum gövdesi baskınlığı      (yeşil/kırmızı gövde büyüklükleri)
@@ -28,13 +34,24 @@ import pandas as pd
 
 # ------------------------------------------------------------------ AYARLAR
 DILIMLER = [
-    # (etiket, mum aralığı, mum sayısı, ağırlık) - Günlük Intraday Trade Optimizasyonu
-    ("16 Saat", "15m", 64, 5.91),
-    ("8 Saat", "5m", 96, 9.55),
-    ("4 Saat", "5m", 48, 15.45),
-    ("2 Saat", "1m", 120, 19.09),
-    ("1 Saat", "1m", 60, 50.00),
+    # (etiket, mum aralığı, PUANLANAN mum sayısı, ağırlık) - toplam ağırlık 100
+    ("8 Saat", "15m", 32, 15.0),
+    ("4 Saat", "5m", 48, 20.0),
+    ("2 Saat", "3m", 40, 30.0),
+    ("1 Saat", "1m", 60, 20.0),
+    ("30 Dakika", "1m", 30, 15.0),
 ]
+# EMA50'nin ~%98 oturması için puanlanan mumların öncesine eklenen geçmiş mum sayısı (EMA/RSI/ATR için)
+ISITMA_MUM = 100
+
+# Top 5 piyasa değeri endeksi için dolaşımdaki arz (Σ arz × fiyat = Top 5 toplam piyasa değeri)
+TOP5_ARZ = {
+    "BTC/USDT": 19_700_000,
+    "ETH/USDT": 120_000_000,
+    "BNB/USDT": 145_000_000,
+    "SOL/USDT": 470_000_000,
+    "XRP/USDT": 5_700_000_000,
+}
 
 # ANA YÖN: net hareketin yönünü belirleyen kanıtlar (gövde baskınlığı + trend verimliliği)
 ANA_AGIRLIK = {"govde": 0.5, "trend": 0.5}
@@ -98,17 +115,23 @@ def _parcali(x, noktalar):
 
 
 # ------------------------------------------------------------------ PENCERE ANALİZİ
-def pencere_analiz(df):
-    """Tek bir mum penceresi için 5 kanıtı (-1..+1) ve ayrıntıları döndürür."""
+def pencere_analiz(df, n_skor=None):
+    """Tek bir mum penceresi için kanıtları (-1..+1) ve ayrıntıları döndürür.
+    df: ısınma mumları DAHİL tüm seri. n_skor: puanlanan son mum sayısı (None ise df'in tamamı puanlanır).
+    EMA / RSI / ATR tüm seriyle, gövde / fibonacci / mıknatıs / verimlilik yalnızca son n_skor mumla hesaplanır."""
     nötr = {"govde": 0.0, "ema": 0.0, "rsi": 0.0, "fib": 0.0, "mik": 0.0, "trend": 0.0}
     if df is None or len(df) < 10:
         return {"s": nötr, "y_adet": 0, "k_adet": 0, "detay": {}}
 
-    d = df.reset_index(drop=True)
+    tam = df.reset_index(drop=True)
+    d = tam.tail(int(n_skor)).reset_index(drop=True) if (n_skor and len(tam) > int(n_skor)) else tam
+    if len(d) < 10:
+        return {"s": nötr, "y_adet": 0, "k_adet": 0, "detay": {}}
     op, hi, lo, cl = (d[c].astype(float) for c in ("Open", "High", "Low", "Close"))
+    cl_tam = tam["Close"].astype(float)          # ısınma dahil seri: EMA / RSI için
     n = len(d)
     fiyat = float(cl.iloc[-1])
-    atr = _atr(d)
+    atr = _atr(tam)
 
     # 1) gövde baskınlığı
     govde = cl - op
@@ -117,7 +140,7 @@ def pencere_analiz(df):
     s_govde = ((yesil - kirmizi) / toplam) if toplam > 0 else 0.0
 
     # 2) EMA etkisi
-    e9, e20, e50 = (cl.ewm(span=s, adjust=False).mean() for s in (9, 20, 50))
+    e9, e20, e50 = (cl_tam.ewm(span=s, adjust=False).mean() for s in (9, 20, 50))
     ema20, ema50 = float(e20.iloc[-1]), float(e50.iloc[-1])
     k = max(3, min(10, n // 5))
     s_konum = _tanh(((fiyat - ema20) / atr) / EMA_KONUM_OLCEK)
@@ -128,7 +151,7 @@ def pencere_analiz(df):
     s_ema = 0.4 * s_konum + 0.3 * s_egim + 0.3 * s_dizilim
 
     # 3) RSI etkisi
-    rsi = _rsi(cl)
+    rsi = _rsi(cl_tam)
     rsi_gecerli = rsi.dropna()
     if len(rsi_gecerli) >= 1:
         rsi_now = float(rsi_gecerli.iloc[-1])
@@ -206,13 +229,16 @@ def pencere_pay(analiz):
 # ------------------------------------------------------------------ MATRİS
 def matris_hesapla(pencereler):
     """
-    pencereler: [(etiket, df, ağırlık), ...]  (ağırlıklar toplamı 100)
+    pencereler: [(etiket, df, ağırlık[, puanlanan_mum_sayısı]), ...]  (ağırlıklar toplamı 100)
+    4. eleman verilirse df'in ilk kısmı ısınma mumu sayılır (EMA/RSI/ATR için), puan yalnızca son N mumdan çıkar.
     Döner: {"nihai_long", "nihai_short", "katkilar": {etiket: {...}}, "mtf_uyum", "mtf_carpan"}
     """
     toplam_agirlik = float(sum(p[2] for p in pencereler)) or 100.0
     analizler = []
-    for etiket, df, agirlik in pencereler:
-        a = pencere_analiz(df)
+    for p_ in pencereler:
+        etiket, df, agirlik = p_[0], p_[1], p_[2]
+        n_skor = p_[3] if len(p_) > 3 else None
+        a = pencere_analiz(df, n_skor)
         pay, uyum, s_ham = pencere_pay(a)
         analizler.append((etiket, agirlik / toplam_agirlik, a, pay, uyum, s_ham))
 
@@ -232,3 +258,56 @@ def matris_hesapla(pencereler):
                             "detay": a["detay"]}
     return {"nihai_long": round(long_toplam, 2), "nihai_short": round(short_toplam, 2), "katkilar": katkilar,
             "mtf_uyum": round(mtf_uyum, 3), "mtf_carpan": round(mtf_carpan, 3)}
+
+
+# ------------------------------------------------------------------ TOP 5 ENDEKSİ
+def birlesik_endeks(coin_dfleri):
+    """5 coinin mumlarından piyasa değeri ağırlıklı endeks mumları üretir: Σ(arz × fiyat).
+    coin_dfleri: {"BTC/USDT": df, ...}; her df aynı aralıkta, sütunlar: timestamp, Open, High, Low, Close.
+    Beş coinin hepsi yoksa boş DataFrame döner (eksik veriyle yanlış endeks üretilmez).
+    Not: High/Low, coinlerin High/Low'larının ağırlıklı toplamıdır (gerçek endeks aralığından çok az geniş olabilir)."""
+    parcalar = []
+    for coin, arz in TOP5_ARZ.items():
+        df = coin_dfleri.get(coin)
+        if df is None or len(df) == 0:
+            return pd.DataFrame()
+        parcalar.append(df.set_index("timestamp")[["Open", "High", "Low", "Close"]].astype(float) * float(arz))
+    ortak = parcalar[0].index
+    for p_ in parcalar[1:]:
+        ortak = ortak.intersection(p_.index)
+    if len(ortak) == 0:
+        return pd.DataFrame()
+    toplam = parcalar[0].loc[ortak]
+    for p_ in parcalar[1:]:
+        toplam = toplam + p_.loc[ortak]
+    return toplam.reset_index()
+
+
+# ------------------------------------------------------------------ STOP / HEDEF DOKUNUŞU
+def dokunus_bul(mumlar, long_mi, stop, hedef, baslangic_utc_ms):
+    """1 dakikalık mumların High/Low değerlerine bakarak stop veya hedefe İLK dokunuşu bulur.
+    mumlar: sütunlar timestamp (ms int veya datetime), High, Low. baslangic_utc_ms: seviyelerin geçerli olduğu an (UTC, ms).
+    Başlangıcı İÇEREN mum atlanır (başlangıçtan önceki hareketi barındırır); sonraki mumlar taranır.
+    Aynı mumda ikisine de dokunulduysa sıra bilinemez: muhafazakâr davranıp STOP sayılır.
+    Döner: ("stop"|"hedef", mum_baslangic_ms) ya da None."""
+    if mumlar is None or len(mumlar) == 0:
+        return None
+    zs = mumlar["timestamp"]
+    if np.issubdtype(zs.dtype, np.number):
+        ms = zs.astype("int64").values
+    else:
+        ms = ((pd.to_datetime(zs, utc=True) - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(milliseconds=1)).values.astype("int64")
+    hi = mumlar["High"].astype(float).values
+    lo = mumlar["Low"].astype(float).values
+    for i in np.argsort(ms):
+        if ms[i] <= baslangic_utc_ms:
+            continue
+        if long_mi:
+            stop_vurdu, hedef_vurdu = lo[i] <= stop, hi[i] >= hedef
+        else:
+            stop_vurdu, hedef_vurdu = hi[i] >= stop, lo[i] <= hedef
+        if stop_vurdu:
+            return "stop", int(ms[i])
+        if hedef_vurdu:
+            return "hedef", int(ms[i])
+    return None

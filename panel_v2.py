@@ -555,7 +555,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
                 ("Net Kâr:", sayi(net_fark) + " $", NEON_Y if net_fark >= 0 else NEON_T),
                 ("Giriş Komisyonu:", "-" + sayi(giris_kom_top, False) + " $", NEON_T),
                 ("Toplam Kâr:", sayi(kazanc) + " $", NEON_Y),
-                ("Toplam Zarar:", sayi(-kayip) + " $", NEON_T),
+                ("Toplam Zarar:", (("-" + sayi(kayip, False)) if kayip > 0 else "0,00") + " $", NEON_T),
                 ("Parasal Başarı:", f"%{parasal:.1f}", renk_p),
             ]
             str_kalem = [

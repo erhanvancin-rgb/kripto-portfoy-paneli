@@ -51,6 +51,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# --- TELEFON ALGILAMA (tarayıcı kimliğinden; tablet masaüstü düzenini kullanır) ---
+def _mobil_mi():
+    try:
+        ua = str(st.context.headers.get("User-Agent", "")).lower()
+        return any(k in ua for k in ("mobile", "android", "iphone", "ipod"))
+    except Exception:
+        return False
+
+IS_MOBIL = _mobil_mi()
+
 # --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
@@ -185,7 +195,8 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .mx-lbl { display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
 .st-key-btn_tum_kapat button { background:rgb(255,75,0) !important; color:#000 !important; font-weight:800 !important; border:none !important; }
 .risk-line { font-size:13px; line-height:1.55; color:#e8eef8; margin:4px 0 8px; }
-.st-key-grafik_total [data-testid="stPlotlyChart"] { border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden; }
+.st-key-grafik_total [data-testid="stPlotlyChart"] { border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden !important; box-sizing:content-box !important; }
+.st-key-grafik_total [data-testid="stPlotlyChart"] > div, .st-key-grafik_total .js-plotly-plot, .st-key-grafik_total .plot-container { overflow:hidden !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -495,7 +506,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
             """Panelle aynı düzen: solda Finansal (kâr/zarar $) donutu + metinleri, sağda Strateji (kârlı/zararlı adet) donutu + metinleri."""
             import math as _m
             from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
-            h = 150
+            h = 165
             d = Drawing(W, h)
             d.add(Rect(0, 0, W, h, rx=12, ry=12, fillColor=colors.HexColor("#070b14"), strokeColor=colors.HexColor("#1b2a40"), strokeWidth=0.8))
             ac_gri, beyaz = colors.HexColor("#91a0b8"), colors.HexColor("#e8eef8")
@@ -511,7 +522,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
             hareket = kazanc + kayip
             parasal = (kazanc / hareket * 100.0) if hareket > 0 else 0.0
             sayi = lambda x, isaretli=True: (f"{x:+,.2f}" if isaretli else f"{x:,.2f}").replace(",", "X").replace(".", ",").replace("X", ".")
-            r_dis, r_ic, cy = 46, 21, h / 2 - 2
+            r_dis, r_ic, cy = 40, 18, h / 2 - 2
             r_orta = (r_dis + r_ic) / 2.0
             yarim = W / 2.0
 
@@ -529,22 +540,22 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
                         continue
                     orta_a = baslangic_a - 360.0 * oran_ / 2.0
                     d.add(String(cx + r_orta * _m.cos(_m.radians(orta_a)), cy + r_orta * _m.sin(_m.radians(orta_a)) - 2.5, yazi_,
-                                 fontName=FONT_B, fontSize=6.8, fillColor=renk_, textAnchor="middle"))
+                                 fontName=FONT_B, fontSize=6.5, fillColor=renk_, textAnchor="middle"))
                     baslangic_a -= 360.0 * oran_
 
-            def uygun_fs(x, sag_kenar, kalemler, fs=9.0):
+            def uygun_fs(x, sag_kenar, kalemler, fs=11.5):
                 """Etiket + değer en uzun satırda bile yarım panele sığacak yazı boyutu."""
                 bosluk, kullanilabilir = 4.0, sag_kenar - x - 12
                 en_uzun = max(_sw(T(e), FONT, fs) + bosluk + _sw(T(dg), FONT_B, fs) for e, dg, _ in kalemler)
                 return fs if en_uzun <= kullanilabilir else max(6.5, fs * kullanilabilir / en_uzun)
 
             def satirlar(x, baslik, kalemler, fs):
-                d.add(String(x, h - 22, T(baslik), fontName=FONT_B, fontSize=10.5, fillColor=beyaz))
-                y = h - 44
+                d.add(String(x, h - 24, T(baslik), fontName=FONT_B, fontSize=13, fillColor=beyaz))
+                y = h - 50
                 for etiket_, deger_, renk_ in kalemler:
                     d.add(String(x, y, T(etiket_), fontName=FONT, fontSize=fs, fillColor=ac_gri))
                     d.add(String(x + _sw(T(etiket_), FONT, fs) + 4.0, y, T(deger_), fontName=FONT_B, fontSize=fs, fillColor=renk_))
-                    y -= 18
+                    y -= 21
 
             d.add(Line(yarim, 14, yarim, h - 14, strokeColor=colors.HexColor("#25344d"), strokeWidth=0.6))
             renk_p = NEON_Y if parasal >= 50 else NEON_T
@@ -565,12 +576,12 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
                 ("Başarı Oranı:", f"%{k_y:.1f}", renk_b),
             ]
             # iki yarıda da aynı yazı boyutu (ikisine de sığan en büyük)
-            fs_ortak = min(uygun_fs(122, yarim, fin_kalem), uygun_fs(yarim + 122, W, str_kalem))
-            donut(60, (kazanc / hareket) if hareket > 0 else None, f"%{parasal:.1f}", f"%{100 - parasal:.1f}")
-            satirlar(122, "Finansal Metrikler", fin_kalem, fs_ortak)
+            fs_ortak = min(uygun_fs(104, yarim, fin_kalem), uygun_fs(yarim + 104, W, str_kalem))
+            donut(52, (kazanc / hareket) if hareket > 0 else None, f"%{parasal:.1f}", f"%{100 - parasal:.1f}")
+            satirlar(104, "Finansal Metrikler", fin_kalem, fs_ortak)
             # --- sağ yarı: Strateji Metrikleri ---
-            donut(yarim + 60, karli / toplam, f"%{k_y:.1f}", f"%{z_y:.1f}")
-            satirlar(yarim + 122, "Strateji Metrikleri", str_kalem, fs_ortak)
+            donut(yarim + 52, karli / toplam, f"%{k_y:.1f}", f"%{z_y:.1f}")
+            satirlar(yarim + 104, "Strateji Metrikleri", str_kalem, fs_ortak)
             return d
 
         story = []
@@ -2105,6 +2116,37 @@ div[data-testid="stColumn"]:has(.st-key-islem_sol_kap) > div[data-testid="stVert
 div[data-testid="column"]:has(.st-key-islem_sol_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
 .st-key-islem_sol_kap { flex: 1 1 auto; }
 .st-key-btn_islem_kilidi_ac { margin-top: auto; }
+
+/* ================= TELEFON (<=640px: Streamlit sütunları alt alta dizer) ================= */
+@media (max-width: 640px) {
+  .block-container { padding: .8rem .6rem 2rem !important; }
+  h3 { font-size: 1.15rem !important; }
+  .st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap, .st-key-analiz_kart, .st-key-risk_kart_kap { min-height: 0 !important; }
+  div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"], div[data-testid="column"] > div[data-testid="stVerticalBlock"] { height: auto !important; }
+  .st-key-btn_islem_kilidi_ac, .st-key-btn_kilit_durum { margin-top: 0 !important; }
+  .st-key-islem_sag_kap > *:last-child, .st-key-islem_sag_kap > *:last-child > div, .st-key-islem_sag_kap > *:last-child [data-testid="stMarkdownContainer"],
+  .st-key-risk_kart_kap > *:last-child, .st-key-risk_kart_kap > *:last-child > div, .st-key-risk_kart_kap > *:last-child [data-testid="stMarkdownContainer"] { display: block !important; }
+  /* üst bilgi satırı: 2'li ızgara, kasa butonu tam genişlik */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) { flex-wrap: wrap !important; gap: 8px !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stColumn"] { flex: 1 1 calc(50% - 8px) !important; min-width: calc(50% - 8px) !important; width: auto !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stColumn"]:last-child { flex: 1 1 100% !important; min-width: 100% !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) .metric-container { height: auto !important; min-height: 92px; }
+  .st-key-ana_kasa_butonu, .st-key-ana_kasa_butonu [data-testid="stButton"], .st-key-ana_kasa_butonu button { height: 84px !important; min-height: 84px !important; }
+  /* düğme sıraları telefonda da yan yana kalsın */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long), div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec),
+  div[data-testid="stHorizontalBlock"]:has(.st-key-kld_3):not(:has(.st-key-kasa_btn_ekle)),
+  div[data-testid="stHorizontalBlock"]:has(.st-key-kasa_btn_ekle):not(:has(.st-key-kld_3)),
+  .st-key-islem_form_kap div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 6px !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long) > div[data-testid="stColumn"], div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-kld_3):not(:has(.st-key-kasa_btn_ekle)) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-kasa_btn_ekle):not(:has(.st-key-kld_3)) > div[data-testid="stColumn"],
+  .st-key-islem_form_kap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { flex: 1 1 0 !important; min-width: 0 !important; width: auto !important; }
+  /* analiz altındaki 4 buton: 2x2, etiketler gizli */
+  div[data-testid="stColumn"]:has(.grp-etiket) { display: none !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum) { flex-wrap: wrap !important; gap: 8px !important; }
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum) > div[data-testid="stColumn"] { flex: 1 1 calc(50% - 8px) !important; min-width: calc(50% - 8px) !important; }
+  .st-key-islem_sol_kap button, .st-key-islem_sol_kap p { font-size: 15px !important; }
+}
 /* --- üst sağ buton: soldaki bilgi kutusuyla aynı yükseklik ve alt hiza --- */
 .st-key-ana_kasa_butonu { width:100% !important; margin:0 !important; padding:0 !important; height:112px !important; }
 .st-key-ana_kasa_butonu [data-testid="stButton"] { width:100% !important; height:112px !important; margin:0 !important; padding:0 !important; }
@@ -2129,7 +2171,7 @@ div[class*="st-key-yon_"] button p { color:#000000 !important; font-weight:800 !
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button { background:#ead518 !important; border:1px solid #c9b800 !important; min-height:46px; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button p { color:#000000 !important; font-weight:800 !important; }
 /* --- ana satır: üç blok aynı sabit yükseklikte (alt çizgileri aynı) --- */
-.st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 400px; }
+.st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 380px; }
 /* --- sağ sütun: son kart sütunun altına kadar uzar --- */
 div[data-testid="stColumn"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"],
 div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
@@ -2259,7 +2301,7 @@ with col_orta_grafik:
             marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=86), height=392,
+            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 372),
             xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
@@ -2303,8 +2345,12 @@ with col_sag_endeks:
 
 # ================== KİLİT AÇIKKEN: ANA SATIRIN ALTINDA AÇILAN İŞLEM ALANI ==================
 if kilit_acik:
-    _s2_sol, _s2_orta, _s2_sag = st.columns(SUTUN_ORANLARI)
-    with _s2_sol:
+    if IS_MOBIL:
+        _acik_alan = kap          # telefonda işlem alanı coin butonlarının hemen altında açılır (grafiğin altına kaymaz)
+    else:
+        _s2_sol, _s2_orta, _s2_sag = st.columns(SUTUN_ORANLARI)
+        _acik_alan = _s2_sol
+    with _acik_alan:
         if secilen_coin:
             coin_verisii = df_gosterge[df_gosterge["Coin"] == secilen_coin].iloc[0]
             long_puani, short_puani = float(coin_verisii["L_Puan"]), float(coin_verisii["S_Puan"])
@@ -2471,6 +2517,7 @@ if submit_islem:
 
 # Plotly'nin grafik alanına yeni boyutuyla oturması için pencere yeniden boyutlandırma sinyali (sütun dışında, hizayı bozmaz)
 try:
+  if not IS_MOBIL:
     components.html("""<script>
 (function(){
   var P; try { P = window.parent; var d = P.document; } catch(e) { return; }
@@ -2492,6 +2539,7 @@ try:
     if(t-a>1) ak.style.minHeight=(ak.offsetHeight+t-a)+'px';
   }
   function fit(){
+    if(P.innerWidth <= 900) return;   // dar ekranda hizalama kapalı
     fitUst(); fitAnaliz();
     var sol=q('.st-key-islem_sol_kap'), gr=q('.st-key-grafik_total'), sg=q('.st-key-islem_sag_kap');
     if(!sol||!gr||!sg) return;
@@ -2656,25 +2704,25 @@ with col_sol_analiz:
                 f_ = px.pie(pd.DataFrame({"Durum": etiketler, "Deger": degerler}), names="Durum", values="Deger", hole=0.55,
                             color="Durum", color_discrete_map={etiketler[0]: "#00FF00", etiketler[1]: "rgb(255, 75, 0)"})
                 f_.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eef8", size=13),
-                                 margin=dict(t=6, b=6, l=6, r=6), height=270, showlegend=False)
+                                 margin=dict(t=6, b=6, l=6, r=6), height=(210 if IS_MOBIL else 270), showlegend=False)
                 f_.update_traces(textfont_size=15, textinfo="percent", marker=dict(line=dict(width=0)), sort=False)
                 return f_
 
             g_fin, g_str = st.columns(2, gap="medium")
             with g_fin:
-                _d1, _t1 = st.columns([1.2, 1], gap="small")
+                _d1, _t1 = st.columns([1, 1.15], gap="small")
                 with _d1:
                     st.plotly_chart(_donut(["Toplam Kâr", "Toplam Zarar"], [max(toplam_kazanc_dolar, 0.0001), max(toplam_kayip_dolar, 0.0001)]),
                                     width='stretch', config={"responsive": True, "displayModeBar": False})
                 with _t1:
-                    st.markdown(f"""<div style="font-size:16px; font-weight:bold; color:#e8eef8; margin-bottom:6px;">💰 Finansal Metrikler</div><div style="font-size:14px; line-height:1.95; color:#cfd9ea;">• Net Kâr: <b style="color:{net_renk};">{net_fark_dolar:+,.2f} $</b><br>• Giriş Komisyonu: <b style="color:{RENK_KIRMIZI};">-{giris_kom_uygulama:,.2f} $</b><br>• Toplam Kâr: <b style="color:{RENK_YESIL};">+{toplam_kazanc_dolar:,.2f} $</b><br>• Toplam Zarar: <b style="color:{RENK_KIRMIZI};">-{toplam_kayip_dolar:,.2f} $</b><br>• Parasal Başarı Oranı: <b style="color:{parasal_renk};">%{parasal_basari_yuzde:.1f}</b></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<div style="font-size:19px; font-weight:bold; color:#e8eef8; margin-bottom:8px;">💰 Finansal Metrikler</div><div style="font-size:16px; line-height:1.9; color:#cfd9ea;">• Net Kâr: <b style="color:{net_renk};">{net_fark_dolar:+,.2f} $</b><br>• Giriş Komisyonu: <b style="color:{RENK_KIRMIZI};">-{giris_kom_uygulama:,.2f} $</b><br>• Toplam Kâr: <b style="color:{RENK_YESIL};">+{toplam_kazanc_dolar:,.2f} $</b><br>• Toplam Zarar: <b style="color:{RENK_KIRMIZI};">-{toplam_kayip_dolar:,.2f} $</b><br>• Parasal Başarı Oranı: <b style="color:{parasal_renk};">%{parasal_basari_yuzde:.1f}</b></div>""", unsafe_allow_html=True)
             with g_str:
-                _d2, _t2 = st.columns([1.2, 1], gap="small")
+                _d2, _t2 = st.columns([1, 1.15], gap="small")
                 with _d2:
                     st.plotly_chart(_donut(["Kârlı", "Zararlı"], [max(karli_sayisi, 0.0001), max(zararli_sayisi, 0.0001)]),
                                     width='stretch', config={"responsive": True, "displayModeBar": False})
                 with _t2:
-                    st.markdown(f"""<div style="font-size:16px; font-weight:bold; color:#e8eef8; margin-bottom:6px;">📈 Strateji Metrikleri</div><div style="font-size:14px; line-height:1.95; color:#cfd9ea;">• Toplam Kapanan Pozisyon: <b style="color:#e8eef8;">{toplam_kapanan} Adet</b><br>• Kârlı Pozisyonlar: <b style="color:{RENK_YESIL};">{karli_sayisi} Adet (%{kar_yuzde:.1f})</b><br>• Zararlı Pozisyonlar: <b style="color:{RENK_KIRMIZI};">{zararli_sayisi} Adet (%{zarar_yuzde:.1f})</b><br>• Başarı Oranı: <b style="color:{basari_renk};">%{kar_yuzde:.1f}</b></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<div style="font-size:19px; font-weight:bold; color:#e8eef8; margin-bottom:8px;">📈 Strateji Metrikleri</div><div style="font-size:16px; line-height:1.9; color:#cfd9ea;">• Toplam Kapanan Pozisyon: <b style="color:#e8eef8;">{toplam_kapanan} Adet</b><br>• Kârlı Pozisyonlar: <b style="color:{RENK_YESIL};">{karli_sayisi} Adet (%{kar_yuzde:.1f})</b><br>• Zararlı Pozisyonlar: <b style="color:{RENK_KIRMIZI};">{zararli_sayisi} Adet (%{zarar_yuzde:.1f})</b><br>• Başarı Oranı: <b style="color:{basari_renk};">%{kar_yuzde:.1f}</b></div>""", unsafe_allow_html=True)
         else:
             st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 

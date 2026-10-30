@@ -253,15 +253,31 @@ def kline_cek_binance(coin_symbol, interval, limit):
 # ----------------------------------------------------------------------------
 # MATRİS PUANI (hesap matris_motoru.py içinde; panel de aynı dosyayı kullanır)
 # ----------------------------------------------------------------------------
+_KLINE_ONBELLEK = {}
+
+
+def _kline_ortak(coin, aralik):
+    """Aynı çalıştırmada aynı coin/aralık için tek istek: limit = o aralıktaki en uzun pencere + ısınma mumu.
+    Coin puanları ve TOTAL (5 coin endeksi) aynı veriyi paylaşır."""
+    limit = max(n for _e, a_, n, _w in matris_motoru.DILIMLER if a_ == aralik) + matris_motoru.ISITMA_MUM
+    anahtar = (coin, aralik)
+    if anahtar not in _KLINE_ONBELLEK:
+        _KLINE_ONBELLEK[anahtar] = kline_cek_binance(coin, aralik, limit)
+    return _KLINE_ONBELLEK[anahtar]
+
+
 def matris_puani_hesapla(sembol):
-    """(nihai_puan, yon) döner. Veri eksikse None döner (sahte sinyal üretmemek için)."""
-    sembol_istek = sembol if sembol != "TOTAL" else "BTC/USDT"
+    """(nihai_puan, yon) döner. Veri eksikse None döner (sahte sinyal üretmemek için).
+    TOTAL: BTC değil, 5 coinin piyasa değeri ağırlıklı endeksi (Σ arz × fiyat) puanlanır."""
     pencereler = []
     for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER:
-        df = kline_cek_binance(sembol_istek, aralik, mum_sayisi)
-        if df.empty or len(df) < 10:
+        if sembol == "TOTAL":
+            df = matris_motoru.birlesik_endeks({c: _kline_ortak(c, aralik) for c in COINLER})
+        else:
+            df = _kline_ortak(sembol, aralik)
+        if df is None or df.empty or len(df) < 10:
             return None
-        pencereler.append((etiket, df, agirlik))
+        pencereler.append((etiket, df.tail(mum_sayisi + matris_motoru.ISITMA_MUM), agirlik, mum_sayisi))
 
     sonuc = matris_motoru.matris_hesapla(pencereler)
     nihai_long, nihai_short = sonuc["nihai_long"], sonuc["nihai_short"]
@@ -351,7 +367,7 @@ def islem_gecmisi_getir():
         "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
-        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac",
+        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani",
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
@@ -548,6 +564,25 @@ class MailDurumu:
 # ----------------------------------------------------------------------------
 # 1) İŞLEM KAPATMA (stop / kâr hedefi)
 # ----------------------------------------------------------------------------
+def _seviye_baslangic_ms(row, simdi_ms):
+    """Stop/hedef seviyelerinin geçerli olduğu an (UTC ms). Seviye_Zamani (ekleme/açılış) varsa o; yoksa Acilis_Zamani
+    ile 'son 20 dakika' arasında geç olan (ağırlıklı ortalama açılış zamanı sonradan yenilenen seviyeleri kapsamasın diye)."""
+    def _ms(metin):
+        t = str(metin).strip()
+        for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
+            try:
+                return int(TR_TZ.localize(datetime.strptime(t, fmt)).timestamp() * 1000)
+            except Exception:
+                continue
+        return None
+    seviye = _ms(row.get("Seviye_Zamani", ""))
+    if seviye:
+        return seviye
+    acilis = _ms(row.get("Acilis_Zamani", ""))
+    sinir = simdi_ms - 20 * 60 * 1000
+    return max(acilis, sinir) if acilis else sinir
+
+
 def acik_islemleri_kontrol_et():
     df = islem_gecmisi_getir()
     if df is None:
@@ -560,6 +595,8 @@ def acik_islemleri_kontrol_et():
     suan = tr_zaman().strftime("%d.%m.%Y %H:%M")
     bakiye = bakiye_hesapla(df)
     kapananlar = []  # (islem_id, coin, etiket, net_kar)
+    simdi_ms = int(time.time() * 1000)
+    dk_mumlar = {}   # coin -> (limit, df): 1 dakikalık mumlar, coin başına tek istek
 
     for idx, row in df.iterrows():
         if durum_kapali_mi(row["Durum"]):
@@ -575,23 +612,39 @@ def acik_islemleri_kontrol_et():
                   f"Google Sheets'te bu satırı kontrol edin.")
             continue
 
-        anl_f = fiyat_cek_binance(coin)
-        if anl_f is None:
-            print(f"#{islem_id} {coin}: fiyat alınamadı, atlandı.")
-            continue
+        # Son kontrolden beri (seviyelerin geçerli olduğu andan beri) 1 dakikalık mumların High/Low'una bakılır:
+        # kontroller arasında seviyeye değip geri dönen fiyat kaçmaz. Mum alınamazsa anlık fiyata düşülür.
+        baslangic_ms = _seviye_baslangic_ms(row, simdi_ms)
+        gerekli = int(min(1000, max(5, (simdi_ms - baslangic_ms) / 60000.0 + 3)))
+        onbellek = dk_mumlar.get(coin)
+        if onbellek is None or onbellek[0] < gerekli:
+            dk_mumlar[coin] = (gerekli, kline_cek_binance(coin, "1m", gerekli))
+        dk_df = dk_mumlar[coin][1]
 
-        print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f} miktar={miktar:,.2f}")
         kapat, hedef, kapanis = False, False, 0.0
-        if "Long" in yon:
-            if anl_f <= stop_f:
-                kapat, hedef, kapanis = True, False, stop_f
-            elif anl_f >= kar_al_f:
-                kapat, hedef, kapanis = True, True, kar_al_f
-        elif "Short" in yon:
-            if anl_f >= stop_f:
-                kapat, hedef, kapanis = True, False, stop_f
-            elif anl_f <= kar_al_f:
-                kapat, hedef, kapanis = True, True, kar_al_f
+        if dk_df is not None and not dk_df.empty:
+            anl_f = float(dk_df["Close"].iloc[-1])
+            print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f} miktar={miktar:,.2f} | mum taraması: {len(dk_df)} adet")
+            sonuc_d = matris_motoru.dokunus_bul(dk_df, "Long" in yon, stop_f, kar_al_f, baslangic_ms)
+            if sonuc_d is not None:
+                hedef = (sonuc_d[0] == "hedef")
+                kapat, kapanis = True, (kar_al_f if hedef else stop_f)
+        else:
+            anl_f = fiyat_cek_binance(coin)
+            if anl_f is None:
+                print(f"#{islem_id} {coin}: fiyat/mum alınamadı, atlandı.")
+                continue
+            print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} (mum yok, anlık fiyat) | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f}")
+            if "Long" in yon:
+                if anl_f <= stop_f:
+                    kapat, hedef, kapanis = True, False, stop_f
+                elif anl_f >= kar_al_f:
+                    kapat, hedef, kapanis = True, True, kar_al_f
+            elif "Short" in yon:
+                if anl_f >= stop_f:
+                    kapat, hedef, kapanis = True, False, stop_f
+                elif anl_f <= kar_al_f:
+                    kapat, hedef, kapanis = True, True, kar_al_f
         if not kapat:
             continue
 

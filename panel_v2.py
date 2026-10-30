@@ -212,6 +212,9 @@ KOMISYON_TAKER = 0.0005         # %0,05: piyasa emriyle giriş ve stop çıkış
 KOMISYON_MAKER = 0.0002         # %0,02: limit emirle hedef (kâr al) çıkışı
 ISLEM_BASINA_RISK_YUZDE = 1.0   # tek işlemin (komisyon dahil) stop riski: kasanın en fazla %1'i
 TOPLAM_RISK_LIMIT_YUZDE = 3.0   # tüm açık işlemlerin toplam stop riski: kasanın en fazla %3'ü
+MAKS_POZISYON_ORANI = 1.0       # TEMİNAT TAVANI: tek pozisyonun büyüklüğü (teminat × kaldıraç) en fazla toplam kasanın bu katı.
+                                # Stop dar olduğu için risk formülü büyük teminata izin verir; hızlı harekette stop kayarsa
+                                # kaybı sınırlamak için bu tavan her zaman uygulanır ("risk sınırını aş" onayı bunu aşmaz).
 
 KALDIRAC_MAX = 10   # seçilebilecek en yüksek kaldıraç
 
@@ -295,7 +298,9 @@ def risk_kapasitesi(toplam_kasa, df, coin, giris, stop, kaldirac=None, yon=None)
     diger = acik_pozisyonlar_riski(df, haric_coin=coin, haric_yon=("Long" if yon and "Long" in str(yon) else ("Short" if yon else None)))
     kalan = max(0.0, toplam_limit - diger)
     azami = min(islem_limit, kalan) / birim if birim > 0 else 0.0
-    return {"azami": azami, "islem_limit": islem_limit, "kalan_toplam_risk": kalan, "diger_risk": diger, "birim": birim}
+    lev_ = float(kaldirac) if kaldirac else float(KALDIRAC)
+    tavan = max(0.0, toplam_kasa) * float(MAKS_POZISYON_ORANI) / lev_
+    return {"azami": azami, "tavan": tavan, "islem_limit": islem_limit, "kalan_toplam_risk": kalan, "diger_risk": diger, "birim": birim}
 
 # ====================== GÖRSEL BİLEŞENLER ======================
 RENK_YESIL, RENK_KIRMIZI, RENK_SARI = "#00FF00", "rgb(255, 75, 0)", "#f5c451"
@@ -872,13 +877,8 @@ def fiyat_cek_binance(coin_symbol):
             sol = fiyat_cek_binance("SOL/USDT")
             xrp = fiyat_cek_binance("XRP/USDT")
             
-            tahmini_total = (
-                (btc * 19700000)
-                + (eth * 120000000)
-                + (bnb * 145000000)
-                + (sol * 470000000)
-                + (xrp * 5700000000)
-            )
+            _fiyatlar_ = {"BTC/USDT": btc, "ETH/USDT": eth, "BNB/USDT": bnb, "SOL/USDT": sol, "XRP/USDT": xrp}
+            tahmini_total = sum(_fiyatlar_[c_] * a_ for c_, a_ in matris_motoru.TOP5_ARZ.items())
             if tahmini_total > 0:
                 return float(tahmini_total)
         except:
@@ -929,17 +929,9 @@ def kline_cek_binance(coin_symbol, interval, limit):
 def load_15min_market_data(coin_symbol: str):
     limit = 192
     if coin_symbol == "TOTAL":
-        anlik_total = fiyat_cek_binance("TOTAL")
-        df_btc = kline_cek_binance("BTC/USDT", "5m", limit)
-        if not df_btc.empty:
-            current_btc = float(df_btc["Close"].iloc[-1])
-            if current_btc > 0:
-                carpan = anlik_total / current_btc
-                df_btc["Open"] = df_btc["Open"] * carpan
-                df_btc["High"] = df_btc["High"] * carpan
-                df_btc["Low"] = df_btc["Low"] * carpan
-                df_btc["Close"] = df_btc["Close"] * carpan
-        return df_btc
+        # BTC değil: 5 coinin piyasa değeri ağırlıklı endeksi (Σ arz × fiyat)
+        df_t = matris_motoru.birlesik_endeks({c_: kline_cek_binance(c_, "5m", limit) for c_ in matris_motoru.TOP5_ARZ})
+        return df_t if df_t is not None else pd.DataFrame()
 
     if coin_symbol != "TOTAL":
         df = kline_cek_binance(coin_symbol, "5m", limit)
@@ -958,36 +950,18 @@ def load_15min_market_data(coin_symbol: str):
 
 import numpy as np
 
+STOP_YUZDESI = 0.50   # fiyat yüzdesi (kaldıraçtan bağımsız); tüm puanlarda sabit
+# (puan, hedef %) - 50 altı en alt satır, 75 üstü en üst satır değerini alır
+HEDEF_TABLOSU = [(50.0, 0.45), (55.0, 0.50), (59.0, 0.60), (63.0, 0.65), (67.0, 0.75), (71.0, 0.80), (75.0, 0.85)]
+
 def calculate_coin_metrics_by_score(matris_puani):
-    """
-    Yeni matris puanlarına ve logaritmik risk/hedef tablosuna göre 
-    stop ve hedef yüzdelerini hesaplar.
-    """
-    min_esik = 50.0
-    if matris_puani < min_esik:
-        return 0.53, 0.37, "0,53 / 0,37"
-
-    # Yeni paylaşılan tablo verileri
-    x_puanlar = np.array([50.0, 55.0, 59.0, 63.0, 67.0, 71.0, 75.0])
-    y_risk = np.array([0.53, 0.50, 0.46, 0.43, 0.40, 0.36, 0.33])    # Risk (Stop %)
-    y_hedef = np.array([0.37, 0.50, 0.60, 0.71, 0.84, 0.96, 0.99]) # Hedef %
-
-    # Logaritmik eğri uydurma (polyfit)
-    risk_katsayilar = np.polyfit(np.log(x_puanlar), y_risk, 1)
-    hedef_katsayilar = np.polyfit(np.log(x_puanlar), y_hedef, 1)
-
-    puan = max(min_esik, min(75.0, matris_puani))
-
-    stop_uzde = risk_katsayilar[0] * np.log(puan) + risk_katsayilar[1]
-    hedef_uzde = hedef_katsayilar[0] * np.log(puan) + hedef_katsayilar[1]
-
-    # Taban sınır emniyetleri
-    stop_uzde = max(0.20, min(0.60, stop_uzde))
-    hedef_uzde = max(0.30, min(1.20, hedef_uzde))
-
+    """Matris puanına göre (stop %, hedef %, metin) döner. Stop sabit %0,50; hedef tablodan doğrusal ara değerlemeyle."""
+    xs = [p_ for p_, _ in HEDEF_TABLOSU]
+    ys = [h_ for _, h_ in HEDEF_TABLOSU]
+    hedef_uzde = float(np.interp(float(matris_puani), xs, ys))
+    stop_uzde = float(STOP_YUZDESI)
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
     str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
-    
     return stop_uzde, hedef_uzde, f"{str_stop} / {str_hedef}"
 
 def pozisyon_kar_zarar_hesapla(yon, giris_fiyati, guncel_fiyat, yatirim_miktari, kaldirac=1.0):
@@ -1011,15 +985,19 @@ def _kline_limitleri():
     """Her mum aralığı için gereken en uzun pencere (5m grafik için en az 192). Kısa pencereler bundan kesilir."""
     lim = {"5m": 192}
     for _e, _aralik, _mum, _w in matris_motoru.DILIMLER:
-        lim[_aralik] = max(lim.get(_aralik, 0), int(_mum))
+        lim[_aralik] = max(lim.get(_aralik, 0), int(_mum) + int(matris_motoru.ISITMA_MUM))
     return lim
 
 KLINE_LIMITLERI = _kline_limitleri()
 
 def kline_pencere(sembol, aralik, mum):
-    """Aralık başına tek istekle çekilen mumdan son 'mum' adedini döndürür (ayrı istek yerine önbellekten kesim)."""
-    df = kline_cek_binance(sembol, aralik, KLINE_LIMITLERI.get(aralik, mum))
-    return df.tail(mum) if df is not None and not df.empty else df
+    """Puanlanan 'mum' adedi + ısınma mumlarını döndürür (EMA/RSI/ATR oturması için). TOTAL: 5 coinlik endeks mumları."""
+    limit = KLINE_LIMITLERI.get(aralik, mum + matris_motoru.ISITMA_MUM)
+    if sembol == "TOTAL":
+        df = matris_motoru.birlesik_endeks({c_: kline_cek_binance(c_, aralik, limit) for c_ in matris_motoru.TOP5_ARZ})
+    else:
+        df = kline_cek_binance(sembol, aralik, limit)
+    return df.tail(mum + matris_motoru.ISITMA_MUM) if df is not None and not df.empty else df
 
 def piyasa_verisini_paralel_isit(semboller):
     """Fiyat ve mum verilerini paralel çekip önbelleğe alır; sonraki sıralı hesaplar önbellekten gelir."""
@@ -1033,9 +1011,10 @@ def piyasa_verisini_paralel_isit(semboller):
 
     for sembol_ in semboller:
         ekle(fiyat_cek_binance, sembol_)
-        kaynak_ = sembol_ if sembol_ != "TOTAL" else "BTC/USDT"
+        if sembol_ == "TOTAL":
+            continue    # TOTAL, 5 coinin kendi mumlarından türetilir (coinler zaten listede)
         for _aralik, _limit in KLINE_LIMITLERI.items():
-            ekle(kline_cek_binance, kaynak_, _aralik, _limit)
+            ekle(kline_cek_binance, sembol_, _aralik, _limit)
 
     ctx_ = get_script_run_ctx() if get_script_run_ctx is not None else None
 
@@ -1054,7 +1033,7 @@ def piyasa_verisini_paralel_isit(semboller):
 @st.cache_data(ttl=60, show_spinner=False)
 def _matris_puanlari(sembol_istek):
     """Mum verisinden matris puanlarını hesaplar (veri zaten 60 sn önbellekte olduğundan sonuç da öyle tutulur)."""
-    pencereler = [(etiket, kline_pencere(sembol_istek, aralik, mum_sayisi), agirlik)
+    pencereler = [(etiket, kline_pencere(sembol_istek, aralik, mum_sayisi), agirlik, mum_sayisi)
                   for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER]
     sonuc = matris_motoru.matris_hesapla(pencereler)
 
@@ -1078,8 +1057,7 @@ def _matris_puanlari(sembol_istek):
 
 def kurgusal_matris_hesapla(coin_symbol):
     anlik_fiyat = fiyat_cek_binance(coin_symbol)          # fiyat her zaman 30 sn'den taze
-    sembol_istek = coin_symbol if coin_symbol != "TOTAL" else "BTC/USDT"
-    nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari = _matris_puanlari(sembol_istek)
+    nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari = _matris_puanlari(coin_symbol)
     return anlik_fiyat, nihai_puan, aktif_yon, nihai_long, nihai_short, zaman_katkilari
 
 def _servis_hesabi_sozlugu():
@@ -1124,7 +1102,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
-        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac"
+        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani"
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
@@ -1448,6 +1426,10 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop, _lev, eski_yon)
+        if yeni_toplam_miktar > kap["tavan"] + 0.005:   # teminat tavanı: her zaman geçerli
+            return False, (f"⛔ Teminat tavanı aşılıyor! Bu pozisyon için en fazla {kap['tavan']:.2f} $ teminat konabilir "
+                           f"(pozisyon büyüklüğü kasanın {MAKS_POZISYON_ORANI:g} katını geçemez). Mevcut {eski_miktar:.2f} $; "
+                           f"en fazla {max(0.0, kap['tavan'] - eski_miktar):.2f} $ ekleyebilirsiniz.")
         _risk_asildi = yeni_toplam_miktar > kap["azami"] + 0.005
         if _risk_asildi and not risk_asimi:
             eklenebilir = max(0.0, kap["azami"] - eski_miktar)
@@ -1463,6 +1445,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         df.at[acik_islem_idx, "Stop"] = round(yeni_stop, basamak)
         df.at[acik_islem_idx, "Kar_Al"] = round(yeni_kar_al, basamak)
         df.at[acik_islem_idx, "Acilis_Zamani"] = yeni_acilis_zamani_str
+        df.at[acik_islem_idx, "Seviye_Zamani"] = suan_tr_str   # yeni stop/hedef seviyelerinin geçerli olduğu an
         df.at[acik_islem_idx, "Beklenen_Kar"] = round(beklenen_kar, 2)
         df.at[acik_islem_idx, "Olasi_Stop"] = round(olasi_stop, 2)
         df.at[acik_islem_idx, "Matris_Puan_RH"] = matris_rh_metin
@@ -1482,6 +1465,9 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop, _lev, yon)
+        if islem_miktari > kap["tavan"] + 0.005:   # teminat tavanı: her zaman geçerli
+            return False, (f"⛔ Teminat tavanı aşılıyor! Bu işlem için en fazla {kap['tavan']:.2f} $ teminat konabilir "
+                           f"(pozisyon büyüklüğü kasanın {MAKS_POZISYON_ORANI:g} katını geçemez).")
         _risk_asildi = islem_miktari > kap["azami"] + 0.005
         if _risk_asildi and not risk_asimi:
             return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $. Bilerek aşmak için formdaki 'Risk sınırını aşarak işlem aç' kutusunu işaretleyin."
@@ -1509,6 +1495,7 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             "Kapanis_Zamani": "-",
             "Kapanis_Fiyati": 0.0,
             "Kaldirac": int(_lev) if float(_lev).is_integer() else float(_lev),
+            "Seviye_Zamani": suan_tr.strftime("%d.%m.%Y %H:%M"),
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
         if not dataframe_guncelle_gsheets(df):
@@ -1560,6 +1547,7 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 "Kapanis_Zamani": suan_tr,
                 "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
                 "Kaldirac": lev,
+                "Seviye_Zamani": "-",
             }])
 
             kalan_miktar = mevcut_miktar - kapatilacak_miktar
@@ -1590,11 +1578,49 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
     except Exception as e:
         return False, f"Hata: {str(e)}"
 
+def _dk_mumlar_taze(coin, limit):
+    """Önbelleksiz 1 dakikalık mumlar (stop/hedef dokunuşu için taze veri gerekir). Sütunlar: timestamp(ms), High, Low, Close."""
+    sym = coin.replace("/", "")
+    veri = _binance_get_json([
+        f"https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval=1m&limit={limit}",
+        f"https://api.binance.com/api/v3/klines?symbol={sym}&interval=1m&limit={limit}",
+    ], 5)
+    if not veri:
+        return pd.DataFrame()
+    try:
+        df = pd.DataFrame(veri, columns=["timestamp", "Open", "High", "Low", "Close", "Volume", "Close_Time", "QAV", "Num_Trades", "Taker_BBAV", "Taker_BQAV", "Ignore"])
+        for c_ in ("High", "Low", "Close"):
+            df[c_] = df[c_].astype(float)
+        df["timestamp"] = df["timestamp"].astype("int64")
+        return df[["timestamp", "High", "Low", "Close"]]
+    except Exception:
+        return pd.DataFrame()
+
+def _seviye_baslangic_ms(row, simdi_ms):
+    """Stop/hedef seviyelerinin geçerli olduğu an (UTC ms): Seviye_Zamani varsa o; yoksa Acilis_Zamani ile
+    'son 20 dakika' arasında geç olan (ağırlıklı ortalama açılış zamanı sonradan yenilenen seviyeleri kapsamasın)."""
+    def _ms(metin):
+        t = str(metin).strip()
+        for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
+            try:
+                return int(TR_TZ.localize(datetime.strptime(t, fmt)).timestamp() * 1000)
+            except Exception:
+                continue
+        return None
+    seviye = _ms(row.get("Seviye_Zamani", ""))
+    if seviye:
+        return seviye
+    acilis = _ms(row.get("Acilis_Zamani", ""))
+    sinir = simdi_ms - 20 * 60 * 1000
+    return max(acilis, sinir) if acilis else sinir
+
 def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
     if df_arg is None or not isinstance(df_arg, pd.DataFrame) or df_arg.empty or "Durum" not in df_arg.columns:
         return
 
     adaylar = []
+    simdi_ms = int(time.time() * 1000)
+    dk_mumlar = {}   # coin -> (limit, df): 1 dakikalık mumlar, coin başına tek istek
     for idx, row in df_arg.iterrows():
         if not _islem_acik_mi(row["Durum"]):
             continue
@@ -1603,8 +1629,24 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
         yon = row["Yon"]
         stop_f = float(row["Stop"])
         kar_al_f = float(row["Kar_Al"])
-        anl_f = ortak_fiyat_havuzu.get(coin, fiyat_cek_binance(coin)) if ortak_fiyat_havuzu is not None else fiyat_cek_binance(coin)
 
+        # Seviyelerin geçerli olduğu andan beri 1 dakikalık mumların High/Low'una bakılır:
+        # kontroller arasında seviyeye değip geri dönen fiyat kaçmaz. Mum alınamazsa anlık fiyata düşülür.
+        baslangic_ms = _seviye_baslangic_ms(row, simdi_ms)
+        gerekli = int(min(1000, max(5, (simdi_ms - baslangic_ms) / 60000.0 + 3)))
+        onbellek = dk_mumlar.get(coin)
+        if onbellek is None or onbellek[0] < gerekli:
+            dk_mumlar[coin] = (gerekli, _dk_mumlar_taze(coin, gerekli))
+        dk_df = dk_mumlar[coin][1]
+
+        if dk_df is not None and not dk_df.empty:
+            sonuc_d = matris_motoru.dokunus_bul(dk_df, "Long" in yon, stop_f, kar_al_f, baslangic_ms)
+            if sonuc_d is not None:
+                hedefe_ = (sonuc_d[0] == "hedef")
+                adaylar.append((islem_id, hedefe_, kar_al_f if hedefe_ else stop_f))
+            continue
+
+        anl_f = ortak_fiyat_havuzu.get(coin, fiyat_cek_binance(coin)) if ortak_fiyat_havuzu is not None else fiyat_cek_binance(coin)
         if "Long" in yon:
             if anl_f <= stop_f:
                 adaylar.append((islem_id, False, stop_f))
@@ -2172,6 +2214,9 @@ div[class*="st-key-yon_"] button p { color:#000000 !important; font-weight:800 !
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button p { color:#000000 !important; font-weight:800 !important; }
 /* --- ana satır: üç blok aynı sabit yükseklikte (alt çizgileri aynı) --- */
 .st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 380px; }
+.st-key-grafik_total, .st-key-grafik_total * { scrollbar-width: none !important; }
+.st-key-grafik_total ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+.st-key-grafik_total { overflow: hidden !important; }
 /* --- sağ sütun: son kart sütunun altına kadar uzar --- */
 div[data-testid="stColumn"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"],
 div[data-testid="column"]:has(.st-key-islem_sag_kap) > div[data-testid="stVerticalBlock"] { height: 100%; }
@@ -2248,6 +2293,7 @@ with col_orta_grafik:
         delta = t_df["Close"].diff()
         rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
+        t_df = t_df.tail(96).reset_index(drop=True)   # 8 saat (5 dk × 96); RSI, ilk 96 mumla ısınmış olarak hesaplandı
 
         min_f, max_f = float(t_df["Close"].min()), float(t_df["Close"].max())
         if max_f - min_f < (max_f * 0.0001):
@@ -2302,10 +2348,10 @@ with col_orta_grafik:
 
         fig_total.update_layout(
             template="plotly_dark", margin=dict(t=28, b=32, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 372),
-            xaxis=dict(range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
+            xaxis=dict(fixedrange=True, range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
-            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False),
+            yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False, fixedrange=True),
             xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             hovermode="x unified", hoverlabel=dict(bgcolor="#101827", bordercolor="#253247", font=dict(color="#e8eef8", size=12)),
             legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, font=dict(color="#aebdd2", size=11), bgcolor="rgba(0,0,0,0)"),
@@ -2315,7 +2361,7 @@ with col_orta_grafik:
         except TypeError:
             _grafik_kap = st.container()
         with _grafik_kap:
-            st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False})
+            st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
 
 with col_sag_endeks:
     st.markdown("<h3>Top 5 Coin Endeksi</h3>", unsafe_allow_html=True)
@@ -2428,8 +2474,9 @@ if kilit_acik:
                 _mevcut_miktar = 0.0
                 if acik_pozisyon_var:
                     _mevcut_miktar = float(_acik_satir["Islem_Miktari"].iloc[0])
-                risk_eklenebilir = max(0.0, _kap["azami"] - _mevcut_miktar)
-                risk_mesaji = (f"🛡️ Risk sınırı: bu coinde azami toplam teminat {_kap['azami']:,.2f} $ "
+                risk_eklenebilir = max(0.0, min(_kap["azami"], _kap["tavan"]) - _mevcut_miktar)
+                risk_mesaji = (f"🧱 Teminat tavanı: {_kap['tavan']:,.2f} $ (pozisyon büyüklüğü ≤ kasanın {MAKS_POZISYON_ORANI:g} katı). "
+                               f"🛡️ Risk sınırı: bu coinde azami toplam teminat {_kap['azami']:,.2f} $ "
                                f"(işlem başı risk %{ISLEM_BASINA_RISK_YUZDE:g} = {_kap['islem_limit']:,.2f} $, "
                                f"toplam risk payından kalan {_kap['kalan_toplam_risk']:,.2f} $), "
                                f"eklenebilir tutar {risk_eklenebilir:,.2f} $; komisyon: giriş %{KOMISYON_TAKER*100:g}, "

@@ -311,3 +311,27 @@ def dokunus_bul(mumlar, long_mi, stop, hedef, baslangic_utc_ms):
         if hedef_vurdu:
             return "hedef", int(ms[i])
     return None
+
+
+# ------------------------------------------------------------------ MAE / MFE (strateji kalibrasyonu için)
+def mae_mfe_hesapla(mumlar, long_mi, giris, baslangic_ms, bitis_ms):
+    """İşlem süresince (baslangic_ms'den SONRAKİ mumlardan, bitis_ms'yi içeren muma kadar) fiyatın girişe göre sapması (%):
+    MAE = girişe ters yönde en büyük sapma (stop mesafesiyle kıyaslanır), MFE = lehe yönde en büyük sapma (hedefle kıyaslanır).
+    mumlar: timestamp (ms int veya datetime), High, Low. Mum yoksa None döner. Döner: (mae_yuzde, mfe_yuzde)."""
+    if mumlar is None or len(mumlar) == 0 or not giris:
+        return None
+    zs = mumlar["timestamp"]
+    if np.issubdtype(zs.dtype, np.number):
+        ms = zs.astype("int64").values
+    else:
+        ms = ((pd.to_datetime(zs, utc=True) - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(milliseconds=1)).values.astype("int64")
+    sec = (ms > baslangic_ms) & (ms <= bitis_ms)
+    if not sec.any():
+        return None
+    ust = float(mumlar["High"].astype(float).values[sec].max())
+    alt = float(mumlar["Low"].astype(float).values[sec].min())
+    if long_mi:
+        mae, mfe = (giris - alt) / giris * 100.0, (ust - giris) / giris * 100.0
+    else:
+        mae, mfe = (ust - giris) / giris * 100.0, (giris - alt) / giris * 100.0
+    return max(0.0, mae), max(0.0, mfe)

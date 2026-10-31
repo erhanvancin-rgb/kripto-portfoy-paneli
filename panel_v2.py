@@ -61,10 +61,10 @@ def _mobil_mi():
 
 IS_MOBIL = _mobil_mi()
 
-# --- OTOMATİK YENİLEME (60 SANİYE) ---
+# --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
-    st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
+    st_autorefresh(interval=120000, key="kripto_panel_otomatik_yenileme")
     
 # --- TABLET YATAY: masaüstü %100 düzeniyle göster (dar ekranda sütunlar sıkışmasın) ---
 try:
@@ -195,7 +195,8 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .mx-lbl { display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
 .st-key-btn_tum_kapat button { background:rgb(255,75,0) !important; color:#000 !important; font-weight:800 !important; border:none !important; }
 .risk-line { font-size:13px; line-height:1.55; color:#e8eef8; margin:4px 0 8px; }
-.st-key-grafik_total [data-testid="stPlotlyChart"] { border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden !important; box-sizing:content-box !important; }
+.st-key-grafik_total { height:380px; box-sizing:border-box; border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden !important; }
+.st-key-grafik_total [data-testid="stPlotlyChart"] { border:none !important; background:transparent !important; padding:0 !important; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] > div, .st-key-grafik_total .js-plotly-plot, .st-key-grafik_total .plot-container { overflow:hidden !important; }
 </style>
 """,
@@ -2174,19 +2175,23 @@ div[data-testid="column"]:has(.st-key-islem_sol_kap) > div[data-testid="stVertic
   div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) > div[data-testid="stColumn"]:last-child { flex: 1 1 100% !important; min-width: 100% !important; }
   div[data-testid="stHorizontalBlock"]:has(.st-key-ana_kasa_butonu) .metric-container { height: auto !important; min-height: 92px; }
   .st-key-ana_kasa_butonu, .st-key-ana_kasa_butonu [data-testid="stButton"], .st-key-ana_kasa_butonu button { height: 84px !important; min-height: 84px !important; }
-  /* düğme sıraları telefonda da yan yana kalsın */
-  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long), div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec),
+  /* düğme sıraları telefonda da yan yana kalsın.
+     DİKKAT: :has(...) iç içe eşleşir; dış satırların/sütunların yanlışlıkla etkilenmemesi için :not(:has(...)) ile hariç tutulur. */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long):not(:has(.st-key-islem_sol_kap)),
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec):not(:has(.st-key-islem_sol_kap)),
   div[data-testid="stHorizontalBlock"]:has(.st-key-kld_3):not(:has(.st-key-kasa_btn_ekle)),
   div[data-testid="stHorizontalBlock"]:has(.st-key-kasa_btn_ekle):not(:has(.st-key-kld_3)),
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum):not(:has(.st-key-analiz_kart)),
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_rapor):not(:has(.st-key-analiz_kart)),
   .st-key-islem_form_kap div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 6px !important; }
-  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long) > div[data-testid="stColumn"], div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long):not(:has(.st-key-islem_sol_kap)) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-yon_long_sec):not(:has(.st-key-islem_sol_kap)) > div[data-testid="stColumn"],
   div[data-testid="stHorizontalBlock"]:has(.st-key-kld_3):not(:has(.st-key-kasa_btn_ekle)) > div[data-testid="stColumn"],
   div[data-testid="stHorizontalBlock"]:has(.st-key-kasa_btn_ekle):not(:has(.st-key-kld_3)) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum):not(:has(.st-key-analiz_kart)) > div[data-testid="stColumn"],
+  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_rapor):not(:has(.st-key-analiz_kart)) > div[data-testid="stColumn"],
   .st-key-islem_form_kap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { flex: 1 1 0 !important; min-width: 0 !important; width: auto !important; }
-  /* analiz altındaki 4 buton: 2x2, etiketler gizli */
-  div[data-testid="stColumn"]:has(.grp-etiket) { display: none !important; }
-  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum) { flex-wrap: wrap !important; gap: 8px !important; }
-  div[data-testid="stHorizontalBlock"]:has(.st-key-btn_sun_tum) > div[data-testid="stColumn"] { flex: 1 1 calc(50% - 8px) !important; min-width: calc(50% - 8px) !important; }
+  .st-key-grafik_total { height: auto !important; }
   .st-key-islem_sol_kap button, .st-key-islem_sol_kap p { font-size: 15px !important; }
 }
 /* --- üst sağ buton: soldaki bilgi kutusuyla aynı yükseklik ve alt hiza --- */
@@ -2213,7 +2218,7 @@ div[class*="st-key-yon_"] button p { color:#000000 !important; font-weight:800 !
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button { background:#ead518 !important; border:1px solid #c9b800 !important; min-height:46px; }
 .st-key-islem_form_kap div[data-testid="stColumn"]:nth-child(2) button p { color:#000000 !important; font-weight:800 !important; }
 /* --- ana satır: üç blok aynı sabit yükseklikte (alt çizgileri aynı) --- */
-.st-key-grafik_total, .st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 380px; }
+.st-key-islem_sol_kap, .st-key-islem_sag_kap { min-height: 380px; }   /* grafik kutusu sabit 380 px */
 .st-key-grafik_total, .st-key-grafik_total * { scrollbar-width: none !important; }
 .st-key-grafik_total ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 .st-key-grafik_total { overflow: hidden !important; }
@@ -2293,9 +2298,13 @@ with col_orta_grafik:
         delta = t_df["Close"].diff()
         rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
+        for _n in (9, 14, 21):   # EMA'lar 192 mumluk seriyle hesaplanır (ısınmış), sonra son 96 mum gösterilir
+            t_df[f"EMA{_n}"] = t_df["Close"].ewm(span=_n, adjust=False).mean()
         t_df = t_df.tail(96).reset_index(drop=True)   # 8 saat (5 dk × 96); RSI, ilk 96 mumla ısınmış olarak hesaplandı
 
-        min_f, max_f = float(t_df["Close"].min()), float(t_df["Close"].max())
+        _alt_kolon = "Low" if "Low" in t_df.columns else "Close"
+        _ust_kolon = "High" if "High" in t_df.columns else "Close"
+        min_f, max_f = float(t_df[_alt_kolon].min()), float(t_df[_ust_kolon].max())
         if max_f - min_f < (max_f * 0.0001):
             min_f, max_f = min_f * 0.999, max_f * 1.001
 
@@ -2333,22 +2342,34 @@ with col_orta_grafik:
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"<b>{oran:g}</b>", showarrow=False,
                                      xanchor="left", xshift=8, font=dict(size=12, color=f"rgb{_yazi}"))
 
-        MAVI_CIZGI, RSI_CIZGI = "rgb(0, 0, 175)", "rgb(255, 255, 0)"
-        fig_total.add_trace(go.Scatter(
-            x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Total Market",
-            line=dict(color=MAVI_CIZGI, width=2.4, shape="spline", smoothing=0.6),
-            hovertemplate="Total Market: %{y:,.2f}<extra></extra>"))
+        # TradingView renkleri: yükselen mum #089981 (turkuaz), düşen mum #f23645 (kırmızı)
+        TV_YESIL, TV_KIRMIZI = "#089981", "#f23645"
+        EMA_RENKLERI = {9: "#4caf50", 14: "#2962ff", 21: "#ff5252"}
+        RSI_CIZGI = "#b36bd6"
+        fig_total.add_trace(go.Candlestick(
+            x=t_df["timestamp"], open=t_df["Open"], high=t_df["High"], low=t_df["Low"], close=t_df["Close"], name="Total Market",
+            increasing=dict(line=dict(color=TV_YESIL, width=1), fillcolor=TV_YESIL),
+            decreasing=dict(line=dict(color=TV_KIRMIZI, width=1), fillcolor=TV_KIRMIZI),
+            whiskerwidth=0.4, hoverinfo="skip"))
+        fig_total.add_trace(go.Scatter(     # görünmez çizgi: birleşik ipucunda kapanış değerini gösterir
+            x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Kapanış", showlegend=False,
+            line=dict(color="rgba(0,0,0,0)", width=1), hovertemplate="Total Market: %{y:,.0f}<extra></extra>"))
+        for _n in (9, 14, 21):
+            fig_total.add_trace(go.Scatter(
+                x=t_df["timestamp"], y=t_df[f"EMA{_n}"], mode="lines", name=f"EMA {_n}",
+                line=dict(color=EMA_RENKLERI[_n], width=1.6), hovertemplate=f"EMA {_n}: %{{y:,.0f}}<extra></extra>"))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI",
-            line=dict(color=RSI_CIZGI, width=1.5, shape="spline", smoothing=0.6),
+            line=dict(color=RSI_CIZGI, width=1.6),
             customdata=t_df["RSI"], hovertemplate="RSI: %{customdata:.0f}<extra></extra>"))
+        _son_renk = TV_YESIL if float(t_df["Close"].iloc[-1]) >= float(t_df["Open"].iloc[-1]) else TV_KIRMIZI
         fig_total.add_trace(go.Scatter(
             x=[t_df["timestamp"].iloc[-1]], y=[t_df["Close"].iloc[-1]], mode="markers",
-            marker=dict(size=9, color=MAVI_CIZGI, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
+            marker=dict(size=9, color=_son_renk, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
-            template="plotly_dark", margin=dict(t=28, b=32, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 372),
-            xaxis=dict(fixedrange=True, range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
+            template="plotly_dark", margin=dict(t=28, b=36, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 360),
+            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False, fixedrange=True),
@@ -2594,17 +2615,13 @@ try:
     var pc = gr.querySelector('[data-testid="stPlotlyChart"]');
     sol.style.minHeight=''; if(sgSon) sgSon.style.minHeight='';
     function alt(e){ return e.getBoundingClientRect().bottom; }
-    var grAlt = pc || gr;
+    var grAlt = gr;
     var sgAlt = sgSon || sg;
     var hedef = Math.max(alt(sol), alt(grAlt), alt(sgAlt));
     var dS=hedef-alt(sol), dG=hedef-alt(grAlt), dR=hedef-alt(sgAlt);
     if(dS>1) sol.style.minHeight=(sol.offsetHeight+dS)+'px';
     if(sgSon && dR>1) sgSon.style.minHeight=(sgSon.offsetHeight+dR)+'px';
-    if(pc && dG>1){
-      pc.style.setProperty('height',(pc.offsetHeight+dG)+'px','important');
-      P.__fitBusy=true; setTimeout(function(){P.__fitBusy=false;},700);
-      try{ P.dispatchEvent(new Event('resize')); }catch(e){}
-    }
+    if(dG>1){ gr.style.setProperty('height',(gr.offsetHeight+dG)+'px','important'); }
   }
   [300,900,1800,3200].forEach(function(t){ setTimeout(fit,t); });
   if(P.__fitH) P.removeEventListener('resize', P.__fitH);
@@ -2774,15 +2791,20 @@ with col_sol_analiz:
             st.info("ℹ️ Henüz kapanmış işlem bulunmuyor.")
 
         # ---- buton sırası: İşlem Sunumu | Rapor Gönder ----
-        _e1, _b1, _b2, _e2, _b3, _b4 = st.columns([0.9, 1, 1, 0.9, 1, 1], gap="small")
-        with _e1:
-            st.markdown('<div class="grp-etiket">İşlem Sunumu</div>', unsafe_allow_html=True)
+        if IS_MOBIL:
+            _mb1, _mb2 = st.columns(2, gap="small")
+            _mb3, _mb4 = st.columns(2, gap="small")
+            _b1, _b2, _b3, _b4 = _mb1, _mb2, _mb3, _mb4
+        else:
+            _e1, _b1, _b2, _e2, _b3, _b4 = st.columns([0.9, 1, 1, 0.9, 1, 1], gap="small")
+            with _e1:
+                st.markdown('<div class="grp-etiket">İşlem Sunumu</div>', unsafe_allow_html=True)
+            with _e2:
+                st.markdown('<div class="grp-etiket">Rapor Gönder</div>', unsafe_allow_html=True)
         with _b1:
             st.button("Tüm İşlemler", key="btn_sun_tum", width='stretch', on_click=_sunum_ayarla, args=(False,))
         with _b2:
             st.button("Aktif İşlemler", key="btn_sun_aktif", width='stretch', on_click=_sunum_ayarla, args=(True,))
-        with _e2:
-            st.markdown('<div class="grp-etiket">Rapor Gönder</div>', unsafe_allow_html=True)
         with _b3:
             st.button("Tam Rapor", key="btn_rapor", width='stretch', on_click=_rapor_cb)
         with _b4:

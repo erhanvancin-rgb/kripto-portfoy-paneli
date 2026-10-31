@@ -197,6 +197,10 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .risk-line { font-size:13px; line-height:1.55; color:#e8eef8; margin:4px 0 8px; }
 .st-key-grafik_total { height:380px; box-sizing:border-box; border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden !important; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] { border:none !important; background:transparent !important; padding:0 !important; }
+.st-key-grafik_total { position:relative; }
+div.st-key-grafik_zoom { position:absolute !important; top:8px; right:10px; z-index:6; width:auto !important; margin:0 !important; }
+div.st-key-grafik_zoom button { min-height:26px !important; height:26px !important; padding:0 10px !important; border-radius:13px !important; background:rgba(16,24,39,.88) !important; border:1px solid #3a4a66 !important; }
+div.st-key-grafik_zoom button p { font-size:12px !important; color:#c3cfe2 !important; margin:0 !important; line-height:1 !important; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] > div, .st-key-grafik_total .js-plotly-plot, .st-key-grafik_total .plot-container { overflow:hidden !important; }
 </style>
 """,
@@ -213,6 +217,7 @@ KOMISYON_TAKER = 0.0005         # %0,05: piyasa emriyle giriş ve stop çıkış
 KOMISYON_MAKER = 0.0002         # %0,02: limit emirle hedef (kâr al) çıkışı
 ISLEM_BASINA_RISK_YUZDE = 1.0   # tek işlemin (komisyon dahil) stop riski: kasanın en fazla %1'i
 TOPLAM_RISK_LIMIT_YUZDE = 3.0   # tüm açık işlemlerin toplam stop riski: kasanın en fazla %3'ü
+STRATEJI_DEGERLENDIRME_ESIGI = 50   # kapanan işlem sayısı; ulaşılınca bot Telegram'a uyarı + CSV gönderir
 MAKS_POZISYON_ORANI = 1.0       # TEMİNAT TAVANI: tek pozisyonun büyüklüğü (teminat × kaldıraç) en fazla toplam kasanın bu katı.
                                 # Stop dar olduğu için risk formülü büyük teminata izin verir; hızlı harekette stop kayarsa
                                 # kaybı sınırlamak için bu tavan her zaman uygulanır ("risk sınırını aş" onayı bunu aşmaz).
@@ -1103,7 +1108,8 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
-        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani"
+        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani",
+        "MAE_Yuzde", "MFE_Yuzde"
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
@@ -1142,7 +1148,7 @@ def islem_gecmisi_getir(sheet_guncelle=True):
     
     sayisal_kolonlar = [
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-        "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac"
+        "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac", "MAE_Yuzde", "MFE_Yuzde"
     ]
     for col in sayisal_kolonlar:
         if col in df.columns:
@@ -1497,6 +1503,8 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             "Kapanis_Fiyati": 0.0,
             "Kaldirac": int(_lev) if float(_lev).is_integer() else float(_lev),
             "Seviye_Zamani": suan_tr.strftime("%d.%m.%Y %H:%M"),
+            "MAE_Yuzde": 0.0,   # kapanınca bot 1 dakikalık mumlardan doldurur (strateji kalibrasyonu)
+            "MFE_Yuzde": 0.0,
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
         if not dataframe_guncelle_gsheets(df):
@@ -1549,6 +1557,8 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
                 "Kaldirac": lev,
                 "Seviye_Zamani": "-",
+                "MAE_Yuzde": 0.0,
+                "MFE_Yuzde": 0.0,
             }])
 
             kalan_miktar = mevcut_miktar - kapatilacak_miktar
@@ -2298,9 +2308,10 @@ with col_orta_grafik:
         delta = t_df["Close"].diff()
         rs = (delta.where(delta > 0, 0)).rolling(window=14).mean() / (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
-        for _n in (9, 14, 21):   # EMA'lar 192 mumluk seriyle hesaplanır (ısınmış), sonra son 96 mum gösterilir
+        for _n in (7, 14, 21):   # EMA'lar 192 mumluk seriyle hesaplanır (ısınmış), sonra son mumlar gösterilir
             t_df[f"EMA{_n}"] = t_df["Close"].ewm(span=_n, adjust=False).mean()
-        t_df = t_df.tail(96).reset_index(drop=True)   # 8 saat (5 dk × 96); RSI, ilk 96 mumla ısınmış olarak hesaplandı
+        _zoom_4s = bool(st.session_state.get("grafik_4saat", False))   # çift tıklayınca 8 saat <-> 4 saat
+        t_df = t_df.tail(48 if _zoom_4s else 96).reset_index(drop=True)   # 5 dk × 96 = 8 saat | 5 dk × 48 = 4 saat
 
         _alt_kolon = "Low" if "Low" in t_df.columns else "Close"
         _ust_kolon = "High" if "High" in t_df.columns else "Close"
@@ -2319,7 +2330,7 @@ with col_orta_grafik:
             1.236: max_f + 0.236 * fiyat_fark,
         }
 
-        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(hours=1)
+        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(minutes=(30 if _zoom_4s else 60))
         alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.28), max_f + (fiyat_fark * 0.28)
 
         fig_total = go.Figure()
@@ -2342,34 +2353,37 @@ with col_orta_grafik:
             fig_total.add_annotation(x=1.0, xref="paper", y=val, yref="y", text=f"<b>{oran:g}</b>", showarrow=False,
                                      xanchor="left", xshift=8, font=dict(size=12, color=f"rgb{_yazi}"))
 
-        # TradingView renkleri: yükselen mum #089981 (turkuaz), düşen mum #f23645 (kırmızı)
-        TV_YESIL, TV_KIRMIZI = "#089981", "#f23645"
-        EMA_RENKLERI = {9: "#4caf50", 14: "#2962ff", 21: "#ff5252"}
-        RSI_CIZGI = "#b36bd6"
+        # Net renkler: mumlar saf kırmızı/yeşil; EMA 7 turkuaz, EMA 21 pembe, EMA 14 mavi; RSI siyah
+        MUM_YESIL, MUM_KIRMIZI = "rgb(0,255,0)", "rgb(255,0,0)"
+        EMA_RENKLERI = {7: "rgb(0,255,200)", 21: "rgb(255,0,155)", 14: "rgb(0,0,255)"}
+        RSI_CIZGI = "rgb(0,0,0)"
         fig_total.add_trace(go.Candlestick(
             x=t_df["timestamp"], open=t_df["Open"], high=t_df["High"], low=t_df["Low"], close=t_df["Close"], name="Total Market",
-            increasing=dict(line=dict(color=TV_YESIL, width=1), fillcolor=TV_YESIL),
-            decreasing=dict(line=dict(color=TV_KIRMIZI, width=1), fillcolor=TV_KIRMIZI),
+            increasing=dict(line=dict(color=MUM_YESIL, width=1), fillcolor=MUM_YESIL),
+            decreasing=dict(line=dict(color=MUM_KIRMIZI, width=1), fillcolor=MUM_KIRMIZI),
             whiskerwidth=0.4, hoverinfo="skip"))
         fig_total.add_trace(go.Scatter(     # görünmez çizgi: birleşik ipucunda kapanış değerini gösterir
             x=t_df["timestamp"], y=t_df["Close"], mode="lines", name="Kapanış", showlegend=False,
             line=dict(color="rgba(0,0,0,0)", width=1), hovertemplate="Total Market: %{y:,.0f}<extra></extra>"))
-        for _n in (9, 14, 21):
+        for _n in (7, 21, 14):
             fig_total.add_trace(go.Scatter(
                 x=t_df["timestamp"], y=t_df[f"EMA{_n}"], mode="lines", name=f"EMA {_n}",
-                line=dict(color=EMA_RENKLERI[_n], width=1.6), hovertemplate=f"EMA {_n}: %{{y:,.0f}}<extra></extra>"))
+                line=dict(color=EMA_RENKLERI[_n], width=1.8), hovertemplate=f"EMA {_n}: %{{y:,.0f}}<extra></extra>"))
+        fig_total.add_trace(go.Scatter(     # RSI siyah: koyu bantlarda da seçilsin diye altına ince beyaz hale çizgisi
+            x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", showlegend=False, hoverinfo="skip",
+            line=dict(color="rgba(255,255,255,0.45)", width=4)))
         fig_total.add_trace(go.Scatter(
             x=t_df["timestamp"], y=t_df["RSI_Norm"], mode="lines", name="RSI",
-            line=dict(color=RSI_CIZGI, width=1.6),
+            line=dict(color=RSI_CIZGI, width=1.8),
             customdata=t_df["RSI"], hovertemplate="RSI: %{customdata:.0f}<extra></extra>"))
-        _son_renk = TV_YESIL if float(t_df["Close"].iloc[-1]) >= float(t_df["Open"].iloc[-1]) else TV_KIRMIZI
+        _son_renk = MUM_YESIL if float(t_df["Close"].iloc[-1]) >= float(t_df["Open"].iloc[-1]) else MUM_KIRMIZI
         fig_total.add_trace(go.Scatter(
             x=[t_df["timestamp"].iloc[-1]], y=[t_df["Close"].iloc[-1]], mode="markers",
             marker=dict(size=9, color=_son_renk, line=dict(color="#ffffff", width=2)), showlegend=False, hoverinfo="skip"))
 
         fig_total.update_layout(
             template="plotly_dark", margin=dict(t=28, b=36, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 360),
-            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=3600000, tickformat="%H:%M", tickangle=0,
+            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=(1800000 if _zoom_4s else 3600000), tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False, fixedrange=True),
@@ -2381,7 +2395,13 @@ with col_orta_grafik:
             _grafik_kap = st.container(key="grafik_total")
         except TypeError:
             _grafik_kap = st.container()
+        def _grafik_zoom_toggle():
+            st.session_state["grafik_4saat"] = not st.session_state.get("grafik_4saat", False)
+
         with _grafik_kap:
+            # Çift tıklama (JS) bu düğmeye basar; düğme aynı zamanda telefonda/JS yokken elle kullanılabilir.
+            st.button("🔍 8 Saat" if _zoom_4s else "🔍 4 Saat", key="grafik_zoom", on_click=_grafik_zoom_toggle,
+                      help="Grafiğe çift tıklayınca da 4 saat ↔ 8 saat arasında geçer.")
             st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
 
 with col_sag_endeks:
@@ -2585,7 +2605,6 @@ if submit_islem:
 
 # Plotly'nin grafik alanına yeni boyutuyla oturması için pencere yeniden boyutlandırma sinyali (sütun dışında, hizayı bozmaz)
 try:
-  if not IS_MOBIL:
     components.html("""<script>
 (function(){
   var P; try { P = window.parent; var d = P.document; } catch(e) { return; }
@@ -2624,6 +2643,12 @@ try:
     if(dG>1){ gr.style.setProperty('height',(gr.offsetHeight+dG)+'px','important'); }
   }
   [300,900,1800,3200].forEach(function(t){ setTimeout(fit,t); });
+  if(P.__zoomH) d.removeEventListener('dblclick', P.__zoomH, true);
+  P.__zoomH=function(ev){ try{
+    var t=ev.target; if(!t||!t.closest) return;
+    if(t.closest('.st-key-grafik_total') && !t.closest('.st-key-grafik_zoom')){
+      var b=d.querySelector('.st-key-grafik_zoom button'); if(b) b.click(); } }catch(e){} };
+  d.addEventListener('dblclick', P.__zoomH, true);
   if(P.__fitH) P.removeEventListener('resize', P.__fitH);
   P.__fitH=function(){ if(P.__fitBusy) return; clearTimeout(P.__fitT); P.__fitT=setTimeout(fit,250); };
   P.addEventListener('resize', P.__fitH);
@@ -2740,6 +2765,18 @@ with col_sol_analiz:
     with _analiz_kap:
         st.markdown("<h3>📊 Kapanan İşlemler & Para Akışı Analizi</h3>", unsafe_allow_html=True)
         kapananlar_df = pd.DataFrame() if df_gecmis.empty or "Durum" not in df_gecmis.columns else df_gecmis[durum_kapali_maskesi(df_gecmis["Durum"])]
+
+        # ---- strateji değerlendirmesi sayacı: eşiğe ulaşınca bot Telegram'a uyarı + CSV gönderir ----
+        _kap_say = len(kapananlar_df)
+        if _kap_say >= STRATEJI_DEGERLENDIRME_ESIGI:
+            st.success(f"✅ {_kap_say} kapanan işleme ulaşıldı: strateji değerlendirmesi için hazır. "
+                       f"Veriyi (MAE/MFE dahil) aşağıdan indirebilir ya da Telegram'a gelen CSV'yi kullanabilirsiniz.")
+        else:
+            st.progress(min(1.0, _kap_say / float(STRATEJI_DEGERLENDIRME_ESIGI)),
+                        text=f"🎯 Strateji değerlendirmesi: {_kap_say} / {STRATEJI_DEGERLENDIRME_ESIGI} kapanan işlem")
+        if not df_gecmis.empty:
+            st.download_button("📥 İşlem verisi (CSV)", data=df_gecmis.to_csv(index=False).encode("utf-8-sig"),
+                               file_name=f"islem_verisi_{tr_zaman().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv", key="indir_csv_veri")
 
         if not kapananlar_df.empty:
             karli_sayisi, zararli_sayisi = 0, 0

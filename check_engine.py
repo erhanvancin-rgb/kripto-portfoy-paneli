@@ -368,6 +368,7 @@ def islem_gecmisi_getir():
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
         "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani",
+        "MAE_Yuzde", "MFE_Yuzde",
     ]
     sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
     if sheet is None:
@@ -390,7 +391,7 @@ def islem_gecmisi_getir():
     df = df[df["Islem_ID"].notna() & (df["Islem_ID"] != "") & (df["Islem_ID"].astype(str) != "Islem_ID")]
     df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
     for col in ["Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-                "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac"]:
+                "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac", "MAE_Yuzde", "MFE_Yuzde"]:
         df[col] = df[col].map(sayi_cevir).fillna(0.0).astype(float)
     # Eski kayıtlarda Kaldirac boştur: varsayılan kaldıraç atanır (sheet'e geri yazılırken de korunur)
     df["Kaldirac"] = df["Kaldirac"].where(df["Kaldirac"] >= 1, float(KALDIRAC))
@@ -581,6 +582,141 @@ def _seviye_baslangic_ms(row, simdi_ms):
     acilis = _ms(row.get("Acilis_Zamani", ""))
     sinir = simdi_ms - 20 * 60 * 1000
     return max(acilis, sinir) if acilis else sinir
+
+
+STRATEJI_DEGERLENDIRME_ESIGI = 50   # kapanan işlem sayısı: ulaşılınca Telegram'a uyarı + CSV gönderilir
+MAE_MFE_TUR_LIMITI = 12             # bir çalıştırmada en fazla bu kadar işlemin MAE/MFE'si doldurulur (istek bütçesi)
+
+
+def _tr_metin_ms(metin):
+    """'30.10.2026 08:16' (TR saati) -> UTC ms. Çevrilemezse None."""
+    t = str(metin).strip()
+    for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
+        try:
+            return int(TR_TZ.localize(datetime.strptime(t, fmt)).timestamp() * 1000)
+        except Exception:
+            continue
+    return None
+
+
+def kline_aralik_cek(coin, bas_ms, bit_ms):
+    """Belirli bir zaman aralığı için 1 dakikalık mumlar (startTime/endTime ile, gerekirse parça parça). timestamp: ms int."""
+    sym = coin.replace("/", "")
+    tum, bas = [], int(bas_ms)
+    for _ in range(4):                       # en fazla 4 x 1000 dakika (~66 saat)
+        veri = None
+        for taban in ("https://data-api.binance.vision", "https://api.binance.com"):
+            try:
+                r = requests.get(f"{taban}/api/v3/klines?symbol={sym}&interval=1m&startTime={bas}&endTime={int(bit_ms)}&limit=1000", timeout=10)
+                if r.status_code == 200:
+                    veri = r.json()
+                    break
+            except Exception:
+                continue
+        if not veri:
+            break
+        tum.extend(veri)
+        son = int(veri[-1][0])
+        if len(veri) < 1000 or son >= bit_ms:
+            break
+        bas = son + 60000
+    if not tum:
+        return pd.DataFrame()
+    df = pd.DataFrame(tum, columns=["timestamp", "Open", "High", "Low", "Close", "Volume", "Close_Time", "QAV", "Num_Trades", "Taker_BBAV", "Taker_BQAV", "Ignore"])
+    for c_ in ("High", "Low", "Close"):
+        df[c_] = df[c_].astype(float)
+    df["timestamp"] = df["timestamp"].astype("int64")
+    return df[["timestamp", "High", "Low", "Close"]]
+
+
+def mae_mfe_doldur():
+    """Kapanmış ama MAE/MFE'si boş işlemler için (panelde elle kapananlar ve geçmiş işlemler dahil) 1 dakikalık mumlardan
+    en kötü/en iyi sapmayı hesaplayıp sayfaya yazar. Stop/hedefle kapananlarda pencere ilk dokunuşta biter; elle kapananlarda
+    kapanış zamanında. Hesaplanamayanlara -1 yazılır (tekrar denenmez)."""
+    df = islem_gecmisi_getir()
+    if df is None or df.empty or "Durum" not in df.columns:
+        return 0
+    kapali = durum_kapali_maskesi(df["Durum"])
+    bos = kapali & (df["MAE_Yuzde"] == 0) & (df["MFE_Yuzde"] == 0)
+    adaylar = list(df[bos].index)[:MAE_MFE_TUR_LIMITI]
+    if not adaylar:
+        return 0
+    guncellenen = 0
+    for idx in adaylar:
+        row = df.loc[idx]
+        coin, long_mi = row["Coin"], "Long" in str(row["Yon"])
+        giris, stop_f, kar_al_f = float(row["Giris_Fiyat"]), float(row["Stop"]), float(row["Kar_Al"])
+        bas_ms, kap_ms = _tr_metin_ms(row["Acilis_Zamani"]), _tr_metin_ms(row["Kapanis_Zamani"])
+        if not bas_ms or not kap_ms or kap_ms <= bas_ms:
+            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = -1.0, -1.0
+            continue
+        # kapanış zamanı çalıştırma anını gösterebilir (bot gecikmeli); seviyeyle kapananlarda ilk dokunuş anına kırp
+        fiyat_k = float(row["Kapanis_Fiyati"])
+        seviye_ile = any(abs(fiyat_k - x) <= abs(x) * 1e-6 for x in (stop_f, kar_al_f) if x)
+        mumlar = kline_aralik_cek(coin, bas_ms, kap_ms + 15 * 60 * 1000 if seviye_ile else kap_ms)
+        if mumlar is None or mumlar.empty:
+            continue                                   # veri alınamadı: bir sonraki turda tekrar dene
+        bit_ms = kap_ms
+        if seviye_ile:
+            d_ = matris_motoru.dokunus_bul(mumlar, long_mi, stop_f, kar_al_f, bas_ms)
+            if d_ is not None:
+                bit_ms = d_[1]
+        sonuc = matris_motoru.mae_mfe_hesapla(mumlar, long_mi, giris, bas_ms, bit_ms)
+        if sonuc is None:
+            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = -1.0, -1.0
+        else:
+            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = round(sonuc[0], 4), round(sonuc[1], 4)
+        guncellenen += 1
+    if guncellenen and dataframe_guncelle_gsheets(df):
+        print(f"MAE/MFE dolduruldu: {guncellenen} işlem.")
+    return guncellenen
+
+
+def telegram_dosya_gonder(dosya_adi, icerik_bytes, aciklama):
+    """Telegram'a belge (CSV vb.) gönderir. Başarılıysa True."""
+    token = "".join(os.environ.get("TELEGRAM_BOT_TOKEN", "").split())
+    chat_id = "".join(os.environ.get("TELEGRAM_CHAT_ID", "").split())
+    if not token or not chat_id:
+        return False
+    for no in range(1, 4):
+        try:
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
+                              data={"chat_id": chat_id, "caption": aciklama[:1000]},
+                              files={"document": (dosya_adi, icerik_bytes, "text/csv")}, timeout=40)
+            if r.status_code == 200 and r.json().get("ok"):
+                return True
+            if r.status_code in (400, 401, 403, 404):
+                print(f"Telegram belge HATA: HTTP {r.status_code} {r.text[:150]}")
+                return False
+        except Exception as e:
+            print(f"Telegram belge deneme {no}/3 başarısız: {type(e).__name__}: {e}")
+        if no < 3:
+            time.sleep(2 * no)
+    return False
+
+
+def strateji_degerlendirme_uyarisi(durum):
+    """Kapanan işlem sayısı eşiğe ulaştığında BİR KEZ Telegram'a uyarı + tüm işlem verisini CSV olarak gönderir."""
+    if durum.al("strateji_degerlendirme")["aktif"] == 1:
+        return
+    df = islem_gecmisi_getir()
+    if df is None or df.empty or "Durum" not in df.columns:
+        return
+    kapanan = int(durum_kapali_maskesi(df["Durum"]).sum())
+    print(f"Strateji değerlendirme sayacı: {kapanan}/{STRATEJI_DEGERLENDIRME_ESIGI} kapanan işlem")
+    if kapanan < STRATEJI_DEGERLENDIRME_ESIGI:
+        return
+    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+    dosya = f"islem_verisi_{kapanan}_islem_{tr_zaman().strftime('%Y%m%d_%H%M')}.csv"
+    aciklama = (f"🎯 {kapanan} kapanan işleme ulaşıldı: strateji değerlendirmesi için hazır.\n"
+                f"Bu CSV'yi (MAE/MFE dahil) Claude'a göndererek puan eşiği, stop/hedef ve boyutlandırmayı birlikte değerlendirebilirsiniz.")
+    ok_mesaj = telegram_bildirim_gonder(f"🎯 Strateji değerlendirmesi zamanı ({kapanan} işlem)",
+                                        f"<p>{kapanan} kapanan işleme ulaşıldı. Tüm işlem verisi CSV olarak ekte.</p>")
+    ok_dosya = telegram_dosya_gonder(dosya, csv_bytes, aciklama)
+    print("Strateji uyarısı:", "gönderildi" if (ok_mesaj or ok_dosya) else "GÖNDERİLEMEDİ (Telegram secret'larını kontrol edin)")
+    if ok_mesaj or ok_dosya:
+        durum.ayarla("strateji_degerlendirme", 1, son=tr_zaman().isoformat())
+        durum.kaydet()
 
 
 def acik_islemleri_kontrol_et():
@@ -821,12 +957,19 @@ def motoru_calistir():
         print(f"HATA: acik_islemleri_kontrol_et çöktü: {type(e).__name__}: {e}")
         traceback.print_exc()
 
+    try:
+        mae_mfe_doldur()
+    except Exception as e:
+        import traceback
+        print(f"HATA: mae_mfe_doldur çöktü: {type(e).__name__}: {e}")
+        traceback.print_exc()
+
     durum = MailDurumu()
     if not durum.yukle():
         print("MailDurumu (Telegram bildirim takip sekmesi) yüklenemedi, tablo paylaşımlarını kontrol edin.")
         return
 
-    for adim in (kapanis_maillerini_gonder, sinyal_maillerini_gonder):
+    for adim in (kapanis_maillerini_gonder, sinyal_maillerini_gonder, strateji_degerlendirme_uyarisi):
         try:
             adim(durum)
         except Exception as e:

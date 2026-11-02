@@ -110,6 +110,103 @@ def _verileri_tablodan_oku():
         st.error(f"⚠️ Kasa Veri Okuma Hatası: {str(e)}")
         return 0.0, []
 
+# ------------------------------------------------------------------ "Kasa Bakiye" KOLONU (F)
+def _satir_tutari(row):
+    """_verileri_tablodan_oku ile aynı kural: D, E, C sütunlarında rakam içeren ilk hücre tutar sayılır."""
+    tutar_str = "0"
+    for col_idx in [3, 4, 2]:
+        if len(row) > col_idx:
+            val = str(row[col_idx]).strip()
+            if any(ch.isdigit() for ch in val):
+                tutar_str = val
+                break
+    try:
+        return float(tutar_str.replace(' ', '').replace('₺', '').replace('$', '').replace(',', '.'))
+    except ValueError:
+        return 0.0
+
+
+def _isaretli_tutar(tur, tutar):
+    """Bakiyeye etkisi: yatırma/ekleme +, çekme/komisyon/zarar -, Trade_Sonuc ve diğerleri kendi işaretiyle."""
+    t = str(tur).lower()
+    if any(k in t for k in ["yatir", "satim", "gelir", "ekle"]):
+        return tutar
+    if any(k in t for k in ["cek", "alim", "gider", "komisyon", "zarar"]):
+        return -abs(tutar)
+    return tutar
+
+
+def _defter_bakiyeleri(ham):
+    """Her veri satırı için o satırdan SONRAKİ kasa bakiyesi listesi ve son bakiye."""
+    bakiye, liste = 0.0, []
+    for row in ham[1:]:
+        if not row or len(row) < 3:
+            liste.append("")
+            continue
+        bakiye += _isaretli_tutar(row[2], _satir_tutari(row))
+        liste.append(round(bakiye, 2))
+    return liste, round(bakiye, 2)
+
+
+def _sayi_oku(metin):
+    t = str(metin).strip().replace(' ', '')
+    if ',' in t:
+        t = t.replace('.', '').replace(',', '.')
+    return float(t)
+
+
+def _baslik_bicimini_kopyala(sheet):
+    """Yeni F başlığına E başlığının biçimini (renk/yazı tipi) kopyalar. Görsel amaçlıdır; hata olursa yok sayılır."""
+    try:
+        sheet.spreadsheet.batch_update({"requests": [{"copyPaste": {
+            "source": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 4, "endColumnIndex": 5},
+            "destination": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 5, "endColumnIndex": 6},
+            "pasteType": "PASTE_FORMAT"}}]})
+    except Exception:
+        pass
+
+
+def _bakiye_kolonu_esitle(sheet, ham):
+    """KasaDefteri F sütununu ('Kasa Bakiye') her satır için o anki bakiyeyle doldurur/düzeltir.
+    Yalnızca fark varsa yazar. Son bakiyeyi döndürür."""
+    liste, son = _defter_bakiyeleri(ham)
+    baslik_tamam = len(ham[0]) > 5 and str(ham[0][5]).strip() == "Kasa Bakiye"
+    fark = not baslik_tamam
+    if not fark:
+        for r, b in zip(ham[1:], liste):
+            mevcut = str(r[5]).strip() if len(r) > 5 else ""
+            if b == "":
+                if mevcut != "":
+                    fark = True
+                    break
+                continue
+            try:
+                if abs(_sayi_oku(mevcut) - b) > 0.005:
+                    fark = True
+                    break
+            except ValueError:
+                fark = True
+                break
+    if fark:
+        sheet.update(range_name=f"F1:F{len(ham)}", values=[["Kasa Bakiye"]] + [[b] for b in liste])
+        if not baslik_tamam:
+            _baslik_bicimini_kopyala(sheet)
+    return son
+
+
+def bakiye_kolonu_senkronla():
+    """Mevcut tüm defter satırları için 'Kasa Bakiye' kolonunu (F) bir kerede oluşturur/düzeltir."""
+    sheet, hata = _sheets_baglan("KasaDefteri")
+    if sheet is None:
+        return False
+    ham = sheet.get_all_values()
+    if not ham:
+        return False
+    _bakiye_kolonu_esitle(sheet, ham)
+    _ham_satirlar.clear()
+    return True
+
+
 def bakiye_getir():
     bakiye, _ = _verileri_tablodan_oku()
     return bakiye
@@ -153,8 +250,8 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
             
         ham = sheet.get_all_values()
         if not ham or len(ham) == 0:
-            sheet.append_row(["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama"])
-            ham = [["Islem_ID"]]
+            sheet.append_row(["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama", "Kasa Bakiye"])
+            ham = [["Islem_ID", "Zaman", "Islem_Turu", "Tutar", "Aciklama", "Kasa Bakiye"]]
             
         idler = []
         for r in ham[1:]:
@@ -169,7 +266,13 @@ def islem_ekle(tur, tutar, aciklama="", komisyon=0.0):
         if komisyon > 0:
             aciklama = f"{aciklama} (Komisyon: {komisyon})"
             
-        sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama])
+        # Eski satırların ve başlığın 'Kasa Bakiye' değerleri tamamlanır; yeni satır kendi bakiyesiyle eklenir
+        try:
+            onceki_bakiye = _bakiye_kolonu_esitle(sheet, ham)
+        except Exception:
+            onceki_bakiye = _defter_bakiyeleri(ham)[1]
+        yeni_bakiye = round(onceki_bakiye + _isaretli_tutar(tur, round(tutar, 2)), 2)
+        sheet.append_row([yeni_id, tarih_str, tur, round(tutar, 2), aciklama, yeni_bakiye])
         _ham_satirlar.clear()  # sonraki okuma yeni kaydı görsün
         return True, "İşlem başarıyla kaydedildi ve e-tabloya işlendi."
         

@@ -432,6 +432,76 @@ def _defter_id_oku(deger):
         return None
 
 
+def _defter_tutar(satir):
+    """kasa_motoru ile aynı kural: D, E, C sütunlarında rakam içeren ilk hücre tutardır (çevrilemezse 0)."""
+    for idx in (3, 4, 2):
+        if len(satir) > idx:
+            v = str(satir[idx]).strip()
+            if any(ch.isdigit() for ch in v):
+                x = sayi_cevir(v)
+                return x if x == x else 0.0
+    return 0.0
+
+
+def _defter_isaretli(tur, tutar):
+    """Bakiyeye etkisi: yatırma/ekleme +, çekme/komisyon/zarar -, Trade_Sonuc ve diğerleri kendi işaretiyle (panelle aynı)."""
+    t = str(tur).lower()
+    if any(k in t for k in ("yatir", "satim", "gelir", "ekle")):
+        return tutar
+    if any(k in t for k in ("cek", "alim", "gider", "komisyon", "zarar")):
+        return -abs(tutar)
+    return tutar
+
+
+def _defter_bakiyeleri(ham):
+    """Her veri satırı için o satırdan SONRAKİ kasa bakiyesi listesi ve son bakiye."""
+    bakiye, liste = 0.0, []
+    for satir in ham[1:]:
+        if not satir or len(satir) < 3:
+            liste.append("")
+            continue
+        bakiye += _defter_isaretli(satir[2], _defter_tutar(satir))
+        liste.append(round(bakiye, 2))
+    return liste, round(bakiye, 2)
+
+
+def kasa_bakiye_kolonu_esitle():
+    """KasaDefteri F sütununu ('Kasa Bakiye') her satır için o anki bakiyeyle doldurur/düzeltir; yalnızca fark varsa yazar."""
+    sheet = google_sheets_baglan("KasaDefteri")
+    if sheet is None:
+        return False
+    ham = sheet.get_all_values()
+    if not ham:
+        return False
+    liste, _ = _defter_bakiyeleri(ham)
+    baslik_tamam = len(ham[0]) > 5 and str(ham[0][5]).strip() == "Kasa Bakiye"
+    fark = not baslik_tamam
+    if not fark:
+        for r, b in zip(ham[1:], liste):
+            mevcut = str(r[5]).strip() if len(r) > 5 else ""
+            if b == "":
+                if mevcut != "":
+                    fark = True
+                    break
+                continue
+            m = sayi_cevir(mevcut) if mevcut else float("nan")
+            if m != m or abs(m - b) > 0.005:
+                fark = True
+                break
+    if fark:
+        sheet.update(range_name=f"F1:F{len(ham)}", values=[["Kasa Bakiye"]] + [[b] for b in liste])
+        if not baslik_tamam:
+            try:   # görsel: E başlığının biçimini F'ye kopyala
+                sheet.spreadsheet.batch_update({"requests": [{"copyPaste": {
+                    "source": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 4, "endColumnIndex": 5},
+                    "destination": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 5, "endColumnIndex": 6},
+                    "pasteType": "PASTE_FORMAT"}}]})
+            except Exception:
+                pass
+        print("Kasa Bakiye kolonu güncellendi.")
+    return True
+
+
 def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     """Başarılıysa True döner. Yalnızca satır EKLER (silip baştan yazmaz); geçici hatalarda 3 deneme yapar."""
     for no in range(1, 4):
@@ -441,7 +511,9 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
                 ham = sheet.get_all_values()
                 idler = [i for i in (_defter_id_oku(s[0]) for s in ham[1:] if s) if i is not None]
                 yeni_id = (max(idler) if idler else 0) + 1
-                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 4), aciklama])
+                _, onceki_bakiye = _defter_bakiyeleri(ham)
+                yeni_bakiye = round(onceki_bakiye + _defter_isaretli(islem_turu, round(float(tutar), 4)), 2)
+                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 4), aciklama, yeni_bakiye])
                 return True
             except Exception as e:
                 print(f"Kasa defteri kayıt hatası (deneme {no}/3): {e}")
@@ -487,7 +559,7 @@ def bakiye_hesapla(df_trade):
             if len(s) >= 4:
                 tutar = sayi_cevir(s[3])
                 if tutar == tutar:  # NaN değilse
-                    toplam += tutar
+                    toplam += _defter_isaretli(s[2] if len(s) > 2 else "", tutar)   # panelle aynı işaret kuralı (çekim negatif)
                     if len(s) > 2 and s[2] == "Trade_Sonuc":
                         trade_sonuc_defterde += tutar
     if df_trade is not None and not df_trade.empty:
@@ -955,6 +1027,13 @@ def motoru_calistir():
     except Exception as e:
         import traceback
         print(f"HATA: acik_islemleri_kontrol_et çöktü: {type(e).__name__}: {e}")
+        traceback.print_exc()
+
+    try:
+        kasa_bakiye_kolonu_esitle()
+    except Exception as e:
+        import traceback
+        print(f"HATA: kasa_bakiye_kolonu_esitle çöktü: {type(e).__name__}: {e}")
         traceback.print_exc()
 
     try:

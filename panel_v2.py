@@ -1,3 +1,4 @@
+import re
 import time
 import threading
 import json
@@ -32,16 +33,26 @@ except Exception:
     get_script_run_ctx = None
 
 
-class _ScriptRunCtxFiltresi(logging.Filter):
-    def filter(self, record):
-        return "missing ScriptRunContext" not in record.getMessage()
+# BELLEK SIZINTISI DÜZELTMESİ: Streamlit her yenilemede bu dosyayı baştan çalıştırır. Eskiden burada her seferinde
+# yeni bir filtre sınıfı/nesnesi günlük (logger) kaydına eklenirdi; bu nesneler o çalıştırmanın TÜM değişkenlerini
+# (tablolar, grafikler, HTML) sonsuza kadar canlı tutuyordu (2 dk'lık otomatik yenilemeyle günde yüzlerce MB).
+# Şimdi: (1) filtre yalnızca bir kez eklenir, (2) filtre fonksiyonu boş bir global sözlükle oluşturulur,
+# yani bu dosyanın değişkenlerine hiçbir referans taşımaz.
+import types as _types
 
+def _sessiz_filtre_olustur():
+    kod = (lambda kayit: "missing ScriptRunContext" not in kayit.getMessage()).__code__
+    f_ = _types.FunctionType(kod, {})
+    f_.__name__ = "_kripto_sessiz_filtre"
+    return f_
 
 for _logger_adi in (
     "streamlit.runtime.scriptrunner_utils.script_run_context",
     "streamlit.runtime.scriptrunner.script_run_context",
 ):
-    logging.getLogger(_logger_adi).addFilter(_ScriptRunCtxFiltresi())
+    _lg_ = logging.getLogger(_logger_adi)
+    if not any(getattr(f_, "__name__", "") == "_kripto_sessiz_filtre" for f_ in _lg_.filters):
+        _lg_.addFilter(_sessiz_filtre_olustur())
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(
@@ -255,6 +266,48 @@ def giris_komisyon_toplami(df_kasa, id_araligi=None):
     except Exception:
         return 0.0
 
+def defter_realize(df_kasa, id_araligi=None):
+    """GERÇEKLEŞEN NET KÂR, kasa defterinden: Trade_Sonuc (çıkış komisyonu zaten düşülmüş) + tüm Komisyon (giriş) kayıtları.
+    Para yatırma/çekme sayılmaz. Toplam Kasa ile birebir tutarlıdır (Toplam Kasa = anapara + bu değer).
+    id_araligi verilirse yalnızca açıklamasında '#ID' geçen ve ID'si aralıkta olan kayıtlar sayılır (dönem raporu)."""
+    try:
+        if df_kasa is None or df_kasa.empty or "Islem_Turu" not in df_kasa.columns:
+            return 0.0
+        tur = df_kasa["Islem_Turu"].astype(str).str.lower()
+        tutar = pd.to_numeric(df_kasa["Tutar"], errors="coerce").fillna(0.0)
+        trade, kom = tur.str.contains("trade"), tur.str.contains("komisyon")
+        aralik = pd.Series(True, index=df_kasa.index)
+        if id_araligi:
+            ids = pd.to_numeric(df_kasa["Aciklama"].astype(str).str.extract(r"#(\d+)")[0], errors="coerce")
+            aralik = (ids >= int(id_araligi[0])) & (ids <= int(id_araligi[1]))
+        return float(tutar[trade & aralik].sum() - tutar[kom & aralik].abs().sum())
+    except Exception:
+        return 0.0
+
+_TAM_KAPANIS_ETIKETLERI = ("Hedef Kâr", "Otomatik Stop", "Trade K/Z")
+
+def defter_tablo_uyumsuzlugu(df_trade, df_kasa):
+    """İşlem tablosu ile kasa defteri arasındaki kapanış uyuşmazlıklarını bulur (neden farklı çıktığını göstermek için).
+    Döner: {"cift": [ID...], "defterde_yok": [ID...], "tabloda_acik": [ID...]}"""
+    sonuc = {"cift": [], "defterde_yok": [], "tabloda_acik": []}
+    try:
+        if df_kasa is None or df_kasa.empty or df_trade is None or df_trade.empty:
+            return sonuc
+        d = df_kasa[df_kasa["Islem_Turu"].astype(str) == "Trade_Sonuc"]
+        sayac = {}
+        for acik in d["Aciklama"].astype(str):
+            m = re.match(r"^(" + "|".join(re.escape(e) for e in _TAM_KAPANIS_ETIKETLERI) + r"): #(\d+) ", acik)
+            if m:
+                sayac[int(m.group(2))] = sayac.get(int(m.group(2)), 0) + 1
+        kapali = df_trade[durum_kapali_maskesi(df_trade["Durum"]) & ~df_trade["Durum"].astype(str).str.lower().str.contains("kısmi|kismi")]
+        kapali_idler = set(int(x) for x in kapali["Islem_ID"])
+        sonuc["cift"] = sorted(i for i, n in sayac.items() if n > 1)
+        sonuc["defterde_yok"] = sorted(kapali_idler - set(sayac))
+        sonuc["tabloda_acik"] = sorted(set(sayac) - kapali_idler)
+    except Exception:
+        pass
+    return sonuc
+
 def beklenen_ve_olasi(long_mi, miktar, giris, kar_al, stop, kaldirac=None):
     """Hedefe/stopa ulaşılırsa kalan K/Z (işlemin kaldıracıyla)."""
     kaldirac = float(kaldirac) if kaldirac else float(KALDIRAC)
@@ -440,8 +493,8 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
         anapara = BASLANGIC_BAKIYE + net_para_girisi
         getiri = ((efektif_kasa - anapara) / anapara * 100.0) if anapara > 0 else 0.0
         giris_kom_top = giris_komisyon_toplami(dk, id_araligi)
-        gerceklesen_brut = float(kap["Net_Kar_Zarar"].sum())   # çıkış komisyonu düşülmüş
-        gerceklesen = gerceklesen_brut - giris_kom_top          # giriş komisyonları da düşülmüş (net)
+        gerceklesen_brut = float(kap["Net_Kar_Zarar"].sum())   # işlem tablosundan (çıkış komisyonu düşülmüş)
+        gerceklesen = defter_realize(dk, id_araligi)            # kasa defterinden: Trade_Sonuc - tüm giriş komisyonları (kasayla tutarlı)
 
         idler = pd.to_numeric(dt["Islem_ID"], errors="coerce").dropna().astype(int) if not dt.empty else pd.Series([], dtype=int)
         id_min, id_max = (int(idler.min()), int(idler.max())) if len(idler) else (0, 0)
@@ -528,7 +581,7 @@ def rapor_pdf_olustur(df_trade, df_kasa, bakiye, fiyatlar, zaman, id_araligi=Non
             karli, zararli = int((v >= 0).sum()), int((v < 0).sum())
             toplam = karli + zararli
             kazanc, kayip = float(v[v >= 0].sum()), float(abs(v[v < 0].sum()))
-            net_fark = kazanc - kayip - giris_kom_top
+            net_fark = gerceklesen
             k_y, z_y = (karli / toplam * 100.0), (zararli / toplam * 100.0)
             hareket = kazanc + kayip
             parasal = (kazanc / hareket * 100.0) if hareket > 0 else 0.0
@@ -1241,6 +1294,17 @@ def kaldirac_kaydet(deger):
     st.session_state["kaldirac_mod"] = "3x" if deger == 3 else ("5x" if deger == 5 else "sec")
     ayar_yaz("kaldirac", deger)
 
+@st.cache_resource(show_spinner=False)
+def _kasa_bakiye_kolonu_hazirla():
+    """Kasa defterinin 'Kasa Bakiye' kolonunu (F) uygulama başına bir kez tamamlar (eski satırlar dahil)."""
+    try:
+        kasa_motoru.bakiye_kolonu_senkronla()
+    except Exception as e:
+        print(f"Kasa Bakiye kolonu hazırlanamadı: {e}")
+    return True
+
+_kasa_bakiye_kolonu_hazirla()
+
 def veri_onbellegini_temizle():
     """Yazma işleminden sonra yalnızca işlem/kasa verisini tazeler; Binance fiyat/mum önbelleği korunur."""
     for _f in (islem_gecmisi_getir, kasa_defteri_getir):
@@ -1949,19 +2013,24 @@ if "kaldirac_secim" not in st.session_state:
 col_ust1, col_ust2, col_ust3, col_ust4, col_ust5, col_ust6, col_kasa_buton = st.columns([1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6], gap="small")
 
 df_metrik_trade = islem_gecmisi_getir(sheet_guncelle=False)
-realize_kar = 0.0
+_sheet_net_brut = 0.0
 if not df_metrik_trade.empty and "Durum" in df_metrik_trade.columns:
     kapananlar_mask = durum_kapali_maskesi(df_metrik_trade["Durum"])
-    realize_kar = pd.to_numeric(df_metrik_trade[kapananlar_mask]["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum()
+    _sheet_net_brut = float(pd.to_numeric(df_metrik_trade[kapananlar_mask]["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum())
 
 _df_kasa_anapara = kasa_defteri_getir()
 anapara = float(BASLANGIC_BAKIYE)
 if not _df_kasa_anapara.empty and "Islem_Turu" in _df_kasa_anapara.columns:
     _tutar_a = pd.to_numeric(_df_kasa_anapara["Tutar"], errors="coerce").fillna(0.0)
-    anapara += float(_tutar_a[_df_kasa_anapara["Islem_Turu"].isin(["EKLE", "Para_Yatir", "Para_Cek", "CEK"])].sum())
+    _tur_a = _df_kasa_anapara["Islem_Turu"]
+    # yatırmalar + , çekmeler - (çekim tutarı defterde pozitif yazılır)
+    anapara += float(_tutar_a[_tur_a.isin(["EKLE", "Para_Yatir"])].abs().sum()) - float(_tutar_a[_tur_a.isin(["Para_Cek", "CEK"])].abs().sum())
 
-# Net Kâr (Realize): kapanan işlemlerin net K/Z'si (çıkış komisyonu düşülmüş) - ödenen TÜM giriş komisyonları
-realize_kar -= giris_komisyon_toplami(_df_kasa_anapara)
+# Net Kâr (Realize): KASA DEFTERİNDEN (Toplam Kasa ile aynı kaynak): Trade_Sonuc toplamı - tüm giriş komisyonları.
+# Eskiden işlem tablosundaki Net K/Z'ler toplanıyordu; tablo ile defter ayrışırsa Toplam Kasa ile tutmuyordu.
+realize_kar = defter_realize(_df_kasa_anapara)
+_tablo_net = _sheet_net_brut - giris_komisyon_toplami(_df_kasa_anapara)   # yalnızca tutarlılık kontrolü için
+realize_fark = _tablo_net - realize_kar
 
 aktif_oran = (aktif_yatirim_tutari / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
 bostaki_oran = (mevcut_bakiye / toplam_kasa * 100) if toplam_kasa > 0 else 0.0
@@ -2006,6 +2075,18 @@ with col_kasa_buton:
     if st.button("Kasa\u00a0İşlemleri\u00a0& Kaldıraç\u00a0Belirleme", width='stretch', key="ana_kasa_butonu"):
         st.session_state["kasa_islem_acik"] = not st.session_state.get("kasa_islem_acik", False)
         st.rerun()
+
+if abs(realize_fark) > 0.02:
+    _uy = defter_tablo_uyumsuzlugu(df_metrik_trade, _df_kasa_anapara)
+    _parca = []
+    if _uy["cift"]:
+        _parca.append("defterde birden fazla kapanış kaydı olan işlem ID'leri: " + ", ".join(f"#{i}" for i in _uy["cift"]))
+    if _uy["defterde_yok"]:
+        _parca.append("tabloda kapalı ama defterde kapanış kaydı olmayanlar: " + ", ".join(f"#{i}" for i in _uy["defterde_yok"]))
+    if _uy["tabloda_acik"]:
+        _parca.append("defterde kapanışı olup tabloda kapalı görünmeyenler: " + ", ".join(f"#{i}" for i in _uy["tabloda_acik"]))
+    st.caption(f"⚠️ Net Kâr (Realize) kasa defterinden hesaplanır ({realize_kar:+,.2f} $). İşlem tablosundaki net K/Z toplamı "
+               f"{_tablo_net:+,.2f} $ ile {realize_fark:+,.2f} $ farklı. " + ("; ".join(_parca) + "." if _parca else "Defter ve tablo kayıtlarını karşılaştırın."))
 
 RENK_NAVY, RENK_BTN_SARI, RENK_BTN_YESIL, RENK_BTN_TURUNCU = "#252569", "#ead518", "#00FF00", "rgb(255, 75, 0)"   # yeşil/turuncu: sayfadaki kâr/zarar renkleri
 
@@ -2335,9 +2416,9 @@ with col_orta_grafik:
 
         fig_total = go.Figure()
         _seviyeler = sorted(fib_levels.keys())
-        _bant_renkleri = [
-            (96, 10, 36), (130, 30, 30), (158, 72, 18), (148, 110, 6),
-            (192, 172, 14), (92, 128, 22), (24, 104, 40), (8, 70, 30)
+        _bant_renkleri = [   # alttan üste: şerit görselinden örneklenen renkler (-0.236→0 ... 1→1.236)
+            (148, 16, 56), (189, 48, 47), (214, 112, 28), (206, 166, 9),
+            (235, 224, 21), (142, 187, 34), (37, 158, 61), (11, 109, 46),
         ]
         for _i in range(len(_seviyeler) - 1):
             _rgb = _bant_renkleri[min(_i, len(_bant_renkleri) - 1)]
@@ -2792,7 +2873,7 @@ with col_sol_analiz:
 
             toplam_kapanan = len(kapananlar_df)
             giris_kom_uygulama = giris_komisyon_toplami(_df_kasa_anapara)
-            net_fark_dolar = toplam_kazanc_dolar - toplam_kayip_dolar - giris_kom_uygulama
+            net_fark_dolar = realize_kar   # kasa defterinden (Toplam Kasa ile tutarlı)
             kar_yuzde = (karli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             zarar_yuzde = (zararli_sayisi / toplam_kapanan * 100.0) if toplam_kapanan > 0 else 0.0
             toplam_hareket_dolar = toplam_kazanc_dolar + toplam_kayip_dolar

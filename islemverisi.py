@@ -34,23 +34,26 @@ def tr_float(val):
     except:
         return 0.0
 
-def format_tr_number(val, is_price=False):
+def format_tr_number(val, is_price=False, is_percent=False):
     """Sayıları Türkçe formata (1.234,56) kusursuz çevirir."""
     try:
         if pd.isna(val) or str(val).strip() == "" or str(val) == "-" or str(val) == "nan":
             return "-"
         f_val = float(val)
+        
+        # 0 ise tire (-) yerine 0,00 veya 0 yazsın
         if f_val == 0.0:
-            return "-"
+            if is_percent or is_price: return "0,00"
+            return "0"
             
         if is_price:
-            # Kripto fiyatları için: 10 dolardan küçükse 4 hane, büyükse 2 hane
             s = f"{f_val:,.4f}" if abs(f_val) < 10 else f"{f_val:,.2f}"
         else:
-            # Tamsayı ise küsurat gösterme (örn Miktar: 100), değilse 2 hane
-            s = f"{int(f_val):,}" if f_val.is_integer() else f"{f_val:,.2f}"
+            if is_percent:
+                s = f"{f_val:,.2f}"
+            else:
+                s = f"{int(f_val):,}" if f_val.is_integer() else f"{f_val:,.2f}"
             
-        # Amerikan formatını Türkçe formata çevir
         return s.replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return str(val)
@@ -64,7 +67,7 @@ def tabloyu_analiz_et():
     try:
         gcp_json_str = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
         if not gcp_json_str:
-            print("[HATA] GCP_SERVICE_ACCOUNT_JSON ortam değişkeni bulunamadı!")
+            print("[HATA] GCP_SERVICE_ACCOUNT_JSON bulunamadı!")
             return False
             
         service_account_info = json.loads(gcp_json_str)
@@ -87,6 +90,7 @@ def tabloyu_analiz_et():
         records = [dict(zip(headers, row)) for row in raw_data[1:]]
 
         sonuclar = []
+        tr_tz = pytz.timezone("Europe/Istanbul")
 
         for index, row in enumerate(records):
             try:
@@ -95,7 +99,6 @@ def tabloyu_analiz_et():
                 giriş_fiyatı = tr_float(row.get('Giris_Fiyat', '0'))
                 giriş_dt_ham = str(row.get('Acilis_Zamani', '')).strip()
                 
-                # Temel Verileri Okuma
                 tp_fiyatı = tr_float(row.get('Kar_Al', '0'))
                 sl_fiyatı = tr_float(row.get('Stop', '0'))
                 beklenen_kar = tr_float(row.get('Beklenen_Kar', '0'))
@@ -107,20 +110,38 @@ def tabloyu_analiz_et():
                 if not giriş_dt_ham or parite == "" or parite == "nan" or giriş_fiyatı == 0:
                     continue
 
+                # --- 1. AÇILIŞ ZAMANI ---
                 if ".2026" in giriş_dt_ham or ".202" in giriş_dt_ham:
-                    if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
-                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%d.%m.%Y %H:%M")
+                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham[:16], "%d.%m.%Y %H:%M")
                 else:
-                    if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
-                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%Y-%m-%d %H:%M")
+                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham[:16], "%Y-%m-%d %H:%M")
 
-                tr_tz = pytz.timezone("Europe/Istanbul")
                 giriş_dt_aware = tr_tz.localize(giriş_dt)
                 start_timestamp = int(giriş_dt_aware.timestamp())
-                end_timestamp = int(time.time())
                 
-                if start_timestamp >= end_timestamp:
-                    start_timestamp = end_timestamp - 120
+                # --- 2. KAPANIŞ ZAMANI (YENİ SINIRLANDIRMA MANTIĞI) ---
+                kapanis_dt_ham = str(row.get('Kapanis_Zamani', '')).strip()
+                
+                if kapanis_dt_ham and kapanis_dt_ham not in ["-", "nan", "xxx", ""]:
+                    try:
+                        if ".2026" in kapanis_dt_ham or ".202" in kapanis_dt_ham:
+                            kapanis_dt = datetime.datetime.strptime(kapanis_dt_ham[:16], "%d.%m.%Y %H:%M")
+                        else:
+                            kapanis_dt = datetime.datetime.strptime(kapanis_dt_ham[:16], "%Y-%m-%d %H:%M")
+                        
+                        kapanis_dt_aware = tr_tz.localize(kapanis_dt)
+                        end_timestamp = int(kapanis_dt_aware.timestamp())
+                    except:
+                        end_timestamp = int(time.time())
+                else:
+                    # Kapanış zamanı yoksa (işlem açıksa) şu anki zamanı al
+                    end_timestamp = int(time.time())
+                
+                # CoinGecko'nun çok kısa aralıklarda boş veri dönmesini engellemek için minimum 1 saat pencere koy
+                if end_timestamp <= start_timestamp:
+                    end_timestamp = start_timestamp + 3600
+                elif end_timestamp - start_timestamp < 3600:
+                    end_timestamp = start_timestamp + 3600
                 
                 coin_id = symbols.get(parite)
                 if not coin_id:
@@ -138,7 +159,6 @@ def tabloyu_analiz_et():
                 df_fiyat["Zaman"] = pd.to_datetime(df_fiyat["Zaman_Ms"], unit="ms") + pd.Timedelta(hours=3)
                 df_fiyat["Fiyat"] = pd.to_numeric(df_fiyat["Fiyat"])
 
-                # Long ve Short için en iyi (Kar) ve en kötü (Terste kalma) noktalarını bul
                 if yon == "long":
                     en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
                     en_kotu = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
@@ -149,11 +169,9 @@ def tabloyu_analiz_et():
                 max_fiyat = en_iyi["Fiyat"]
                 min_fiyat = en_kotu["Fiyat"]
 
-                # Optimizasyon Temel Fiyatları
                 opt_kar_al = max_fiyat
                 opt_stop = min_fiyat
 
-                # Kâr ve Zarar Yüzdeleri
                 if yon == "long":
                     sl_yuzde = ((giriş_fiyatı - min_fiyat) / giriş_fiyatı) * 100
                     tp_yuzde = ((max_fiyat - giriş_fiyatı) / giriş_fiyatı) * 100
@@ -161,7 +179,6 @@ def tabloyu_analiz_et():
                     sl_yuzde = ((max_fiyat - giriş_fiyatı) / giriş_fiyatı) * 100
                     tp_yuzde = ((giriş_fiyatı - min_fiyat) / giriş_fiyatı) * 100
 
-                # --- ORANTISAL PNL HESAPLAMA (xxx'lerin Doldurulması) ---
                 if abs(tp_fiyatı - giriş_fiyatı) > 0:
                     opt_beklenen_kar = beklenen_kar * (abs(opt_kar_al - giriş_fiyatı) / abs(tp_fiyatı - giriş_fiyatı))
                 else:
@@ -172,7 +189,6 @@ def tabloyu_analiz_et():
                 else:
                     opt_olasi_stop = 0
 
-                # Durum ve Optimizasyon Kapanış Özellikleri
                 if tp_yuzde > 0:
                     opt_durum = "Kapandı (Kar)"
                     opt_kapanis_fiyati = opt_kar_al
@@ -184,19 +200,17 @@ def tabloyu_analiz_et():
                     opt_kapanis_zamani = en_kotu["Zaman"].strftime("%d.%m.%Y %H:%M")
                     opt_net_kar = opt_olasi_stop
 
-                # Yeni Kasa Hesaplama: Kasa = Mevcut Kasa - Reel KarZarar + Opt KarZarar
                 islem_oncesi_kasa = kasa - net_kar
                 opt_kasa = islem_oncesi_kasa + opt_net_kar
 
-                # Matris Formatlama
-                sl_str = format_tr_number(max(0, sl_yuzde))
-                tp_str = format_tr_number(tp_yuzde) if tp_yuzde >= 0 else "Ulasilamaz"
+                # MATRİS YÜZDE FORMATLARI YENİLENDİ (- HATASI ÇÖZÜLDÜ)
+                sl_str = format_tr_number(max(0, sl_yuzde), is_percent=True)
+                tp_str = format_tr_number(tp_yuzde, is_percent=True) if tp_yuzde >= 0 else "Ulasilamaz"
                 
                 matris_ham = str(row.get('Matris_Puan_RH', '')).strip()
                 base_puan = matris_ham.split(' ')[0] if matris_ham else "0,00"
                 optimum_matris = f"{base_puan} ({sl_str} / {tp_str})"
 
-                # --- SATIR BİRLEŞTİRME (FULL FORMATLI) ---
                 satir_verisi = {
                     "Reel_Durum_Islem_ID": row.get('Islem_ID', ''),
                     "Reel_Durum_Acilis_Zamani": row.get('Acilis_Zamani', ''),
@@ -233,7 +247,7 @@ def tabloyu_analiz_et():
                 }
 
                 sonuclar.append(satir_verisi)
-                print(f"[İŞLENDİ] {parite} analizi, PNL hesaplaması ve formatlama tamamlandı.")
+                print(f"[İŞLENDİ] {parite} analizi (sınırlandırılmış zaman aralığıyla) tamamlandı.")
                 time.sleep(1.2)
 
             except Exception as e:
@@ -261,7 +275,7 @@ def tabloyu_analiz_et():
                 rapor_sheet.update(veri_listesi)
                 rapor_sheet.update_title("Optimizasyon_Analizi")
                 
-                print(f"\n[BAŞARILI] Rapor bulutta orantısal PNL hesabı ve TR sayı formatı ile güncellendi!")
+                print(f"\n[BAŞARILI] Rapor bulutta sınırlandırılmış zaman aralığıyla güncellendi!")
                 return True
             except Exception as e:
                 print(f"Drive rapor yazma hatası: {e}")

@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 
 cg = CoinGeckoAPI()
 
-# Google Cloud Service Account Bot Kimlik Bilgileri
+# Google Cloud Service Account Bot Kimlik Bilgileri (API Bağlantı Adresleri Onarıldı)
 service_account_info = {
   "type": "service_account",
   "project_id": "western-avatar-442315-t7",
@@ -41,7 +41,11 @@ def tabloyu_analiz_et():
     print("Ana tablodan güncel veriler çekiliyor...\n")
 
     try:
-        scopes = ["https://googleapis.com", "https://googleapis.com"]
+        # Doğru ve standart Google oAuth API kapsamları tanımlandı
+        scopes = [
+            "https://googleapis.com",
+            "https://googleapis.com"
+        ]
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         client = gspread.authorize(creds)
         
@@ -63,7 +67,7 @@ def tabloyu_analiz_et():
                 sl_fiyatı = float(row.get('Stop', 0))
                 giriş_dt_ham = str(row.get('Acilis_Zamani', '')).strip()
 
-                if not giriş_dt_ham or parite == "":
+                if not giriş_dt_ham or parite == "" or parite == "nan":
                     continue
 
                 if ".2026" in giriş_dt_ham or ".202" in giriş_dt_ham:
@@ -116,7 +120,7 @@ def tabloyu_analiz_et():
             except Exception as e:
                 print(f"Satır atlandı: {e}")
 
-        # 🚀 RAPOR DOSYASINI GÜNCELLEME VEYA SIFIRDAN OLUŞTURMA SÜRECİ
+        # Raporlama ve Drive üzerine geri basma aşaması
         if sonuclar:
             df_yeni = pd.DataFrame(sonuclar).fillna("-")
             veri_listesi = [df_yeni.columns.values.tolist()] + df_yeni.values.tolist()

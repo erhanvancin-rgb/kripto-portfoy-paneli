@@ -1062,13 +1062,12 @@ def motoru_calistir():
 
 
     try:
-      print("\n" + "-"*60)
-      print("Otomatik Tetikleme: Kripto Analiz Raporu Motoru Başlatılıyor...")
-      print("-"*60)
-      import islemverisi
-      islemverisi.tabloyu_analiz_et()
-      print("\n[SİSTEM] Kripto Analiz Raporu bulutta başarıyla güncellendi.\n")
-    except Exception as e:
-      print(f"\n[SİSTEM HATASI] Analiz motoru otomatik çalışırken hata oluştu: {e}\n")
-
-motoru_calistir()
+    print("\n" + "-"*60)
+    print("Otomatik Tetikleme: Kripto Analiz Raporu Motoru Başlatılıyor...")
+    print("-"*60)
+    import islemverisi
+    islemverisi.tabloyu_analiz_et()
+    print("\n[SİSTEM] Kripto Analiz Raporu bulutta başarıyla güncellendi.\n")
+      except Exception as e:
+        print(f"\n[SİSTEM HATASI] Analiz motoru otomatik çalışırken hata oluştu: {e}\n")
+    motoru_calistir()

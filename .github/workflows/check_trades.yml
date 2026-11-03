@@ -13,7 +13,7 @@ concurrency:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Repository checkout
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           pip install requests pandas numpy gspread pytz pycoingecko openpyxl
 
       - name: Run trade check engine
-        timeout-minutes: 7
+        timeout-minutes: 18
         env:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}

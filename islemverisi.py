@@ -38,19 +38,13 @@ def format_tr_number(val, is_price=False, is_percent=False):
         if pd.isna(val) or str(val).strip() == "" or str(val) == "-" or str(val) == "nan":
             return "-"
         f_val = float(val)
-        
         if f_val == 0.0:
             if is_percent or is_price: return "0,00"
             return "0"
-            
         if is_price:
             s = f"{f_val:,.4f}" if abs(f_val) < 10 else f"{f_val:,.2f}"
         else:
-            if is_percent:
-                s = f"{f_val:,.2f}"
-            else:
-                s = f"{int(f_val):,}" if f_val.is_integer() else f"{f_val:,.2f}"
-            
+            s = f"{f_val:,.2f}" if is_percent else (f"{int(f_val):,}" if f_val.is_integer() else f"{f_val:,.2f}")
         return s.replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return str(val)
@@ -69,7 +63,6 @@ def tabloyu_analiz_et():
             
         service_account_info = json.loads(gcp_json_str)
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         client = gspread.authorize(creds)
         
@@ -105,7 +98,6 @@ def tabloyu_analiz_et():
                 if not giriş_dt_ham or parite == "" or parite == "nan" or giriş_fiyatı == 0:
                     continue
 
-                # Kâr ve Zararla kapandığını anla
                 islem_karda_mi = "kar" in orijinal_durum
 
                 # 1. AÇILIŞ ZAMANI
@@ -150,61 +142,36 @@ def tabloyu_analiz_et():
                 if yon == "long":
                     en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
                     en_kotu = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
+                    gercek_sl = ((giriş_fiyatı - en_kotu["Fiyat"]) / giriş_fiyatı) * 100
+                    gercek_tp = ((en_iyi["Fiyat"] - giriş_fiyatı) / giriş_fiyatı) * 100
                 else:
                     en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
                     en_kotu = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
+                    gercek_sl = ((en_kotu["Fiyat"] - giriş_fiyatı) / giriş_fiyatı) * 100
+                    gercek_tp = ((giriş_fiyatı - en_iyi["Fiyat"]) / giriş_fiyatı) * 100
 
-                max_fiyat = en_iyi["Fiyat"]
-                min_fiyat = en_kotu["Fiyat"]
-
-                # Orijinal hesaplanan yüzdeler (strateji kontrolü için)
-                orj_tp_yuzde = abs(tp_fiyatı - giriş_fiyatı) / giriş_fiyatı * 100
-                
-                # Gerçekleşen (Piyasa) yüzdeleri
-                if yon == "long":
-                    piyasa_sl_yuzde = ((giriş_fiyatı - min_fiyat) / giriş_fiyatı) * 100
-                    piyasa_tp_yuzde = ((max_fiyat - giriş_fiyatı) / giriş_fiyatı) * 100
-                else:
-                    piyasa_sl_yuzde = ((max_fiyat - giriş_fiyatı) / giriş_fiyatı) * 100
-                    piyasa_tp_yuzde = ((giriş_fiyatı - min_fiyat) / giriş_fiyatı) * 100
-
-                # === MANTIKSAL KURGU UYGULANIYOR ===
+                # --- YENİ MANTIK: ZARAR EDEN İŞLEMLERDE BİLE GÖRDÜĞÜ MAKSİMUM KÂRI YAZ ---
                 if islem_karda_mi:
-                    # İşlem KÂRLA KAPANDIYSA: Karı aynı bırak, sadece maksimum terste kalmayı hesapla
+                    opt_sl = max(0.01, gercek_sl)
+                    opt_tp = abs(tp_fiyatı - giriş_fiyatı) / giriş_fiyatı * 100
                     opt_kar_al = tp_fiyatı
-                    opt_stop = min_fiyat
-                    opt_tp_yuzde = orj_tp_yuzde
-                    opt_sl_yuzde = piyasa_sl_yuzde
+                    opt_stop = en_kotu["Fiyat"]
                     opt_durum = "Kapandı (Kar)"
                     opt_beklenen_kar = beklenen_kar
-                    opt_olasi_stop = 0 # Kar ile kapandıysa zarar 0'dır.
                 else:
-                    # İşlem ZARARLA KAPANDIYSA: Gördüğü maksimum karı hesapla
-                    opt_kar_al = max_fiyat
+                    opt_sl = max(0.01, gercek_sl)
+                    # Zararla kapanmış olsa bile o aralıkta yakaladığı en yüksek kârı (gercek_tp) hedef olarak yazıyoruz
+                    opt_tp = max(0.01, gercek_tp) 
+                    opt_kar_al = en_iyi["Fiyat"]
                     opt_stop = sl_fiyatı
-                    opt_tp_yuzde = piyasa_tp_yuzde
-                    opt_sl_yuzde = abs(sl_fiyatı - giriş_fiyatı) / giriş_fiyatı * 100 # Stop olduğu yer
-                    
-                    # Eğer stoplamadan önce 1:1 kâr fırsatı verdiyse, "Kâra kapatabilirdin" statüsü
-                    if opt_tp_yuzde > opt_sl_yuzde and opt_tp_yuzde > 0:
-                        opt_durum = "Kapandı (Kar)" # Optimizasyonda kâra döndü
-                        opt_beklenen_kar = beklenen_kar * (opt_tp_yuzde / opt_sl_yuzde) if opt_sl_yuzde > 0 else beklenen_kar
-                        opt_olasi_stop = 0
-                    else:
-                        opt_durum = "Kapandı (Zarar)"
-                        opt_beklenen_kar = 0
-                        opt_olasi_stop = olasi_stop
+                    opt_durum = "Kapandı (Zarar)"
+                    opt_beklenen_kar = beklenen_kar * (opt_tp / opt_sl) if opt_sl > 0 else 0
 
                 islem_oncesi_kasa = kasa - net_kar
-                opt_kasa = islem_oncesi_kasa + (opt_beklenen_kar if opt_durum == "Kapandı (Kar)" else opt_olasi_stop)
+                opt_kasa = islem_oncesi_kasa + (opt_beklenen_kar if opt_durum == "Kapandı (Kar)" else olasi_stop)
 
-                # MATRİS FORMATLAMA
-                sl_str = format_tr_number(max(0, opt_sl_yuzde), is_percent=True)
-                
-                if not islem_karda_mi and opt_tp_yuzde <= 0:
-                    tp_str = "Ulasilamaz"
-                else:
-                    tp_str = format_tr_number(opt_tp_yuzde, is_percent=True)
+                sl_str = format_tr_number(opt_sl, is_percent=True)
+                tp_str = format_tr_number(opt_tp, is_percent=True)
                 
                 matris_ham = str(row.get('Matris_Puan_RH', '')).strip()
                 base_puan = matris_ham.split(' ')[0] if matris_ham else "0,00"
@@ -232,21 +199,21 @@ def tabloyu_analiz_et():
                     
                     "Optimizasyon_Giris_Fiyat": format_tr_number(giriş_fiyatı, is_price=True),
                     "Optimizasyon_Islem_Miktari": format_tr_number(miktar),
-                    "Optimizasyon_Stop": format_tr_number(opt_stop, is_price=True) if opt_durum == "Kapandı (Kar)" else format_tr_number(sl_fiyatı, is_price=True),
-                    "Optimizasyon_Kar_Al": format_tr_number(opt_kar_al, is_price=True) if opt_durum == "Kapandı (Kar)" else "-",
-                    "Optimizasyon_Beklenen_Kar": format_tr_number(opt_beklenen_kar) if opt_durum == "Kapandı (Kar)" else "-",
+                    "Optimizasyon_Stop": format_tr_number(opt_stop, is_price=True),
+                    "Optimizasyon_Kar_Al": format_tr_number(opt_kar_al, is_price=True),
+                    "Optimizasyon_Beklenen_Kar": format_tr_number(opt_beklenen_kar),
                     "Optimizasyon_Matris_Puan_RH": optimum_matris,
-                    "Optimizasyon_Olasi_Stop": format_tr_number(opt_olasi_stop),
+                    "Optimizasyon_Olasi_Stop": format_tr_number(olasi_stop),
                     "Optimizasyon_Durum": opt_durum,
-                    "Optimizasyon_Net_Kar_Zarar": format_tr_number(opt_beklenen_kar if opt_durum == "Kapandı (Kar)" else opt_olasi_stop),
+                    "Optimizasyon_Net_Kar_Zarar": format_tr_number(opt_beklenen_kar if opt_durum == "Kapandı (Kar)" else olasi_stop),
                     "Optimizasyon_Guncel_Kasa": format_tr_number(opt_kasa),
-                    "Optimizasyon_Kapanis_Zamani": en_iyi["Zaman"].strftime("%d.%m.%Y %H:%M") if opt_durum == "Kapandı (Kar)" else row.get('Kapanis_Zamani', ''),
-                    "Optimizasyon_Kapanis_Fiyati": format_tr_number(opt_kar_al, is_price=True) if opt_durum == "Kapandı (Kar)" else format_tr_number(sl_fiyatı, is_price=True),
+                    "Optimizasyon_Kapanis_Zamani": en_iyi["Zaman"].strftime("%d.%m.%Y %H:%M"),
+                    "Optimizasyon_Kapanis_Fiyati": format_tr_number(opt_kar_al, is_price=True),
                     "Optimizasyon_Kaldirac": row.get('Kaldirac', '')
                 }
 
                 sonuclar.append(satir_verisi)
-                print(f"[İŞLENDİ] {parite} Win/Loss kurgusuyla tamamlandı.")
+                print(f"[İŞLENDİ] {parite} optimizasyonu güncellendi.")
                 time.sleep(1.2)
 
             except Exception as e:
@@ -270,7 +237,7 @@ def tabloyu_analiz_et():
                 rapor_sheet.clear()
                 rapor_sheet.update(veri_listesi)
                 rapor_sheet.update_title("Optimizasyon_Analizi")
-                print(f"\n[BAŞARILI] Rapor bulutta mantıksal Win/Loss formatıyla güncellendi!")
+                print(f"\n[BAŞARILI] Rapor yeni 1/1 denge kurgusuyla güncellendi!")
                 return True
             except Exception as e:
                 print(f"Drive rapor yazma hatası: {e}")

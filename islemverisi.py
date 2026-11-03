@@ -1,13 +1,30 @@
 import datetime
 import time
-import os
+import json
 import pandas as pd
 from pycoingecko import CoinGeckoAPI
+import gspread
+from google.oauth2.service_account import Credentials
 
 cg = CoinGeckoAPI()
 
-# Bilgisayarınızda hatasız çalışması için yerel dosyayı hedef alıyoruz
-excel_adi = "TPSL Oranlari.xlsx"
+# Google Cloud Service Account Bot Pasaportu
+service_account_info = {
+  "type": "service_account",
+  "project_id": "western-avatar-442315-t7",
+  "private_key_id": "0a61ae2ee745efae2cece2cf0bb96cd8dc8f23d9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDWZx+lZBNeaOPJ\nYMxQtqtdygNZd3t5c1BjtY5TO7/xKpjcvdyiSAA2PVMtS5djOsHCNCAeEZBvnKRn\nnIVTVfWiBf0fcKROvFZHFBceX+TNp08/gljP+KRE7dcEM2eiRAHJiysDjgmKHWJN\nt1Z9zo560rnr2+QbfDQSih4zekOKxc9lsZXSD/RXyFl04RNbNLPYyAK1OnEa8nCe\nbvgvGCb5jLgsJJ9zmVGtKgj6/ufM2tsdrwEUQ+S7YhPNfI9bsv92dd7fAfwewr81\n7l6beQqw8puOxMLDPY9zH0QFeU+BQzfKxOHWEE31Z7ZTTq4TsD1fR4xtkqXu1XZP\nN3DXi2kfAgMBAAECggEAAaxFKXhepQ6Sx5iISbMLnBtQ5Q8UxNOEQRBkVjkVIRCb\n0FFV4ovAObmX7nMtzzkJTcrVsstq0RkvKwJTVKDR0Mme9vKTHF84DEgJ9HUI/Q9I\n76W3Cm1w+rEhPkRpQfgi7fXECF3OGDKi6zOwtKh+DPUv+ZCihEfBFVCU5W4keuFX\nHkAE032KARszmqz/tAbD30Ych9IpsE7aYil5peFobQsMhQ8q0lc8bm3gFwOMpr8D\nR+sTX6BPxfLp3NY1lSiBzh8rPbvHSVPoUq+8hweesFAVnDXAuv7gPleLGT47EBrU\nivpQ8ARjOYVeoCXLGqauhw0GIQAAv9DBdMlef7kRYQKBgQD1nF8XGw6Ofc2IPABB\nG2dRZ3b/XkHL7xZEj4Gk66xi1iifACH6LQRohWRQ3Gy+0oEaS2vtAN1G+bBg3QLc\npSqRiwptfWgfhkXTrDr2FkMEK+d6MSB1sjr6cBoR1vxUfBcerWUHGDO1N2caLhzc\nqLozkd1YflIuKXf8bph4qIYzVQKBgQDfeM/0KGI+X/aP4xo6mic69BCcPxGa+dff\nkrTYEKwqgz7ZkNFGnY4K5AJS6xvdoccVxsD0yqBbLQJrSqfp8IHIFbjAZVvoKX2s\nsI+m5f5cV+rCrkUv6174oYhtVcRIr2INJLDWulpJ5rPqbjutkom8hmTDoEyONIoN\nmrN1DgnSowKBgEx4nG7AQN8CslypedbLnaFBVrrSQcq8L72A4KK0kiPr2QaEXoo\nTAgTCDHY/47GUeYS9456R2sS0OTHy11Rm5hnNx7x/dpa3yDRriXytnj1BoRYCWg7\nzvssriFB05ymajhl+l+kHG1ey54uH1RgwGDQGJ+17PZseOxCrvxaVDZlAoGBAKoG\nmnoS68S3cLpDOSaTOPvyzFyE49k89JFZtZELBmMGHqCcPY3zvCnvFxGNjlMPjpCz\n+wWE0YLteOS3FZC5i5T3ae0AcW/veY4VfAapAOGzhot+2mc+NrEG/ezqD4CZ6AlF\n/EIz4RRPMl5QZpmGX8OPoUTyRqz/rnXxWU7bUn/vAoGAX96LjM+E8GoUHFBjxU9H\nlTXTYxR1Y6rzOQlKs0Vp3Vc0+LLzV7Eedg1kc5bVoVes9Et3zHEn48Gsv/R/qO+2\nLThEQZGyDrRhDdUcG1Wb0bqpSOz26vaN1Z5w+MP6iZQNslUG4ZfCQvInnbpTYVvo\n+UHxldGSsWzkpMuWR3r6WSE=\n-----END PRIVATE KEY-----\n",
+  "client_email": "kripto-bot@://gserviceaccount.com",
+  "client_id": "116674981434745196964",
+  "auth_uri": "https://google.com",
+  "token_uri": "https://googleapis.com",
+  "auth_provider_x509_cert_url": "https://googleapis.com",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kripto-bot%40://gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
+ANA_TABLO_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
+RAPOR_TABLO_ADI = "Kripto_Analiz_Raporu"  # Tarih kaldırıldı, sabit isim yapıldı
 
 symbols = {
     "BTC/USDT": "bitcoin",
@@ -18,31 +35,36 @@ symbols = {
 }
 
 print("=" * 115)
-print("     YEREL DOSYA BAĞLANTILI KRİPTO İŞLEM ANALİZ MOTORU")
+print("     SABİT BULUT TABLOSU ENTEGRASYONLU KRİPTO ANALİZ MOTORU")
 print("=" * 115)
-
-if not os.path.exists(excel_adi):
-    print(f"[HATA] Klasörde '{excel_adi}' adında bir dosya bulunamadı!")
-    exit()
-
-print(f"Klasördeki '{excel_adi}' dosyası okunuyor...\n")
+print("Ana tablodan güncel veriler çekiliyor...\n")
 
 try:
-    df_original = pd.read_excel(excel_adi, sheet_name="KriptoPortfoyVeritabani")
-    ek_veriler = []
+    scopes = ["https://googleapis.com", "https://googleapis.com"]
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+    client = gspread.authorize(creds)
+    
+    ana_sheet = client.open_by_key(ANA_TABLO_ID).worksheet("KriptoPortfoyVeritabani")
+    records = ana_sheet.get_all_records()
+    
+    if not records:
+        print("[HATA] Veritabanında işlenecek veri bulunamadı!")
+        exit()
 
-    for index, row in df_original.iterrows():
+    sonuclar = []
+
+    for index, row in enumerate(records):
         try:
-            parite = str(row['Coin']).strip()
-            yon = str(row['Yon']).lower().strip()
-            giriş_fiyatı = float(row['Giris_Fiyat'])
-            tp_fiyatı = float(row['Kar_Al'])
-            sl_fiyatı = float(row['Stop'])
-            
-            giriş_dt_ham = str(row['Acilis_Zamani']).strip()
-            if not giriş_dt_ham or parite == "nan":
+            parite = str(row.get('Coin', '')).strip()
+            yon = str(row.get('Yon', '')).lower().strip()
+            giriş_fiyatı = float(row.get('Giris_Fiyat', 0))
+            tp_fiyatı = float(row.get('Kar_Al', 0))
+            sl_fiyatı = float(row.get('Stop', 0))
+            giriş_dt_ham = str(row.get('Acilis_Zamani', '')).strip()
+
+            if not giriş_dt_ham or parite == "":
                 continue
-                
+
             if ".2026" in giriş_dt_ham or ".202" in giriş_dt_ham:
                 if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
                 giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%d.%m.%Y %H:%M")
@@ -55,20 +77,14 @@ try:
             
             coin_id = symbols.get(parite)
             if not coin_id:
-                ek_veriler.append({"Reel_Durum": "Bilinmeyen Parite", "Max_Kar_Zamani": "-", "Max_Kar_Fiyati": "-", "Max_Terste_Zamani": "-", "Max_Terste_Fiyati": "-"})
                 continue
 
-            # CoinGecko internet bağlantısı kontrolü
-            try:
-                data = cg.get_coin_market_chart_range_by_id(
-                    id=coin_id, vs_currency="usd", from_timestamp=start_timestamp, to_timestamp=end_timestamp
-                )
-                prices = data.get("prices", [])
-            except Exception:
-                prices = []
+            data = cg.get_coin_market_chart_range_by_id(
+                id=coin_id, vs_currency="usd", from_timestamp=start_timestamp, to_timestamp=end_timestamp
+            )
+            prices = data.get("prices", [])
 
             if not prices:
-                ek_veriler.append({"Reel_Durum": "Fiyat Alınamadı", "Max_Kar_Zamani": "-", "Max_Kar_Fiyati": "-", "Max_Terste_Zamani": "-", "Max_Terste_Fiyati": "-"})
                 continue
 
             df_fiyat = pd.DataFrame(prices, columns=["Zaman_Ms", "Fiyat"])
@@ -84,24 +100,51 @@ try:
                 en_kötü = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
                 durum = "Kapandı (Kar)" if df_fiyat["Fiyat"].min() <= tp_fiyatı else ("Kapandı (Zarar)" if df_fiyat["Fiyat"].max() >= sl_fiyatı else "Açık")
 
-            ek_veriler.append({
+            yeni_satir = dict(row)
+            yeni_satir.update({
                 "Reel_Durum": durum,
                 "Max_Kar_Zamani": en_iyi["Zaman"].strftime("%d.%m.%Y %H:%M"),
                 "Max_Kar_Fiyati": round(en_iyi["Fiyat"], 4),
                 "Max_Terste_Zamani": en_kötü["Zaman"].strftime("%d.%m.%Y %H:%M"),
                 "Max_Terste_Fiyati": round(en_kötü["Fiyat"], 4)
             })
-            print(f"[BAŞARILI] Satır {index+2} ({parite}) işlendi.")
-            time.sleep(1)
+            sonuclar.append(yeni_satir)
+            print(f"[İŞLENDİ] {parite} analizi tamamlandı.")
+            time.sleep(1.2)
 
-        except Exception as row_err:
-            ek_veriler.append({"Reel_Durum": "Hata", "Max_Kar_Zamani": "-", "Max_Kar_Fiyati": "-", "Max_Terste_Zamani": "-", "Max_Terste_Fiyati": "-"})
+        except Exception as e:
+            print(f"Satır atlandı: {e}")
 
-    df_ek = pd.DataFrame(ek_veriler)
-    df_final = pd.concat([df_original, df_ek], axis=1)
-    df_final.to_excel("islem_analiz_raporu.xlsx", index=False)
-    
-    print("\n[TAMAMLANDI] Bilgisayarınızdaki yerel veriler başarıyla işlendi ve 'islem_analiz_raporu.xlsx' dosyası oluşturuldu!")
+    # 🚀 REPOR DOSYASINI GÜNCELLEME VEYA SIFIRDAN OLUŞTURMA SÜRECİ
+    if sonuclar:
+        df_yeni = pd.DataFrame(sonuclar).fillna("-")
+        veri_listesi = [df_yeni.columns.values.tolist()] + df_yeni.values.tolist()
+        
+        try:
+            # Önce Drive'da bu isimde bir dosya var mı diye bakar
+            try:
+                rapor_gspread = client.open(RAPOR_TABLO_ADI)
+                rapor_sheet = rapor_gspread.get_worksheet(0)
+                rapor_sheet.clear()  # Eski verileri temizle
+                print(f"Mevcut '{RAPOR_TABLO_ADI}' bulundu, eski veriler temizleniyor...")
+            except gspread.exceptions.SpreadsheetNotFound:
+                # Yoksa sıfırdan oluşturur ve yetki verir
+                print(f"'{RAPOR_TABLO_ADI}' bulunamadı, sıfırdan oluşturuluyor...")
+                rapor_gspread = client.create(RAPOR_TABLO_ADI)
+                rapor_gspread.share("erhanvancin@gmail.com", perm_type="user", role="writer")
+                rapor_sheet = rapor_gspread.get_worksheet(0)
+                rapor_sheet.update_title("Analiz_Sonuclari")
+
+            # Güncel verileri basar
+            rapor_sheet.update(veri_listesi)
+            
+            print("\n" + "=" * 115)
+            print(f"[BAŞARILI] Rapor bulutta güncellendi! Her zaman bu dosyayı kontrol edebilirsiniz:")
+            print(f"E-Tablo Adı: {RAPOR_TABLO_ADI}")
+            print("=" * 115)
+
+        except Exception as e:
+            print(f"Drive rapor yazma hatası: {e}")
 
 except Exception as e:
-    print(f"Genel Okuma Hatası: {e}")
+    print(f"Sistem Hatası: {e}")

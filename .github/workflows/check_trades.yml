@@ -30,7 +30,6 @@ jobs:
           pip install requests pandas numpy gspread pytz pycoingecko openpyxl
 
       - name: Run trade check engine
-        # Adım zaman aşımı iş zaman aşımından kısa: takılırsa aşağıdaki uyarı adımı yine çalışır
         timeout-minutes: 7
         env:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
@@ -38,7 +37,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          python -c "import islemverisi; islemverisi.tabloyu_analiz_et()"
           python -u check_engine.py
+
 
       - name: Alert if bot failed
         if: failure()

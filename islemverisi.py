@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 
 cg = CoinGeckoAPI()
 
-# Google Cloud Service Account Bot Pasaportu
+# Google Cloud Service Account Bot Kimlik Bilgileri
 service_account_info = {
   "type": "service_account",
   "project_id": "western-avatar-442315-t7",
@@ -24,7 +24,7 @@ service_account_info = {
 }
 
 ANA_TABLO_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
-RAPOR_TABLO_ADI = "Kripto_Analiz_Raporu"  # Tarih kaldırıldı, sabit isim yapıldı
+RAPOR_TABLO_ADI = "Kripto_Analiz_Raporu"
 
 symbols = {
     "BTC/USDT": "bitcoin",
@@ -34,117 +34,116 @@ symbols = {
     "SOL/USDT": "solana"
 }
 
-print("=" * 115)
-print("     SABİT BULUT TABLOSU ENTEGRASYONLU KRİPTO ANALİZ MOTORU")
-print("=" * 115)
-print("Ana tablodan güncel veriler çekiliyor...\n")
+def tabloyu_analiz_et():
+    print("=" * 115)
+    print("     SABİT BULUT TABLOSU ENTEGRASYONLU KRİPTO ANALİZ MOTORU")
+    print("=" * 115)
+    print("Ana tablodan güncel veriler çekiliyor...\n")
 
-try:
-    scopes = ["https://googleapis.com", "https://googleapis.com"]
-    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
-    client = gspread.authorize(creds)
-    
-    ana_sheet = client.open_by_key(ANA_TABLO_ID).worksheet("KriptoPortfoyVeritabani")
-    records = ana_sheet.get_all_records()
-    
-    if not records:
-        print("[HATA] Veritabanında işlenecek veri bulunamadı!")
-        exit()
-
-    sonuclar = []
-
-    for index, row in enumerate(records):
-        try:
-            parite = str(row.get('Coin', '')).strip()
-            yon = str(row.get('Yon', '')).lower().strip()
-            giriş_fiyatı = float(row.get('Giris_Fiyat', 0))
-            tp_fiyatı = float(row.get('Kar_Al', 0))
-            sl_fiyatı = float(row.get('Stop', 0))
-            giriş_dt_ham = str(row.get('Acilis_Zamani', '')).strip()
-
-            if not giriş_dt_ham or parite == "":
-                continue
-
-            if ".2026" in giriş_dt_ham or ".202" in giriş_dt_ham:
-                if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
-                giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%d.%m.%Y %H:%M")
-            else:
-                if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
-                giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%Y-%m-%d %H:%M")
-
-            start_timestamp = int(time.mktime(giriş_dt.timetuple()))
-            end_timestamp = int(time.time())
-            
-            coin_id = symbols.get(parite)
-            if not coin_id:
-                continue
-
-            data = cg.get_coin_market_chart_range_by_id(
-                id=coin_id, vs_currency="usd", from_timestamp=start_timestamp, to_timestamp=end_timestamp
-            )
-            prices = data.get("prices", [])
-
-            if not prices:
-                continue
-
-            df_fiyat = pd.DataFrame(prices, columns=["Zaman_Ms", "Fiyat"])
-            df_fiyat["Zaman"] = pd.to_datetime(df_fiyat["Zaman_Ms"], unit="ms") + pd.Timedelta(hours=3)
-            df_fiyat["Fiyat"] = pd.to_numeric(df_fiyat["Fiyat"])
-
-            if yon == "long":
-                en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
-                en_kötü = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
-                durum = "Kapandı (Kar)" if df_fiyat["Fiyat"].max() >= tp_fiyatı else ("Kapandı (Zarar)" if df_fiyat["Fiyat"].min() <= sl_fiyatı else "Açık")
-            else:
-                en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
-                en_kötü = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
-                durum = "Kapandı (Kar)" if df_fiyat["Fiyat"].min() <= tp_fiyatı else ("Kapandı (Zarar)" if df_fiyat["Fiyat"].max() >= sl_fiyatı else "Açık")
-
-            yeni_satir = dict(row)
-            yeni_satir.update({
-                "Reel_Durum": durum,
-                "Max_Kar_Zamani": en_iyi["Zaman"].strftime("%d.%m.%Y %H:%M"),
-                "Max_Kar_Fiyati": round(en_iyi["Fiyat"], 4),
-                "Max_Terste_Zamani": en_kötü["Zaman"].strftime("%d.%m.%Y %H:%M"),
-                "Max_Terste_Fiyati": round(en_kötü["Fiyat"], 4)
-            })
-            sonuclar.append(yeni_satir)
-            print(f"[İŞLENDİ] {parite} analizi tamamlandı.")
-            time.sleep(1.2)
-
-        except Exception as e:
-            print(f"Satır atlandı: {e}")
-
-    # 🚀 REPOR DOSYASINI GÜNCELLEME VEYA SIFIRDAN OLUŞTURMA SÜRECİ
-    if sonuclar:
-        df_yeni = pd.DataFrame(sonuclar).fillna("-")
-        veri_listesi = [df_yeni.columns.values.tolist()] + df_yeni.values.tolist()
+    try:
+        scopes = ["https://googleapis.com", "https://googleapis.com"]
+        creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+        client = gspread.authorize(creds)
         
-        try:
-            # Önce Drive'da bu isimde bir dosya var mı diye bakar
+        ana_sheet = client.open_by_key(ANA_TABLO_ID).worksheet("KriptoPortfoyVeritabani")
+        records = ana_sheet.get_all_records()
+        
+        if not records:
+            print("[HATA] Veritabanında işlenecek veri bulunamadı!")
+            return False
+
+        sonuclar = []
+
+        for index, row in enumerate(records):
             try:
-                rapor_gspread = client.open(RAPOR_TABLO_ADI)
-                rapor_sheet = rapor_gspread.get_worksheet(0)
-                rapor_sheet.clear()  # Eski verileri temizle
-                print(f"Mevcut '{RAPOR_TABLO_ADI}' bulundu, eski veriler temizleniyor...")
-            except gspread.exceptions.SpreadsheetNotFound:
-                # Yoksa sıfırdan oluşturur ve yetki verir
-                print(f"'{RAPOR_TABLO_ADI}' bulunamadı, sıfırdan oluşturuluyor...")
-                rapor_gspread = client.create(RAPOR_TABLO_ADI)
-                rapor_gspread.share("erhanvancin@gmail.com", perm_type="user", role="writer")
-                rapor_sheet = rapor_gspread.get_worksheet(0)
-                rapor_sheet.update_title("Analiz_Sonuclari")
+                parite = str(row.get('Coin', '')).strip()
+                yon = str(row.get('Yon', '')).lower().strip()
+                giriş_fiyatı = float(row.get('Giris_Fiyat', 0))
+                tp_fiyatı = float(row.get('Kar_Al', 0))
+                sl_fiyatı = float(row.get('Stop', 0))
+                giriş_dt_ham = str(row.get('Acilis_Zamani', '')).strip()
 
-            # Güncel verileri basar
-            rapor_sheet.update(veri_listesi)
+                if not giriş_dt_ham or parite == "":
+                    continue
+
+                if ".2026" in giriş_dt_ham or ".202" in giriş_dt_ham:
+                    if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
+                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%d.%m.%Y %H:%M")
+                else:
+                    if len(giriş_dt_ham) > 16: giriş_dt_ham = giriş_dt_ham[:16]
+                    giriş_dt = datetime.datetime.strptime(giriş_dt_ham, "%Y-%m-%d %H:%M")
+
+                start_timestamp = int(time.mktime(giriş_dt.timetuple()))
+                end_timestamp = int(time.time())
+                
+                coin_id = symbols.get(parite)
+                if not coin_id:
+                    continue
+
+                data = cg.get_coin_market_chart_range_by_id(
+                    id=coin_id, vs_currency="usd", from_timestamp=start_timestamp, to_timestamp=end_timestamp
+                )
+                prices = data.get("prices", [])
+
+                if not prices:
+                    continue
+
+                df_fiyat = pd.DataFrame(prices, columns=["Zaman_Ms", "Fiyat"])
+                df_fiyat["Zaman"] = pd.to_datetime(df_fiyat["Zaman_Ms"], unit="ms") + pd.Timedelta(hours=3)
+                df_fiyat["Fiyat"] = pd.to_numeric(df_fiyat["Fiyat"])
+
+                if yon == "long":
+                    en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
+                    en_kötü = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
+                    durum = "Kapandı (Kar)" if df_fiyat["Fiyat"].max() >= tp_fiyatı else ("Kapandı (Zarar)" if df_fiyat["Fiyat"].min() <= sl_fiyatı else "Açık")
+                else:
+                    en_iyi = df_fiyat.loc[df_fiyat["Fiyat"].idxmin()]
+                    en_kötü = df_fiyat.loc[df_fiyat["Fiyat"].idxmax()]
+                    durum = "Kapandı (Kar)" if df_fiyat["Fiyat"].min() <= tp_fiyatı else ("Kapandı (Zarar)" if df_fiyat["Fiyat"].max() >= sl_fiyatı else "Açık")
+
+                yeni_satir = dict(row)
+                yeni_satir.update({
+                    "Reel_Durum": durum,
+                    "Max_Kar_Zamani": en_iyi["Zaman"].strftime("%d.%m.%Y %H:%M"),
+                    "Max_Kar_Fiyati": round(en_iyi["Fiyat"], 4),
+                    "Max_Terste_Zamani": en_kötü["Zaman"].strftime("%d.%m.%Y %H:%M"),
+                    "Max_Terste_Fiyati": round(en_kötü["Fiyat"], 4)
+                })
+                sonuclar.append(yeni_satir)
+                print(f"[İŞLENDİ] {parite} analizi tamamlandı.")
+                time.sleep(1.2)
+
+            except Exception as e:
+                print(f"Satır atlandı: {e}")
+
+        # 🚀 RAPOR DOSYASINI GÜNCELLEME VEYA SIFIRDAN OLUŞTURMA SÜRECİ
+        if sonuclar:
+            df_yeni = pd.DataFrame(sonuclar).fillna("-")
+            veri_listesi = [df_yeni.columns.values.tolist()] + df_yeni.values.tolist()
             
-            print("\n" + "=" * 115)
-            print(f"[BAŞARILI] Rapor bulutta güncellendi! Her zaman bu dosyayı kontrol edebilirsiniz:")
-            print(f"E-Tablo Adı: {RAPOR_TABLO_ADI}")
-            print("=" * 115)
+            try:
+                try:
+                    rapor_gspread = client.open(RAPOR_TABLO_ADI)
+                    rapor_sheet = rapor_gspread.get_worksheet(0)
+                    rapor_sheet.clear()
+                    print(f"Mevcut '{RAPOR_TABLO_ADI}' bulundu, eski veriler temizleniyor...")
+                except gspread.exceptions.SpreadsheetNotFound:
+                    print(f"'{RAPOR_TABLO_ADI}' bulunamadı, sıfırdan oluşturuluyor...")
+                    rapor_gspread = client.create(RAPOR_TABLO_ADI)
+                    rapor_gspread.share("erhanvancin@gmail.com", perm_type="user", role="writer")
+                    rapor_sheet = rapor_gspread.get_worksheet(0)
+                    rapor_sheet.update_title("Analiz_Sonuclari")
 
-        except Exception as e:
-            print(f"Drive rapor yazma hatası: {e}")
+                rapor_sheet.update(veri_listesi)
+                print(f"\n[BAŞARILI] Rapor bulutta güncellendi! Tablo Adı: {RAPOR_TABLO_ADI}")
+                return True
 
-except Exception as e:
-    print(f"Sistem Hatası: {e}")
+            except Exception as e:
+                print(f"Drive rapor yazma hatası: {e}")
+                return False
+    except Exception as e:
+        print(f"Sistem Hatası: {e}")
+        return False
+
+if __name__ == "__main__":
+    tabloyu_analiz_et()

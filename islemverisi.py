@@ -1,7 +1,7 @@
 import datetime
 import time
 import json
-import os # EKLENDİ
+import os
 import pandas as pd
 from pycoingecko import CoinGeckoAPI
 import gspread
@@ -9,11 +9,9 @@ from google.oauth2.service_account import Credentials
 
 cg = CoinGeckoAPI()
 
-# UYARI: Eski uzun "service_account_info = { ... }" bloğunu tamamen sildik.
-# Artık bu bilgiyi GitHub Secrets üzerinden (GCP_SERVICE_ACCOUNT_JSON) alacak.
-
 ANA_TABLO_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
-RAPOR_TABLO_ADI = "Kripto_Analiz_Raporu"
+# Yeni oluşturduğunuz rapor tablosunun ID'si eklendi
+RAPOR_TABLO_ID = "1BCTDr3SXSZDHgYjVZObAsALQdem5BCIaKMzb157ntsY"
 
 symbols = {
     "BTC/USDT": "bitcoin",
@@ -30,7 +28,7 @@ def tabloyu_analiz_et():
     print("Ana tablodan güncel veriler çekiliyor...\n")
 
     try:
-        # 1. Ortam değişkeninden JSON verisini çekiyoruz
+        # 1. GitHub Secrets üzerinden gelen JSON verisini okuma
         gcp_json_str = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
         if not gcp_json_str:
             print("[HATA] GCP_SERVICE_ACCOUNT_JSON ortam değişkeni bulunamadı!")
@@ -38,7 +36,7 @@ def tabloyu_analiz_et():
             
         service_account_info = json.loads(gcp_json_str)
 
-        # 2. Hatalı olan scopes tanımları düzeltildi
+        # 2. Hatalı olan scopes tanımlarını standart gspread yetkileriyle değiştirme
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
@@ -53,8 +51,6 @@ def tabloyu_analiz_et():
         if not records:
             print("[HATA] Veritabanında işlenecek veri bulunamadı!")
             return False
-
-        # ... (Kodun geri kalan 'sonuclar = []' ve altındaki kısımları değiştirmeden aynı bırakabilirsiniz) ...
 
         sonuclar = []
 
@@ -125,17 +121,14 @@ def tabloyu_analiz_et():
             veri_listesi = [df_yeni.columns.values.tolist()] + df_yeni.values.tolist()
             
             try:
-                try:
-                    rapor_gspread = client.open(RAPOR_TABLO_ADI)
-                    rapor_sheet = rapor_gspread.get_worksheet(0)
-                    rapor_sheet.clear()
-                except gspread.exceptions.SpreadsheetNotFound:
-                    rapor_gspread = client.create(RAPOR_TABLO_ADI)
-                    rapor_gspread.share("erhanvancin@gmail.com", perm_type="user", role="writer")
-                    rapor_sheet = rapor_gspread.get_worksheet(0)
-                    rapor_sheet.update_title("Analiz_Sonuclari")
-
+                # 3. Create mantığı kaldırıldı, tabloyu doğrudan yeni ID ile açıyoruz
+                rapor_gspread = client.open_by_key(RAPOR_TABLO_ID)
+                rapor_sheet = rapor_gspread.get_worksheet(0)
+                
+                rapor_sheet.clear()
                 rapor_sheet.update(veri_listesi)
+                rapor_sheet.update_title("Analiz_Sonuclari")
+                
                 print(f"\n[BAŞARILI] Rapor bulutta güncellendi!")
                 return True
             except Exception as e:

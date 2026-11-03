@@ -99,7 +99,7 @@ def tr_zaman():
 def hafta_sonu_mu():
     simdi = tr_zaman()
     gun, saat = simdi.weekday(), simdi.hour
-    return (gun == 4 and saat >= 23) or (gun in) or (gun == 0 and saat < 3)
+    return (gun == 4 and saat >= 23) or (gun in [5, 6]) or (gun == 0 and saat < 3)
 
 
 def aktif_min_puan_esigi_getir():

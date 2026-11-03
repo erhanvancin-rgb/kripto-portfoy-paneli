@@ -1062,18 +1062,13 @@ def motoru_calistir():
 
 
     if __name__ == "__main__":
-    # 🚀 ÖNCE KRİPTO ANALİZ RAPORUNU ÇALIŞTIR (Ana motor kapansa bile bu hep çalışır)
     try:
         print("\n" + "-"*60)
         print("Otomatik Tetikleme: Kripto Analiz Raporu Motoru Başlatılıyor...")
         print("-"*60)
-        
         import islemverisi
         islemverisi.tabloyu_analiz_et()
-        
         print("\n[SİSTEM] Kripto Analiz Raporu bulutta başarıyla güncellendi.\n")
     except Exception as e:
         print(f"\n[SİSTEM HATASI] Analiz motoru otomatik çalışırken hata oluştu: {e}\n")
-
-    # 📊 SONRA ANA TRADE MOTORUNU ÇALIŞTIR
     motoru_calistir()

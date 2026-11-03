@@ -1068,6 +1068,7 @@ def motoru_calistir():
     import islemverisi
     islemverisi.tabloyu_analiz_et()
     print("\n[SİSTEM] Kripto Analiz Raporu bulutta başarıyla güncellendi.\n")
-      except Exception as e:
-        print(f"\n[SİSTEM HATASI] Analiz motoru otomatik çalışırken hata oluştu: {e}\n")
-    motoru_calistir()
+except Exception as e:
+    print(f"\n[SİSTEM HATASI] Analiz motoru otomatik çalışırken hata oluştu: {e}\n")
+
+motoru_calistir()

@@ -1,6 +1,7 @@
 import datetime
 import time
 import json
+import os # EKLENDİ
 import pandas as pd
 from pycoingecko import CoinGeckoAPI
 import gspread
@@ -8,47 +9,8 @@ from google.oauth2.service_account import Credentials
 
 cg = CoinGeckoAPI()
 
-# Google Cloud Service Account Şifreleme Blok Biçimi Tam Onarıldı
-service_account_info = {
-  "type": "service_account",
-  "project_id": "western-avatar-442315-t7",
-  "private_key_id": "0a61ae2ee745efae2cece2cf0bb96cd8dc8f23d9",
-  "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDWZx+lZBNeaOPJ
-YMxQtqtdygNZd3t5c1BjtY5TO7/xKpjcvdyiSAA2PVMtS5djOsHCNCAeEZBvnKRn
-nIVTVfWiBf0fcKROvFZHFBceX+TNp08/gljP+KRE7dcEM2eiRAHJiysDjgmKHWJN
-t1Z9zo560rnr2+QbfDQSih4zekOKxc9lsZXSD/RXyFl04RNbNLPYyAK1OnEa8nCe
-bvgvGCb5jLgsJJ9zmVGtKgj6/ufM2tsdrwEUQ+S7YhPNfI9bsv92dd7fAfwewr81
-7l6beQqw8puOxMLDPY9zH0QFeU+BQzfKxOHWEE31Z7ZTTq4TsD1fR4xtkqXu1XZP
-N3DXi2kfAgMBAAECggEAAaxFKXhepQ6Sx5iISbMLnBtQ5Q8UxNOEQRBkVjkVIRCb
-0FFV4ovAObmX7nMtzzkJTcrVsstq0RkvKwJTVKDR0Mme9vKTHF84DEgJ9HUI/Q9I
-76W3Cm1w+rEhPkRpQfgi7fXECF3OGDKi6zOwtKh+DPUv+ZCihEfBFVCU5W4keuFX
-HkAE032KARszmqz/tAbD30Ych9IpsE7aYil5peFobQsMhQ8q0lc8bm3gFwOMpr8D
-R+sTX6BPxfLp3NY1lSiBzh8rPbvHSVPoUq+8hweesFAVnDXAuv7gPleLGT47EBrU
-ivpQ8ARjOYVeoCXLGqauhw0GIQAAv9DBdMlef7kRYQKBgQD1nF8XGw6Ofc2IPABB
-nG2dRZ3b/XkHL7xZEj4Gk66xi1iifACH6LQRohWRQ3Gy+0oEaS2vtAN1G+bBg3QLc
-pSqRiwptfWgfhkXTrDr2FkMEK+d6MSB1sjr6cBoR1vxUfBcerWUHGDO1N2caLhzc
-qLozkd1YflIuKXf8bph4qIYzVQKBgQDfeM/0KGI+X/aP4xo6mic69BCcPxGa+dff
-krTYEKwqgz7ZkNFGnY4K5AJS6xvdoccVxsD0yqBbLQJrSqfp8IHIFbjAZVvoKX2s
-sI+m5f5cV+rCrkUv6174oYhtVcRIr2INJLDWulpJ5rPqbjutkom8hmTDoEyONIoN
-mrN1DgnSowKBgEx4nG7AQN8CslypedbLnaFBVrrSQcq8L72A4KK0kiPr2QaEXoo
-TAgTCDHY/47GUeYS9456R2sS0OTHy11Rm5hnNx7x/dpa3yDRriXytnj1BoRYCWg7
-zvssriFB05ymajhl+l+kHG1ey54uH1RgwGDQGJ+17PZseOxCrvxaVDZlAoGBAKoG
-mnoS68S3cLDOSaTOPvyzFyE49k89JFZtZELBmMGHqCcPY3zvCnvFxGNjlMPjpCz
-+wWE0YLteOS3FZC5i5T3ae0AcW/veY4VfAapAOGzhot+2mc+NrEG/ezqD4CZ6AlF
-/EIz4RRPMl5QZpmGX8OPoUTyRqz/rnXxWU7bUn/vAoGAX96LjM+E8GoUHFBjxU9H
-lTXTYxR1Y6rzOQlKs0Vp3Vc0+LLzV7Eedg1kc5bVoVes9Et3zHEn48Gsv/R/qO+2
-LThEQZGyDrRhDdUcG1Wb0bqpSOz26vaN1Z5w+MP6iZQNslUG4ZfCQvInnbpTYVvo
-+UHxldGSsWzkpMuWR3r6WSE=
------END PRIVATE KEY-----""",
-  "client_email": "kripto-bot@://gserviceaccount.com",
-  "client_id": "116674981434745196964",
-  "auth_uri": "https://google.com",
-  "token_uri": "https://googleapis.com",
-  "auth_provider_x509_cert_url": "https://googleapis.com",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kripto-bot%40://gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
+# UYARI: Eski uzun "service_account_info = { ... }" bloğunu tamamen sildik.
+# Artık bu bilgiyi GitHub Secrets üzerinden (GCP_SERVICE_ACCOUNT_JSON) alacak.
 
 ANA_TABLO_ID = "1likk2RqtqxPxj7nSNDroxT6GQGrQXJmfx-SoyHswgyo"
 RAPOR_TABLO_ADI = "Kripto_Analiz_Raporu"
@@ -68,7 +30,20 @@ def tabloyu_analiz_et():
     print("Ana tablodan güncel veriler çekiliyor...\n")
 
     try:
-        scopes = ["https://googleapis.com", "https://googleapis.com"]
+        # 1. Ortam değişkeninden JSON verisini çekiyoruz
+        gcp_json_str = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
+        if not gcp_json_str:
+            print("[HATA] GCP_SERVICE_ACCOUNT_JSON ortam değişkeni bulunamadı!")
+            return False
+            
+        service_account_info = json.loads(gcp_json_str)
+
+        # 2. Hatalı olan scopes tanımları düzeltildi
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         client = gspread.authorize(creds)
         
@@ -78,6 +53,8 @@ def tabloyu_analiz_et():
         if not records:
             print("[HATA] Veritabanında işlenecek veri bulunamadı!")
             return False
+
+        # ... (Kodun geri kalan 'sonuclar = []' ve altındaki kısımları değiştirmeden aynı bırakabilirsiniz) ...
 
         sonuclar = []
 

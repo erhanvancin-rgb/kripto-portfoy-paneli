@@ -72,7 +72,7 @@ def _mobil_mi():
 
 IS_MOBIL = _mobil_mi()
 
-# --- OTOMATİK YENİLEME (60 SANİYE) ---
+# --- OTOMATİK YENİLEME (120 SANİYE) ---
 # İşlem emri kilidi açıkken (kullanıcı işlem yaparken) otomatik yenileme durdurulur.
 if not st.session_state.get("islem_emri_kilit_acik", False):
     st_autorefresh(interval=60000, key="kripto_panel_otomatik_yenileme")
@@ -869,7 +869,7 @@ def hafta_sonu_mu():
     return False
 
 def aktif_min_puan_esigi_getir():
-    # Başlangıç eşiği hafta içi 50, hafta sonu (sığ piyasa) 55 olarak güncellendi.
+    # Hafta sonu eşiği 55, hafta içi 50
     return 55.0 if hafta_sonu_mu() else 50.0
 
 def hafizayi_oku():
@@ -1867,7 +1867,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
-mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
+mod_bilgi_metni = "Hafta Sonu Modu (Min Eşik: 55)" if hafta_sonu_mu() else "Hafta İçi Normal Mod (Min Eşik: 50)"
 st.caption(f"Oransal Matris Omurgası + EMA, RSI Mıknatısı & Fib Katkıları | ⚙️ **{mod_bilgi_metni}**")
 
 if "kasa_islem_acik" not in st.session_state:

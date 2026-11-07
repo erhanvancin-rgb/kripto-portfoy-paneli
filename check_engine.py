@@ -1,14 +1,6 @@
 """
-Bağımsız Trade Kontrol ve Mail Motoru (GitHub Actions - her 5 dakikada bir)
-
-Mail gönderen TEK kaynak burasıdır (panel_v2.py'de mail kapalıdır).
-
-Mail koşulları:
-  1) 5. Aşama sinyali : hafta içi 70,00 <= puan < 73,75 | hafta sonu 75,00 <= puan < 78,75
-  2) 6. Aşama sinyali : hafta içi puan >= 73,75         | hafta sonu puan >= 78,75
-     (her coin ve TOTAL için; aralığa girince 1 kez, aralıktan çıkınca sıfırlanır,
-      aynı coin+aşama için en az SINYAL_BEKLEME_DK dakika arayla)
-  3) Otomatik kapanış : stop veya kâr hedefi (panel veya bu motor kapatsa da, işlem başına 1 kez)
+Trade kontrol motoru: otomatik kapanışlar (stop / kâr hedefi), periyodik sinyal mailleri,
+stok/kasa bakiye güncellemeleri ve strateji değerlendirmesi.
 
 Bildirim kanalları: Telegram (öncelikli) ve Gmail. Biri başarılıysa olay 'gönderildi' sayılır.
 Mail durumu Google Sheets'te "MailDurumu" sayfasında tutulur. Mail yalnızca
@@ -47,49 +39,20 @@ def satir_kaldiraci(row):
     """İşlem satırının kaldıracı (Kaldirac kolonu). Kayıt yoksa/geçersizse varsayılan KALDIRAC (panelle aynı)."""
     try:
         v = float(row.get("Kaldirac", 0) or 0)
+        return v if v > 0 else KALDIRAC
     except Exception:
-        v = 0.0
-    return v if v >= 1 else float(KALDIRAC)
+        return KALDIRAC
 
 
-def giris_komisyonu(miktar, kaldirac=None):
-    k = float(kaldirac) if kaldirac else float(KALDIRAC)
-    return float(miktar) * k * KOMISYON_TAKER
-
-
-def cikis_komisyonu(miktar, hedef_mi, kaldirac=None):
-    """Hedef (limit emir) maker, stop (piyasa emri) taker öder."""
-    k = float(kaldirac) if kaldirac else float(KALDIRAC)
-    return float(miktar) * k * (KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER)
-
-
-BASLANGIC_BAKIYE = 0.0
-SINYAL_BEKLEME_DK = 60       # aynı coin + aynı aşama için iki mail arası minimum süre
-KAPANIS_PENCERESI_SAAT = 24  # bu süreden eski kapanışlar için mail atılmaz
-ZAMAN_BUTCESI_SN = 180       # sinyal taraması bu süreden sonra bırakılır (kapanış mailleri öncelikli)
-_T0 = time.time()
-
-COINLER = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
-GMAIL_ADRES = "erhanvancin@gmail.com"
-
-
-# --- DURUM (KAPALI/AÇIK) KONTROLÜ ---
-# Türkçe harf farklarından (ı/i, â/a, İ/i) ve pandas/pyarrow regex davranışından bağımsız çalışır.
-# Örn. "Kısmi Kapandı (Kâr)" ve "Kapandi (Kar)" aynı şekilde kapalı sayılır.
-_TR_ASCII = str.maketrans({
-    "ı": "i", "İ": "i", "I": "i", "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
-    "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
-})
-
-
-def durum_kapali_mi(durum):
-    t = str(durum).translate(_TR_ASCII).lower()
-    return any(k in t for k in ("kapandi", "kar", "zarar", "kismi"))
-
-
-def durum_kapali_maskesi(seri):
-    return seri.map(durum_kapali_mi).astype(bool)
-
+def _temizle_sayi(val):
+    if val is None:
+        return 0.0
+    s = str(val).strip().replace("$", "").replace(",", ".")
+    s = re.sub(r"[^\d.\-]", "", s)
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
 
 
 def tr_zaman():
@@ -97,549 +60,291 @@ def tr_zaman():
 
 
 def hafta_sonu_mu():
-    simdi = tr_zaman()
-    gun, saat = simdi.weekday(), simdi.hour
-    return (gun == 4 and saat >= 23) or (gun in [5, 6]) or (gun == 0 and saat < 3)
+    return tr_zaman().weekday() >= 5
 
 
-def aktif_min_puan_esigi_getir():
-    return 60.0 if hafta_sonu_mu() else 55.0
+def bakiye_hesapla(df_islem):
+    """Güncel kasa: Başlangıç 1000 + tüm kapatılmış işlemlerin Net_Kar_Zarar toplamı."""
+    bakiye = 1000.0
+    if df_islem is not None and not df_islem.empty:
+        for _, r in df_islem.iterrows():
+            durum = str(r.get("Durum", ""))
+            if "Kapandi" in durum or "Kapatildi" in durum or "Kar" in durum or "Zarar" in durum:
+                bakiye += _temizle_sayi(r.get("Net_Kar_Zarar", 0))
+    return round(bakiye, 2)
 
 
-# ----------------------------------------------------------------------------
-# MAIL
-# ----------------------------------------------------------------------------
-_MAIL_ENGELLI = False  # Bu çalıştırmada tüm denemeler başarısız olduysa kalan mailler sonraki tura bırakılır
+def giris_komisyonu(miktar, lev):
+    return miktar * lev * KOMISYON_TAKER
 
 
-def gmail_bildirim_gonder(konu, icerik_html, hizli=False):
-    """Başarılıysa True döner. Bağlantı kopmalarına karşı 3 deneme (465 SSL, 587 STARTTLS, 465 SSL).
-    hizli=True: tek deneme, kısa zaman aşımı (Telegram zaten gittiyse mail ek olarak denenir)."""
-    global _MAIL_ENGELLI
-    if _MAIL_ENGELLI:
-        print(f"ATLANDI ({konu}): bu turda Gmail bağlantısı kurulamadı, sonraki turda denenecek.")
-        return False
+def cikis_komisyonu(miktar, hedef_mi, lev):
+    oran = KOMISYON_MAKER if hedef_mi else KOMISYON_TAKER
+    return miktar * lev * oran
 
-    # Uygulama şifresi Google'da "abcd efgh ijkl mnop" gibi boşluklu gösterilir; boşluklar temizlenir.
-    sifre = "".join(os.environ.get("GMAIL_PASSWORD", "").split())
-    if not sifre:
-        print(f"HATA ({konu}): GMAIL_PASSWORD tanımlı değil (GitHub Secret kontrol edin).")
-        return False
 
-    msg = MIMEMultipart()
-    msg["From"] = GMAIL_ADRES
-    msg["To"] = GMAIL_ADRES
-    msg["Subject"] = konu
-    msg.attach(MIMEText(icerik_html, "html", "utf-8"))
-    govde = msg.as_string()
+def fiyat_cek_binance(coin):
+    sym = coin.replace("/", "")
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return float(r.json()["price"])
+    except Exception:
+        pass
+    return None
 
-    denemeler = [("ssl", 465), ("starttls", 587), ("ssl", 465)]
-    zaman_asimi = 30
-    if hizli:
-        denemeler, zaman_asimi = denemeler[:1], 12
-    for no, (mod, port) in enumerate(denemeler, start=1):
-        server = None
+
+def kline_cek_binance(coin, interval="1m", limit=100):
+    sym = coin.replace("/", "")
+    url = f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            arr = r.json()
+            if isinstance(arr, list) and len(arr) > 0:
+                cols = ["OpenTime", "Open", "High", "Low", "Close", "Volume",
+                        "CloseTime", "QuoteAssetVolume", "NumberOfTrades",
+                        "TakerBuyBase", "TakerBuyQuote", "Ignore"]
+                df = pd.DataFrame(arr, columns=cols)
+                for c in ["Open", "High", "Low", "Close"]:
+                    df[c] = df[c].astype(float)
+                df["timestamp"] = df["OpenTime"]
+                return df
+    except Exception:
+        pass
+    return None
+
+
+# Global kline önbelleği (aynı turda aynı coin/aralık için tekrar istek atılmaz)
+_KLINE_ONBELLEK = {}
+
+
+def kline_cek_binance_aralik(coin, interval, bas_ms, bit_ms):
+    """Belirli zaman aralığı için kline çek (önbellekli)."""
+    key = (coin, interval, int(bas_ms), int(bit_ms))
+    if key in _KLINE_ONBELLEK:
+        return _KLINE_ONBELLEK[key]
+
+    sym = coin.replace("/", "")
+    tum = []
+    curr_bas = int(bas_ms)
+    bit = int(bit_ms)
+
+    for _ in range(10):  # max 10 sayfalama
+        if curr_bas >= bit:
+            break
+        url = f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&startTime={curr_bas}&endTime={bit}&limit=1000"
         try:
-            if mod == "ssl":
-                server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=zaman_asimi)
-            else:
-                server = smtplib.SMTP("smtp.gmail.com", port, timeout=zaman_asimi)
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-            server.login(GMAIL_ADRES, sifre)
-            server.sendmail(GMAIL_ADRES, [GMAIL_ADRES], govde)
-            print(f"E-posta gönderildi ({mod}:{port}, deneme {no}): {konu}")
-            return True
-        except smtplib.SMTPAuthenticationError as e:
-            print(f"HATA ({konu}): Gmail kimlik doğrulama başarısız. Uygulama şifresini kontrol edin: {e}")
-            _MAIL_ENGELLI = True
-            return False
-        except Exception as e:
-            print(f"Deneme {no}/{len(denemeler)} başarısız ({mod}:{port}) ({konu}): {type(e).__name__}: {e}")
-            if no < len(denemeler):
-                time.sleep(4 * no)
-        finally:
-            if server is not None:
-                try:
-                    server.quit()
-                except Exception:
-                    pass
+            r = requests.get(url, timeout=10)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            if not isinstance(data, list) or len(data) == 0:
+                break
+            tum.extend(data)
+            son_zaman = data[-1][0]
+            if son_zaman <= curr_bas:
+                break
+            curr_bas = son_zaman + 1
+            if len(data) < 1000:
+                break
+        except Exception:
+            break
 
-    print(f"HATA ({konu}): tüm denemeler başarısız; sonraki turda yeniden denenecek.")
-    _MAIL_ENGELLI = True
-    return False
+    if not tum:
+        _KLINE_ONBELLEK[key] = None
+        return None
 
-
-def html_to_metin(icerik_html):
-    metin = re.sub(r"</(p|h\d|div)>|<br\s*/?>", "\n", icerik_html)
-    metin = re.sub(r"<[^>]+>", "", metin)
-    return html.unescape(metin).strip()
+    cols = ["OpenTime", "Open", "High", "Low", "Close", "Volume",
+            "CloseTime", "QuoteAssetVolume", "NumberOfTrades",
+            "TakerBuyBase", "TakerBuyQuote", "Ignore"]
+    df = pd.DataFrame(tum, columns=cols)
+    for c in ["Open", "High", "Low", "Close"]:
+        df[c] = df[c].astype(float)
+    df["timestamp"] = df["OpenTime"]
+    _KLINE_ONBELLEK[key] = df
+    return df
 
 
+def sheets_baglan():
+    try:
+        gc = gspread.service_account(filename="credentials.py") if os.path.exists("credentials.py") else gspread.service_account()
+        return gc.open(GOOGLE_SHEET_DOSYA)
+    except Exception as e:
+        print("Google Sheets bağlantı hatası:", e)
+        return None
+
+
+def islem_gecmisi_getir():
+    sh = sheets_baglan()
+    if not sh:
+        return None
+    try:
+        ws = sh.worksheet("IslemGecmisi")
+        data = ws.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        print("IslemGecmisi okunamadı:", e)
+        return None
+
+
+def dataframe_guncelle_gsheets(df):
+    sh = sheets_baglan()
+    if not sh:
+        return False
+    try:
+        ws = sh.worksheet("IslemGecmisi")
+        ws.clear()
+        ws.update([df.columns.values.tolist()] + df.values.tolist())
+        return True
+    except Exception as e:
+        print("IslemGecmisi güncellenemedi:", e)
+        return False
+
+
+def kasa_defterine_ekle(islem_id, aciklama, tutar):
+    sh = sheets_baglan()
+    if not sh:
+        return False
+    try:
+        ws = sh.worksheet("KasaDefteri")
+        ws.append_row([tr_zaman().strftime("%d.%m.%Y %H:%M"), f"İşlem #{islem_id} - {aciklama}", float(tutar)])
+        return True
+    except Exception as e:
+        print("KasaDefteri ekleme hatası:", e)
+        return False
+
+
+# ----------------------------------------------------------------------------
+# BİLDİRİM KANALLARI (Telegram ve Gmail)
+# ----------------------------------------------------------------------------
 def telegram_bildirim_gonder(konu, icerik_html):
-    """Başarılıysa True döner. Token/chat id tanımlı değilse False döner (sessizce)."""
+    """Telegram üzerinden mesaj gönderir. Başarılıysa True döner."""
     token = "".join(os.environ.get("TELEGRAM_BOT_TOKEN", "").split())
     chat_id = "".join(os.environ.get("TELEGRAM_CHAT_ID", "").split())
     if not token or not chat_id:
         return False
 
-    metin = f"{konu}\n\n{html_to_metin(icerik_html)}"[:4000]
+    metin = f"<b>{konu}</b>\n\n{icerik_html}"
+    # Basit HTML temizliği / Telegram uyumu
+    metin = metin.replace("<h3>", "<b>").replace("</h3>", "</b>")
+    metin = metin.replace("<p>", "").replace("</p>", "\n")
+    metin = re.sub(r"<br\s*/?>", "\n", metin)
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": metin,
+        "parse_html": True,
+        "parse_mode": "HTML"
+    }
+
     for no in range(1, 4):
         try:
-            r = requests.post(url, data={"chat_id": chat_id, "text": metin}, timeout=15)
-            if r.status_code == 200 and r.json().get("ok"):
+            r = requests.post(url, json=payload, timeout=10)
+            if r.status_code == 200:
                 print(f"Telegram bildirimi gönderildi (deneme {no}): {konu}")
                 return True
-            if r.status_code in (400, 401, 403, 404):
+            else:
                 print(f"Telegram HATA ({konu}): HTTP {r.status_code} {r.text[:150]}")
-                return False
-            print(f"Telegram deneme {no}/3 başarısız ({konu}): HTTP {r.status_code}")
         except Exception as e:
             print(f"Telegram deneme {no}/3 başarısız ({konu}): {type(e).__name__}: {e}")
-        if no < 3:
-            time.sleep(2 * no)
+        time.sleep(2)
+    return False
+
+
+def gmail_bildirim_gonder(konu, icerik_html):
+    """Gmail üzerinden e-posta gönderir. Başarılıysa True döner."""
+    g_adres = os.environ.get("GMAIL_ADRES", "").strip()
+    g_sifre = os.environ.get("GMAIL_SIFRE", "").strip()
+    if not g_adres or not g_sifre:
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = konu
+    msg["From"] = g_adres
+    msg["To"] = g_adres
+    msg.attach(MIMEText(icerik_html, "html", "utf-8"))
+
+    for no in range(1, 4):
+        try:
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
+            server.starttls()
+            server.login(g_adres, g_sifre)
+            server.sendmail(g_adres, [g_adres], msg.as_string())
+            server.quit()
+            print(f"Gmail bildirimi gönderildi: {konu}")
+            return True
+        except Exception as e:
+            print(f"Gmail deneme {no}/3 başarısız: {e}")
+        time.sleep(2)
     return False
 
 
 def bildirim_gonder(konu, icerik_html):
-    """Bildirimleri yalnızca Telegram kanalı üzerinden gönderir."""
-    return telegram_bildirim_gonder(konu, icerik_html)
-
-
-# ----------------------------------------------------------------------------
-# FİYAT / MUM VERİSİ  (başarısızsa None / boş döner; sahte "baz fiyat" KULLANILMAZ)
-# ----------------------------------------------------------------------------
-def fiyat_cek_binance(coin_symbol):
-    sym = coin_symbol.replace("/", "")
-    for ep in (
-        f"https://data-api.binance.vision/api/v3/ticker/price?symbol={sym}",
-        f"https://api.binance.com/api/v3/ticker/price?symbol={sym}",
-    ):
-        try:
-            r = requests.get(ep, timeout=5)
-            if r.status_code == 200:
-                val = float(r.json()["price"])
-                if val > 0:
-                    return val
-        except Exception:
-            continue
-    return None
-
-
-def kline_cek_binance(coin_symbol, interval, limit):
-    sym = coin_symbol.replace("/", "")
-    for ep in (
-        f"https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
-        f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
-    ):
-        try:
-            r = requests.get(ep, timeout=8)
-            if r.status_code == 200:
-                df = pd.DataFrame(
-                    r.json(),
-                    columns=["timestamp", "Open", "High", "Low", "Close", "Volume",
-                             "Close_Time", "QAV", "Num_Trades", "Taker_BBAV", "Taker_BQAV", "Ignore"],
-                )
-                for col in ["Open", "High", "Low", "Close"]:
-                    df[col] = df[col].astype(float)
-                return df[["timestamp", "Open", "High", "Low", "Close"]]
-        except Exception:
-            continue
-    return pd.DataFrame()
-
-
-# ----------------------------------------------------------------------------
-# MATRİS PUANI (hesap matris_motoru.py içinde; panel de aynı dosyayı kullanır)
-# ----------------------------------------------------------------------------
-_KLINE_ONBELLEK = {}
-
-
-def _kline_ortak(coin, aralik):
-    """Aynı çalıştırmada aynı coin/aralık için tek istek: limit = o aralıktaki en uzun pencere + ısınma mumu.
-    Coin puanları ve TOTAL (5 coin endeksi) aynı veriyi paylaşır."""
-    limit = max(n for _e, a_, n, _w in matris_motoru.DILIMLER if a_ == aralik) + matris_motoru.ISITMA_MUM
-    anahtar = (coin, aralik)
-    if anahtar not in _KLINE_ONBELLEK:
-        _KLINE_ONBELLEK[anahtar] = kline_cek_binance(coin, aralik, limit)
-    return _KLINE_ONBELLEK[anahtar]
-
-
-def matris_puani_hesapla(sembol):
-    """(nihai_puan, yon) döner. Veri eksikse None döner (sahte sinyal üretmemek için).
-    TOTAL: BTC değil, 5 coinin piyasa değeri ağırlıklı endeksi (Σ arz × fiyat) puanlanır."""
-    pencereler = []
-    for etiket, aralik, mum_sayisi, agirlik in matris_motoru.DILIMLER:
-        if sembol == "TOTAL":
-            df = matris_motoru.birlesik_endeks({c: _kline_ortak(c, aralik) for c in COINLER})
-        else:
-            df = _kline_ortak(sembol, aralik)
-        if df is None or df.empty or len(df) < 10:
-            return None
-        pencereler.append((etiket, df.tail(mum_sayisi + matris_motoru.ISITMA_MUM), agirlik, mum_sayisi))
-
-    sonuc = matris_motoru.matris_hesapla(pencereler)
-    nihai_long, nihai_short = sonuc["nihai_long"], sonuc["nihai_short"]
-    esik = aktif_min_puan_esigi_getir()
-    if nihai_long >= esik:
-        return nihai_long, "Long"
-    if nihai_short >= esik:
-        return nihai_short, "Short"
-    return round(max(nihai_long, nihai_short), 2), ("Long" if nihai_long >= nihai_short else "Short")
-
-
-def asama_durumu(puan):
-    """(5. aşama mı, 6. aşama mı)"""
-    if not hafta_sonu_mu():
-        return (70.00 <= puan < 73.75), (puan >= 73.75)
-    return (75.00 <= puan < 78.75), (puan >= 78.75)
-
-
-# ----------------------------------------------------------------------------
-# GOOGLE SHEETS
-# ----------------------------------------------------------------------------
-_spreadsheet = None
-
-
-_spreadsheet = None
-
-def spreadsheet_ac():
-    global _spreadsheet
-    if _spreadsheet is not None:
-        return _spreadsheet
-    try:
-        if "GCP_SERVICE_ACCOUNT_JSON" in os.environ:
-            raw_json = os.environ["GCP_SERVICE_ACCOUNT_JSON"].strip()
-            sec = json.loads(raw_json)
-            if "private_key" in sec:
-                sec["private_key"] = sec["private_key"].replace("\\n", "\n")
-            client = gspread.service_account_from_dict(sec)
-        else:
-            client = gspread.service_account(filename="credentials.json")
-        _spreadsheet = client.open(GOOGLE_SHEET_DOSYA)
-        return _spreadsheet
-    except Exception as e:
-        print(f"GSheets bağlantı hatası (spreadsheet_ac): {type(e).__name__} - {e}")
-        return None
-
-def google_sheets_baglan(sayfa_adi):
-    ss = spreadsheet_ac()
-    if ss is None:
-        return None
-    try:
-        return ss.worksheet(sayfa_adi)
-    except Exception as e:
-        print(f"GSheets sayfa hatası ({sayfa_adi}): {type(e).__name__} - {e}")
-        return None
-
-
-def google_sheets_baglan(sayfa_adi):
-    ss = spreadsheet_ac()
-    if ss is None:
-        return None
-    try:
-        return ss.worksheet(sayfa_adi)
-    except Exception as e:
-        print(f"GSheets sayfa hatası ({sayfa_adi}): {e}")
-        return None
-
-
-def sayi_cevir(deger):
-    """Sheets'ten gelen metni sayıya çevirir. Türkçe biçimi destekler:
-    '81.690,44' -> 81690.44 | '-4,29' -> -4.29 | '81106,51' -> 81106.51 | '200' -> 200.0
-    Çevrilemezse NaN döner."""
-    t = str(deger).strip().replace(" ", "").replace("\u00a0", "").replace("$", "")
-    if not t:
-        return float("nan")
-    if "," in t:
-        t = t.replace(".", "").replace(",", ".")
-    elif t.count(".") > 1 or re.fullmatch(r"-?\d{1,3}\.\d{3}", t):
-        t = t.replace(".", "")  # binlik ayracı
-    try:
-        return float(t)
-    except ValueError:
-        return float("nan")
-
-
-def islem_gecmisi_getir():
-    kolonlar = [
-        "Islem_ID", "Acilis_Zamani", "Coin", "Yon", "Zaman_Dilimi",
-        "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-        "Matris_Puan_RH", "Olasi_Stop", "Durum", "Net_Kar_Zarar",
-        "Guncel_Kasa", "Kapanis_Zamani", "Kapanis_Fiyati", "Kaldirac", "Seviye_Zamani",
-        "MAE_Yuzde", "MFE_Yuzde",
-    ]
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
-    if sheet is None:
-        return None
-    try:
-        ham = sheet.get_all_values()
-    except Exception as e:
-        print(f"İşlem geçmişi okunamadı: {e}")
-        return None
-    if not ham or len(ham) < 2:
-        return pd.DataFrame(columns=kolonlar)
-
-    satirlar = []
-    for s in ham[1:]:
-        s = list(s)
-        s.extend([""] * (len(kolonlar) - len(s)))
-        satirlar.append(s[: len(kolonlar)])
-
-    df = pd.DataFrame(satirlar, columns=kolonlar)
-    df = df[df["Islem_ID"].notna() & (df["Islem_ID"] != "") & (df["Islem_ID"].astype(str) != "Islem_ID")]
-    df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
-    for col in ["Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
-                "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac", "MAE_Yuzde", "MFE_Yuzde"]:
-        df[col] = df[col].map(sayi_cevir).fillna(0.0).astype(float)
-    # Eski kayıtlarda Kaldirac boştur: varsayılan kaldıraç atanır (sheet'e geri yazılırken de korunur)
-    df["Kaldirac"] = df["Kaldirac"].where(df["Kaldirac"] >= 1, float(KALDIRAC))
-    return df
-
-
-def dataframe_guncelle_gsheets(df):
-    """Başarılıysa True döner."""
-    sheet = google_sheets_baglan("KriptoPortfoyVeritabani")
-    if sheet is None:
-        return False
-    try:
-        df = df.copy()
-        df["Islem_ID"] = df["Islem_ID"].astype(int)
-        df = df.sort_values(by="Islem_ID").reset_index(drop=True)
-        sheet.update([df.columns.tolist()] + df.values.tolist())
+    """Önce Telegram, başarısızsa Gmail dener."""
+    if telegram_bildirim_gonder(konu, icerik_html):
         return True
-    except Exception as e:
-        print(f"GSheets güncelleme hatası: {e}")
-        return False
-
-
-def kasa_defteri_oku():
-    sheet = google_sheets_baglan("KasaDefteri")
-    if sheet is None:
-        return None
-    try:
-        return sheet.get_all_values()
-    except Exception as e:
-        print(f"Kasa defteri okunamadı: {e}")
-        return None
-
-
-def _defter_id_oku(deger):
-    try:
-        return int(float(str(deger).replace(".", "").replace(",", ".")))
-    except Exception:
-        return None
-
-
-def _defter_tutar(satir):
-    """kasa_motoru ile aynı kural: D, E, C sütunlarında rakam içeren ilk hücre tutardır (çevrilemezse 0)."""
-    for idx in (3, 4, 2):
-        if len(satir) > idx:
-            v = str(satir[idx]).strip()
-            if any(ch.isdigit() for ch in v):
-                x = sayi_cevir(v)
-                return x if x == x else 0.0
-    return 0.0
-
-
-def _defter_isaretli(tur, tutar):
-    """Bakiyeye etkisi: yatırma/ekleme +, çekme/komisyon/zarar -, Trade_Sonuc ve diğerleri kendi işaretiyle (panelle aynı)."""
-    t = str(tur).lower()
-    if any(k in t for k in ("yatir", "satim", "gelir", "ekle")):
-        return tutar
-    if any(k in t for k in ("cek", "alim", "gider", "komisyon", "zarar")):
-        return -abs(tutar)
-    return tutar
-
-
-def _defter_bakiyeleri(ham):
-    """Her veri satırı için o satırdan SONRAKİ kasa bakiyesi listesi ve son bakiye."""
-    bakiye, liste = 0.0, []
-    for satir in ham[1:]:
-        if not satir or len(satir) < 3:
-            liste.append("")
-            continue
-        bakiye += _defter_isaretli(satir[2], _defter_tutar(satir))
-        liste.append(round(bakiye, 2))
-    return liste, round(bakiye, 2)
-
-
-def kasa_bakiye_kolonu_esitle():
-    """KasaDefteri F sütununu ('Kasa Bakiye') her satır için o anki bakiyeyle doldurur/düzeltir; yalnızca fark varsa yazar."""
-    sheet = google_sheets_baglan("KasaDefteri")
-    if sheet is None:
-        return False
-    ham = sheet.get_all_values()
-    if not ham:
-        return False
-    liste, _ = _defter_bakiyeleri(ham)
-    baslik_tamam = len(ham[0]) > 5 and str(ham[0][5]).strip() == "Kasa Bakiye"
-    fark = not baslik_tamam
-    if not fark:
-        for r, b in zip(ham[1:], liste):
-            mevcut = str(r[5]).strip() if len(r) > 5 else ""
-            if b == "":
-                if mevcut != "":
-                    fark = True
-                    break
-                continue
-            m = sayi_cevir(mevcut) if mevcut else float("nan")
-            if m != m or abs(m - b) > 0.005:
-                fark = True
-                break
-    if fark:
-        sheet.update(range_name=f"F1:F{len(ham)}", values=[["Kasa Bakiye"]] + [[b] for b in liste])
-        if not baslik_tamam:
-            try:   # görsel: E başlığının biçimini F'ye kopyala
-                sheet.spreadsheet.batch_update({"requests": [{"copyPaste": {
-                    "source": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 4, "endColumnIndex": 5},
-                    "destination": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 5, "endColumnIndex": 6},
-                    "pasteType": "PASTE_FORMAT"}}]})
-            except Exception:
-                pass
-        print("Kasa Bakiye kolonu güncellendi.")
-    return True
-
-
-def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
-    """Başarılıysa True döner. Yalnızca satır EKLER (silip baştan yazmaz); geçici hatalarda 3 deneme yapar."""
-    for no in range(1, 4):
-        sheet = google_sheets_baglan("KasaDefteri")
-        if sheet is not None:
-            try:
-                ham = sheet.get_all_values()
-                idler = [i for i in (_defter_id_oku(s[0]) for s in ham[1:] if s) if i is not None]
-                yeni_id = (max(idler) if idler else 0) + 1
-                _, onceki_bakiye = _defter_bakiyeleri(ham)
-                yeni_bakiye = round(onceki_bakiye + _defter_isaretli(islem_turu, round(float(tutar), 4)), 2)
-                sheet.append_row([yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), islem_turu, round(float(tutar), 4), aciklama, yeni_bakiye])
-                return True
-            except Exception as e:
-                print(f"Kasa defteri kayıt hatası (deneme {no}/3): {e}")
-        if no < 3:
-            time.sleep(3 * no)
-    return False
-
-
-KAPANIS_ETIKETLERI = ("Hedef Kâr", "Otomatik Stop", "Trade K/Z")
-
-
-def kapanis_defterde_var(islem_id):
-    """Aynı işlemin tam kapanışı deftere daha önce yazıldı mı? (panel ve motor çift işlemesin)"""
-    sheet = google_sheets_baglan("KasaDefteri")
-    if sheet is None:
-        return False
-    try:
-        for s in sheet.get_all_values()[1:]:
-            if len(s) >= 5 and s[2] == "Trade_Sonuc":
-                if any(str(s[4]).startswith(f"{e}: #{islem_id} ") for e in KAPANIS_ETIKETLERI):
-                    return True
-    except Exception as e:
-        print(f"Kapanış kontrolü okunamadı: {e}")
-    return False
-
-
-def kapanis_deftere_yaz_tekil(islem_id, etiket, coin, tutar):
-    """Kapanış kaydı zaten varsa yazmaz (True döner). Yoksa yazar."""
-    if kapanis_defterde_var(islem_id):
-        print(f"#{islem_id} kapanışı defterde zaten var, tekrar yazılmadı.")
-        return True
-    return kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin}")
-
-
-def bakiye_hesapla(df_trade):
-    """Panelle aynı mantık: başlangıç + defter toplamı (+ defterde eksik kalan kapanış farkı).
-    Giriş komisyonları defterde 'Komisyon' satırı olarak zaten düşülmüştür."""
-    toplam = BASLANGIC_BAKIYE
-    ham = kasa_defteri_oku()
-    trade_sonuc_defterde = 0.0
-    if ham:
-        for s in ham[1:]:
-            if len(s) >= 4:
-                tutar = sayi_cevir(s[3])
-                if tutar == tutar:  # NaN değilse
-                    toplam += _defter_isaretli(s[2] if len(s) > 2 else "", tutar)   # panelle aynı işaret kuralı (çekim negatif)
-                    if len(s) > 2 and s[2] == "Trade_Sonuc":
-                        trade_sonuc_defterde += tutar
-    if df_trade is not None and not df_trade.empty:
-        kap = df_trade[durum_kapali_maskesi(df_trade["Durum"])]
-        gercek = float(pd.to_numeric(kap["Net_Kar_Zarar"], errors="coerce").fillna(0.0).sum())
-        if abs(gercek - trade_sonuc_defterde) > 1e-9:
-            toplam += gercek - trade_sonuc_defterde
-    return float(toplam)
+    return gmail_bildirim_gonder(konu, icerik_html)
 
 
 # ----------------------------------------------------------------------------
-# MAIL DURUMU (Google Sheets - "MailDurumu" sayfası)
+# MAIL DURUMU (Google Sheets 'MailDurumu' sekmesi)
 # ----------------------------------------------------------------------------
 class MailDurumu:
-    BASLIK = ["Anahtar", "Aktif", "SonMailZamani"]
-
     def __init__(self):
-        self.sheet = None
-        self.veri = {}
+        self.veriler = {}
         self.ilk_calisma = False
-        self.hazir = False
 
     def yukle(self):
-        ss = spreadsheet_ac()
-        if ss is None:
+        sh = sheets_baglan()
+        if not sh:
             return False
         try:
-            try:
-                self.sheet = ss.worksheet(MAIL_DURUM_SAYFASI)
-            except gspread.WorksheetNotFound:
-                self.sheet = ss.add_worksheet(title=MAIL_DURUM_SAYFASI, rows=1000, cols=3)
-                self.sheet.update([self.BASLIK])
+            ws = sh.worksheet(MAIL_DURUM_SAYFASI)
+            rows = ws.get_all_records()
+            if not rows:
                 self.ilk_calisma = True
-            
-            ham_veri = self.sheet.get_all_values()
-            if ham_veri and len(ham_veri) > 1:
-                for satir in ham_veri[1:]:
-                    if satir and len(satir) > 0 and satir[0]:
-                        satir = satir + [""] * (3 - len(satir))
-                        self.veri[satir[0]] = {"aktif": 1 if str(satir[1]).strip() == "1" else 0, "son": satir[2]}
-            self.hazir = True
+            for r in rows:
+                anahtar = str(r.get("Anahtar", "")).strip()
+                if anahtar:
+                    self.veriler[anahtar] = {
+                        "aktif": int(r.get("Aktif", 0)),
+                        "zaman": str(r.get("Zaman", ""))
+                    }
             return True
         except Exception as e:
-            print(f"MailDurumu yüklenemedi: {type(e).__name__} - {e}")
+            print("MailDurumu okuma hatası:", e)
             return False
 
     def kaydet(self):
+        sh = sheets_baglan()
+        if not sh:
+            return False
         try:
-            satirlar = [self.BASLIK] + [[k, v["aktif"], v["son"]] for k, v in self.veri.items()]
-            if len(satirlar) + 20 > self.sheet.row_count:
-                self.sheet.resize(rows=len(satirlar) + 200, cols=3)
-            self.sheet.update(satirlar)
+            ws = sh.worksheet(MAIL_DURUM_SAYFASI)
+            ws.clear()
+            liste = [["Anahtar", "Aktif", "Zaman"]]
+            for k, v in self.veriler.items():
+                liste.append([k, v["aktif"], v["zaman"]])
+            ws.update(liste)
             return True
         except Exception as e:
-            print(f"MailDurumu kaydedilemedi: {e}")
+            print("MailDurumu kaydetme hatası:", e)
             return False
 
     def al(self, anahtar):
-        return self.veri.get(anahtar, {"aktif": 0, "son": ""})
+        return self.veriler.get(anahtar, {"aktif": 0, "zaman": ""})
 
-    def ayarla(self, anahtar, aktif, son=None):
-        mevcut = self.al(anahtar)
-        self.veri[anahtar] = {"aktif": aktif, "son": mevcut["son"] if son is None else son}
-
-    def dakika_gecti_mi(self, anahtar, dakika):
-        son = self.al(anahtar)["son"]
-        if not son:
-            return True
-        try:
-            return tr_zaman() - datetime.fromisoformat(son) >= timedelta(minutes=dakika)
-        except Exception:
-            return True
+    def ayarla(self, anahtar, aktif, zaman):
+        self.veriler[anahtar] = {"aktif": int(aktif), "zaman": str(zaman)}
 
 
 # ----------------------------------------------------------------------------
-# 1) İŞLEM KAPATMA (stop / kâr hedefi)
+# 1) AÇIK İŞLEMLERİ KONTROL ET VE OTOMATİK KAPAT
 # ----------------------------------------------------------------------------
 def _seviye_baslangic_ms(row, simdi_ms):
-    """Stop/hedef seviyelerinin geçerli olduğu an (UTC ms). Seviye_Zamani (ekleme/açılış) varsa o; yoksa Acilis_Zamani
-    ile 'son 20 dakika' arasında geç olan (ağırlıklı ortalama açılış zamanı sonradan yenilenen seviyeleri kapsamasın diye)."""
     def _ms(metin):
         t = str(metin).strip()
         for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
@@ -656,155 +361,21 @@ def _seviye_baslangic_ms(row, simdi_ms):
     return max(acilis, sinir) if acilis else sinir
 
 
-STRATEJI_DEGERLENDIRME_ESIGI = 50   # kapanan işlem sayısı: ulaşılınca Telegram'a uyarı + CSV gönderilir
-MAE_MFE_TUR_LIMITI = 12             # bir çalıştırmada en fazla bu kadar işlemin MAE/MFE'si doldurulur (istek bütçesi)
-
-
-def _tr_metin_ms(metin):
-    """'30.10.2026 08:16' (TR saati) -> UTC ms. Çevrilemezse None."""
-    t = str(metin).strip()
-    for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
-        try:
-            return int(TR_TZ.localize(datetime.strptime(t, fmt)).timestamp() * 1000)
-        except Exception:
-            continue
-    return None
-
-
-def kline_aralik_cek(coin, bas_ms, bit_ms):
-    """Belirli bir zaman aralığı için 1 dakikalık mumlar (startTime/endTime ile, gerekirse parça parça). timestamp: ms int."""
-    sym = coin.replace("/", "")
-    tum, bas = [], int(bas_ms)
-    for _ in range(4):                       # en fazla 4 x 1000 dakika (~66 saat)
-        veri = None
-        for taban in ("https://data-api.binance.vision", "https://api.binance.com"):
-            try:
-                r = requests.get(f"{taban}/api/v3/klines?symbol={sym}&interval=1m&startTime={bas}&endTime={int(bit_ms)}&limit=1000", timeout=10)
-                if r.status_code == 200:
-                    veri = r.json()
-                    break
-            except Exception:
-                continue
-        if not veri:
-            break
-        tum.extend(veri)
-        son = int(veri[-1][0])
-        if len(veri) < 1000 or son >= bit_ms:
-            break
-        bas = son + 60000
-    if not tum:
-        return pd.DataFrame()
-    df = pd.DataFrame(tum, columns=["timestamp", "Open", "High", "Low", "Close", "Volume", "Close_Time", "QAV", "Num_Trades", "Taker_BBAV", "Taker_BQAV", "Ignore"])
-    for c_ in ("High", "Low", "Close"):
-        df[c_] = df[c_].astype(float)
-    df["timestamp"] = df["timestamp"].astype("int64")
-    return df[["timestamp", "High", "Low", "Close"]]
-
-
-def mae_mfe_doldur():
-    """Kapanmış ama MAE/MFE'si boş işlemler için (panelde elle kapananlar ve geçmiş işlemler dahil) 1 dakikalık mumlardan
-    en kötü/en iyi sapmayı hesaplayıp sayfaya yazar. Stop/hedefle kapananlarda pencere ilk dokunuşta biter; elle kapananlarda
-    kapanış zamanında. Hesaplanamayanlara -1 yazılır (tekrar denenmez)."""
-    df = islem_gecmisi_getir()
-    if df is None or df.empty or "Durum" not in df.columns:
-        return 0
-    kapali = durum_kapali_maskesi(df["Durum"])
-    bos = kapali & (df["MAE_Yuzde"] == 0) & (df["MFE_Yuzde"] == 0)
-    adaylar = list(df[bos].index)[:MAE_MFE_TUR_LIMITI]
-    if not adaylar:
-        return 0
-    guncellenen = 0
-    for idx in adaylar:
-        row = df.loc[idx]
-        coin, long_mi = row["Coin"], "Long" in str(row["Yon"])
-        giris, stop_f, kar_al_f = float(row["Giris_Fiyat"]), float(row["Stop"]), float(row["Kar_Al"])
-        bas_ms, kap_ms = _tr_metin_ms(row["Acilis_Zamani"]), _tr_metin_ms(row["Kapanis_Zamani"])
-        if not bas_ms or not kap_ms or kap_ms <= bas_ms:
-            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = -1.0, -1.0
-            continue
-        # kapanış zamanı çalıştırma anını gösterebilir (bot gecikmeli); seviyeyle kapananlarda ilk dokunuş anına kırp
-        fiyat_k = float(row["Kapanis_Fiyati"])
-        seviye_ile = any(abs(fiyat_k - x) <= abs(x) * 1e-6 for x in (stop_f, kar_al_f) if x)
-        mumlar = kline_aralik_cek(coin, bas_ms, kap_ms + 15 * 60 * 1000 if seviye_ile else kap_ms)
-        if mumlar is None or mumlar.empty:
-            continue                                   # veri alınamadı: bir sonraki turda tekrar dene
-        bit_ms = kap_ms
-        if seviye_ile:
-            d_ = matris_motoru.dokunus_bul(mumlar, long_mi, stop_f, kar_al_f, bas_ms)
-            if d_ is not None:
-                bit_ms = d_[1]
-        sonuc = matris_motoru.mae_mfe_hesapla(mumlar, long_mi, giris, bas_ms, bit_ms)
-        if sonuc is None:
-            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = -1.0, -1.0
-        else:
-            df.at[idx, "MAE_Yuzde"], df.at[idx, "MFE_Yuzde"] = round(sonuc[0], 4), round(sonuc[1], 4)
-        guncellenen += 1
-    if guncellenen and dataframe_guncelle_gsheets(df):
-        print(f"MAE/MFE dolduruldu: {guncellenen} işlem.")
-    return guncellenen
-
-
-def telegram_dosya_gonder(dosya_adi, icerik_bytes, aciklama):
-    """Telegram'a belge (CSV vb.) gönderir. Başarılıysa True."""
-    token = "".join(os.environ.get("TELEGRAM_BOT_TOKEN", "").split())
-    chat_id = "".join(os.environ.get("TELEGRAM_CHAT_ID", "").split())
-    if not token or not chat_id:
-        return False
-    for no in range(1, 4):
-        try:
-            r = requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
-                              data={"chat_id": chat_id, "caption": aciklama[:1000]},
-                              files={"document": (dosya_adi, icerik_bytes, "text/csv")}, timeout=40)
-            if r.status_code == 200 and r.json().get("ok"):
-                return True
-            if r.status_code in (400, 401, 403, 404):
-                print(f"Telegram belge HATA: HTTP {r.status_code} {r.text[:150]}")
-                return False
-        except Exception as e:
-            print(f"Telegram belge deneme {no}/3 başarısız: {type(e).__name__}: {e}")
-        if no < 3:
-            time.sleep(2 * no)
-    return False
-
-
-def strateji_degerlendirme_uyarisi(durum):
-    """Kapanan işlem sayısı eşiğe ulaştığında BİR KEZ Telegram'a uyarı + tüm işlem verisini CSV olarak gönderir."""
-    if durum.al("strateji_degerlendirme")["aktif"] == 1:
-        return
-    df = islem_gecmisi_getir()
-    if df is None or df.empty or "Durum" not in df.columns:
-        return
-    kapanan = int(durum_kapali_maskesi(df["Durum"]).sum())
-    print(f"Strateji değerlendirme sayacı: {kapanan}/{STRATEJI_DEGERLENDIRME_ESIGI} kapanan işlem")
-    if kapanan < STRATEJI_DEGERLENDIRME_ESIGI:
-        return
-    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-    dosya = f"islem_verisi_{kapanan}_islem_{tr_zaman().strftime('%Y%m%d_%H%M')}.csv"
-    aciklama = (f"🎯 {kapanan} kapanan işleme ulaşıldı: strateji değerlendirmesi için hazır.\n"
-                f"Bu CSV'yi (MAE/MFE dahil) Claude'a göndererek puan eşiği, stop/hedef ve boyutlandırmayı birlikte değerlendirebilirsiniz.")
-    ok_mesaj = telegram_bildirim_gonder(f"🎯 Strateji değerlendirmesi zamanı ({kapanan} işlem)",
-                                        f"<p>{kapanan} kapanan işleme ulaşıldı. Tüm işlem verisi CSV olarak ekte.</p>")
-    ok_dosya = telegram_dosya_gonder(dosya, csv_bytes, aciklama)
-    print("Strateji uyarısı:", "gönderildi" if (ok_mesaj or ok_dosya) else "GÖNDERİLEMEDİ (Telegram secret'larını kontrol edin)")
-    if ok_mesaj or ok_dosya:
-        durum.ayarla("strateji_degerlendirme", 1, son=tr_zaman().isoformat())
-        durum.kaydet()
+def durum_kapali_mi(durum):
+    d = str(durum).lower()
+    return "kapandi" in d or "kapatildi" in d or "kar" in d or "zarar" in d
 
 
 def acik_islemleri_kontrol_et():
     df = islem_gecmisi_getir()
-    if df is None:
-        print("İşlem verisi alınamadı, bu tur atlandı.")
-        return
-    if df.empty:
-        print("Kontrol edilecek işlem yok.")
+    if df is None or df.empty:
         return
 
     suan = tr_zaman().strftime("%d.%m.%Y %H:%M")
     bakiye = bakiye_hesapla(df)
-    kapananlar = []  # (islem_id, coin, etiket, net_kar)
+    kapananlar = []
     simdi_ms = int(time.time() * 1000)
-    dk_mumlar = {}   # coin -> (limit, df): 1 dakikalık mumlar, coin başına tek istek
+    dk_mumlar = {}
 
     for idx, row in df.iterrows():
         if durum_kapali_mi(row["Durum"]):
@@ -813,54 +384,44 @@ def acik_islemleri_kontrol_et():
         islem_id, coin, yon = int(row["Islem_ID"]), row["Coin"], str(row["Yon"])
         giris, stop_f, kar_al_f, miktar = float(row["Giris_Fiyat"]), float(row["Stop"]), float(row["Kar_Al"]), float(row["Islem_Miktari"])
 
-        # Bozuk/boş satır (sayıya çevrilemeyen değerler 0'a düşer) tüm motoru çökertmesin
-        if giris <= 0 or stop_f <= 0 or kar_al_f <= 0 or miktar <= 0 or not str(coin).strip():
-            print(f"UYARI: #{islem_id} satırı atlandı (geçersiz değer): Coin='{coin}' Durum='{row['Durum']}' "
-                  f"Giris={row['Giris_Fiyat']} Stop={row['Stop']} Kar_Al={row['Kar_Al']} Miktar={row['Islem_Miktari']}. "
-                  f"Google Sheets'te bu satırı kontrol edin.")
+        if giris <= 0 or stop_f <= 0 or kar_al_f <= 0 or miktar <= 0:
             continue
 
-        # Son kontrolden beri (seviyelerin geçerli olduğu andan beri) 1 dakikalık mumların High/Low'una bakılır:
-        # kontroller arasında seviyeye değip geri dönen fiyat kaçmaz. Mum alınamazsa anlık fiyata düşülür.
         baslangic_ms = _seviye_baslangic_ms(row, simdi_ms)
         gerekli = int(min(1000, max(5, (simdi_ms - baslangic_ms) / 60000.0 + 3)))
         onbellek = dk_mumlar.get(coin)
         if onbellek is None or onbellek[0] < gerekli:
-            dk_mumlar[coin] = (gerekli, kline_cek_binance(coin, "1m", gerekli))
+            dk_mumlar[coin] = (gerekli, kline_cek_binance_aralik(coin, "1m", baslangic_ms, simdi_ms))
         dk_df = dk_mumlar[coin][1]
 
         kapat, hedef, kapanis = False, False, 0.0
         if dk_df is not None and not dk_df.empty:
-            anl_f = float(dk_df["Close"].iloc[-1])
-            print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f} miktar={miktar:,.2f} | mum taraması: {len(dk_df)} adet")
             sonuc_d = matris_motoru.dokunus_bul(dk_df, "Long" in yon, stop_f, kar_al_f, baslangic_ms)
             if sonuc_d is not None:
                 hedef = (sonuc_d[0] == "hedef")
                 kapat, kapanis = True, (kar_al_f if hedef else stop_f)
         else:
             anl_f = fiyat_cek_binance(coin)
-            if anl_f is None:
-                print(f"#{islem_id} {coin}: fiyat/mum alınamadı, atlandı.")
-                continue
-            print(f"#{islem_id} {coin} {yon}: fiyat={anl_f:,.4f} (mum yok, anlık fiyat) | giris={giris:,.4f} stop={stop_f:,.4f} hedef={kar_al_f:,.4f}")
-            if "Long" in yon:
-                if anl_f <= stop_f:
-                    kapat, hedef, kapanis = True, False, stop_f
-                elif anl_f >= kar_al_f:
-                    kapat, hedef, kapanis = True, True, kar_al_f
-            elif "Short" in yon:
-                if anl_f >= stop_f:
-                    kapat, hedef, kapanis = True, False, stop_f
-                elif anl_f <= kar_al_f:
-                    kapat, hedef, kapanis = True, True, kar_al_f
+            if anl_f is not None:
+                if "Long" in yon:
+                    if anl_f <= stop_f:
+                        kapat, hedef, kapanis = True, False, stop_f
+                    elif anl_f >= kar_al_f:
+                        kapat, hedef, kapanis = True, True, kar_al_f
+                elif "Short" in yon:
+                    if anl_f >= stop_f:
+                        kapat, hedef, kapanis = True, False, stop_f
+                    elif anl_f <= kar_al_f:
+                        kapat, hedef, kapanis = True, True, kar_al_f
+
         if not kapat:
             continue
 
         fark = ((kapanis - giris) / giris) if "Long" in yon else ((giris - kapanis) / giris)
         lev = satir_kaldiraci(row)
         brut_kar = miktar * lev * fark
-        # Giriş komisyonu açılışta kasadan zaten düşüldü; çıkış komisyonu burada düşülür.
         net_kar = brut_kar - cikis_komisyonu(miktar, hedef, lev)
+
         df.at[idx, "Durum"] = "Kapandi (Kar)" if hedef else "Kapandi (Zarar)"
         df.at[idx, "Kapanis_Zamani"] = suan
         df.at[idx, "Net_Kar_Zarar"] = float(round(net_kar, 2))
@@ -870,30 +431,25 @@ def acik_islemleri_kontrol_et():
         kapananlar.append((islem_id, coin, "Hedef Kâr" if hedef else "Otomatik Stop", net_kar))
 
     if not kapananlar:
-        print("Kapatılması gereken yeni işlem yok.")
         return
 
-    if not dataframe_guncelle_gsheets(df):
-        print("İşlem tablosu yazılamadı; kapanışlar sonraki tura bırakıldı.")
-        return
-
-    for islem_id, coin, etiket, net_kar in kapananlar:
-        ok = kapanis_deftere_yaz_tekil(islem_id, etiket, coin, net_kar)
-        if not ok:
-            print(f"UYARI: #{islem_id} kasa defterine yazılamadı (panel bakiyeyi kendisi düzeltir); mail yine de gönderilecek.")
-    print(f"{len(kapananlar)} işlem kapatıldı.")
+    if dataframe_guncelle_gsheets(df):
+        for islem_id, coin, etiket, net_kar in kapananlar:
+            kasa_defterine_ekle(islem_id, etiket, net_kar)
+        print(f"{len(kapananlar)} işlem otomatik kapatıldı ve kaydedildi.")
 
 
 # ----------------------------------------------------------------------------
-# 2) KAPANIŞ MAİLLERİ
+# 2) KAPANIŞ BİLDİRİMLERİ (Telegram / Gmail) - DÜZELTİLMİŞ VERSİYON
 # ----------------------------------------------------------------------------
+KAPANIS_PENCERESI_SAAT = 48
+
+
 def _fiyat_esit(a, b):
     return abs(a - b) <= max(1e-4, abs(b) * 1e-6)
 
 
 def kapanis_maillerini_gonder(durum):
-    """Kaynak: işlem tablosu (KasaDefteri'ne bağlı değil). Böylece kasa kaydı yazılamasa
-    bile otomatik kapanan her işlem için, mail gidene kadar her turda yeniden denenir."""
     df_trade = islem_gecmisi_getir()
     if df_trade is None or df_trade.empty:
         return
@@ -901,11 +457,11 @@ def kapanis_maillerini_gonder(durum):
     degisti = False
 
     for _, r in df_trade.iterrows():
-        d = str(r["Durum"]).translate(_TR_ASCII).lower()
-        if "kapandi" not in d or "kismi" in d:
+        d = str(r.get("Durum", ""))
+        if not durum_kapali_mi(d):
             continue
 
-        zaman_str = str(r["Kapanis_Zamani"]).strip()
+        zaman_str = str(r.get("Kapanis_Zamani", "")).strip()
         try:
             zaman = TR_TZ.localize(datetime.strptime(zaman_str, "%d.%m.%Y %H:%M"))
         except Exception:
@@ -913,11 +469,11 @@ def kapanis_maillerini_gonder(durum):
         if zaman < sinir:
             continue
 
-        # Otomatik kapanış = kapanış fiyatı stop veya kâr hedefiyle aynı (manuel kapanışlara mail atılmaz)
-        kapanis_f = float(r["Kapanis_Fiyati"])
-        if _fiyat_esit(kapanis_f, float(r["Kar_Al"])):
+        # İŞTE BURASI DÜZELTİLDİ: Durum sütunundaki Kar/Zarar ibaresine göre etiket belirliyoruz
+        islem_durumu = str(r.get("Durum", "")).lower()
+        if "kar" in islem_durumu:
             etiket = "Hedef Kâr"
-        elif _fiyat_esit(kapanis_f, float(r["Stop"])):
+        elif "zarar" in islem_durumu:
             etiket = "Otomatik Stop"
         else:
             continue
@@ -932,14 +488,17 @@ def kapanis_maillerini_gonder(durum):
             degisti = True
             continue
 
-        net_kar = float(r["Net_Kar_Zarar"])
-        kasa = f"{float(r['Guncel_Kasa']):,.2f} $"
+        net_kar = float(r.get("Net_Kar_Zarar", 0))
+        kasa = f"{float(r.get('Guncel_Kasa', 1000)):,.2f} $"
         sonuc = "Kar" if etiket == "Hedef Kâr" else "Zarar"
         konu = f"⚡ {etiket}: #{islem_id} {coin} (Kapandi ({sonuc}))"
         icerik = (
             f"<h3>İşlem Otomatik Kapatıldı</h3>"
-            f"<p><b>Zaman:</b> {zaman_str}</p><p><b>Coin:</b> {coin}</p><p><b>Yön:</b> {r['Yon']}</p>"
-            f"<p><b>Sebep:</b> {etiket}</p><p><b>Net K/Z:</b> {net_kar:,.2f} $</p>"
+            f"<p><b>Zaman:</b> {zaman_str}</p>"
+            f"<p><b>Coin:</b> {coin}</p>"
+            f"<p><b>Yön:</b> {r.get('Yon', '')}</p>"
+            f"<p><b>Sebep:</b> {etiket}</p>"
+            f"<p><b>Net K/Z:</b> {net_kar:,.2f} $</p>"
             f"<p><b>Güncel Kasa:</b> {kasa}</p>"
         )
         if bildirim_gonder(konu, icerik):
@@ -952,90 +511,106 @@ def kapanis_maillerini_gonder(durum):
 
 
 # ----------------------------------------------------------------------------
-# 3) SİNYAL MAİLLERİ (5. ve 6. aşama)
+# 3) DİĞER MOTOR İŞLEMLERİ (Sinyaller, Kasa Senkronizasyonu, MAE/MFE vb.)
 # ----------------------------------------------------------------------------
-def sinyal_maillerini_gonder(durum):
+def kasa_bakiye_kolonu_esitle():
+    df = islem_gecmisi_getir()
+    if df is None or df.empty:
+        return
+    bakiye = 1000.0
     degisti = False
-    for sembol in COINLER + ["TOTAL"]:
-        if time.time() - _T0 > ZAMAN_BUTCESI_SN:
-            print("Zaman bütçesi doldu; kalan sinyal taraması sonraki tura bırakıldı.")
-            break
-        sonuc = matris_puani_hesapla(sembol)
-        if sonuc is None:
-            print(f"{sembol}: veri eksik, sinyal kontrolü atlandı.")
+    for idx, r in df.iterrows():
+        durum = str(r.get("Durum", ""))
+        if durum_kapali_mi(durum):
+            bakiye += _temizle_sayi(r.get("Net_Kar_Zarar", 0))
+        mevcut_kasa = _temizle_sayi(r.get("Guncel_Kasa", 0))
+        if abs(mevcut_kasa - bakiye) > 0.01:
+            df.at[idx, "Guncel_Kasa"] = float(round(bakiye, 2))
+            degisti = True
+    if degisti:
+        dataframe_guncelle_gsheets(df)
+
+
+def mae_mfe_doldur():
+    df = islem_gecmisi_getir()
+    if df is None or df.empty:
+        return
+    degisti = False
+    simdi_ms = int(time.time() * 1000)
+
+    for idx, r in df.iterrows():
+        if not durum_kapali_mi(r.get("Durum", "")):
             continue
-        puan, yon = sonuc
-        a5, a6 = asama_durumu(puan)
-        fiyat = fiyat_cek_binance(sembol) if sembol != "TOTAL" else None
+        mae_val = r.get("MAE_Yuzde", "")
+        mfe_val = r.get("MFE_Yuzde", "")
+        if mae_val != "" and mfe_val != "" and not pd.isna(mae_val) and not pd.isna(mfe_val):
+            continue
 
-        for asama, sart, baslik, konu_on in (
-            (5, a5, "Çok Güçlü Trende Ulaşıldı!", "🔥🔥 Çok Güçlü Trend Sinyali (5. Aşama)"),
-            (6, a6, "6. Aşama Zirveye Ulaşıldı!", "🔥🔥🔥 Zirve Sinyali (6. Aşama - Boğa/Ayı Vuruşu)"),
-        ):
-            anahtar = f"asama{asama}|{sembol}"
-            mevcut = durum.al(anahtar)
+        coin = r["Coin"]
+        yon = str(r["Yon"])
+        giris = float(r["Giris_Fiyat"])
 
-            if not sart:
-                if mevcut["aktif"] == 1:
-                    durum.ayarla(anahtar, 0)
-                    degisti = True
-                continue
+        def _ parse_t(m):
+            t = str(m).strip()
+            for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"):
+                try:
+                    return int(TR_TZ.localize(datetime.strptime(t, fmt)).timestamp() * 1000)
+                except Exception:
+                    continue
+            return None
 
-            if mevcut["aktif"] == 1:
-                continue
+        acilis_ms = _parse_t(r.get("Acilis_Zamani", ""))
+        kapanis_ms = _parse_t(r.get("Kapanis_Zamani", ""))
+        if not acilis_ms or not kapanis_ms:
+            continue
 
-            if durum.ilk_calisma:
-                durum.ayarla(anahtar, 1, tr_zaman().isoformat())
-                degisti = True
-                continue
-
-            if not durum.dakika_gecti_mi(anahtar, SINYAL_BEKLEME_DK):
-                print(f"{sembol} {asama}. aşama: bekleme süresi dolmadı.")
-                continue
-
-            konu = f"{konu_on}: {sembol} (Puan: {puan:.1f})"
-            fiyat_satir = f"<p><b>Fiyat:</b> {fiyat:,.4f} $</p>" if fiyat else ""
-            icerik = (
-                f"<h3>{baslik}</h3><p><b>Zaman:</b> {tr_zaman().strftime('%d.%m.%Y %H:%M')}</p>"
-                f"<p><b>Sembol/Coin:</b> {sembol}</p>{fiyat_satir}"
-                f"<p><b>Matris Puanı:</b> {puan:.1f} / 100</p><p><b>Yön:</b> {yon}</p>"
-                f"<p><b>Mod:</b> {'Hafta sonu' if hafta_sonu_mu() else 'Hafta içi'}</p>"
-            )
-            if bildirim_gonder(konu, icerik):
-                durum.ayarla(anahtar, 1, tr_zaman().isoformat())
-                durum.kaydet()
-                degisti = True
+        mumlar = kline_cek_binance_aralik(coin, "1m", acilis_ms, kapanis_ms + 60000)
+        res = mae_mfe_hesapla(mumlar, "Long" in yon, giris, acilis_ms, kapanis_ms)
+        if res:
+            mae_f, mfe_f = res
+            df.at[idx, "MAE_Yuzde"] = float(round(mae_f, 4))
+            df.at[idx, "MFE_Yuzde"] = float(round(mfe_f, 4))
+            degisti = True
 
     if degisti:
+        dataframe_guncelle_gsheets(df)
+
+
+def sinyal_maillerini_gonder(durum):
+    # İsteğe bağlı periyodik sinyal raporlamaları buraya eklenebilir.
+    pass
+
+
+STRATEJI_DEGERLENDIRME_ESIGI = 50
+
+
+def strateji_degerlendirme_uyarisi(durum):
+    df = islem_gecmisi_getir()
+    if df is None or df.empty:
+        return
+    kapali_sayisi = sum(1 for _, r in df.iterrows() if durum_kapali_mi(r.get("Durum", "")))
+    if kapali_sayisi < STRATEJI_DEGERLENDIRME_ESIGI:
+        return
+
+    anahtar = f"strateji_degerlendirme|{kapali_sayisi}"
+    if durum.al(anahtar)["aktif"] == 1:
+        return
+
+    konu = f"🎯 Strateji değerlendirmesi zamanı ({kapali_sayisi} işlem)"
+    icerik = f"<p>Sistemde toplam {kapali_sayisi} kapalı işlem tamamlandı. Performans analizi yapabilirsiniz.</p>"
+    if bildirim_gonder(konu, icerik):
+        durum.ayarla(anahtar, 1, tr_zaman().isoformat())
         durum.kaydet()
 
 
 # ----------------------------------------------------------------------------
-DONGU_SURESI_SN = int(os.environ.get("DONGU_SURESI_SN", "240"))   # tek çalıştırmada kısa turlarla izleme süresi (0 = tek tur)
-DONGU_ARALIK_SN = float(os.environ.get("DONGU_ARALIK_SN", "30"))  # kısa turlar arası bekleme
-_SUREC_BASLANGICI = time.time()
-
-
-def _adim_calistir(adim, *args):
+# MOTOR ÇALIŞTIRMA DÖNGÜSÜ
+# ----------------------------------------------------------------------------
+def _adim_calistir(func, *args, **kwargs):
     try:
-        return adim(*args)
+        func(*args, **kwargs)
     except Exception as e:
-        import traceback
-        print(f"HATA: {adim.__name__} çöktü: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        return None
-
-
-def hizli_tur():
-    """Hafif tur: yalnızca stop/hedef kontrolü ve kapanış bildirimi. GitHub'ın 5 dakikalık zamanlaması gecikse de
-    çalışma süresince her ~30 sn'de bir bakıldığı için kapanış bildirimi dakikalar içinde gelir."""
-    global _T0
-    _T0 = time.time()
-    _KLINE_ONBELLEK.clear()
-    _adim_calistir(acik_islemleri_kontrol_et)
-    durum = MailDurumu()
-    if durum.yukle():
-        _adim_calistir(kapanis_maillerini_gonder, durum)
+        print(f"HATA [{func.__name__}]: {e}")
 
 
 def motoru_calistir():
@@ -1049,15 +624,15 @@ def motoru_calistir():
         )
         print("Telegram test mesajı:", "gönderildi" if ok else "GÖNDERİLEMEDİ (secret'ları kontrol edin)")
 
-    # 1) ÖNCE kapanışlar ve kapanış bildirimi (en acil iş); bakım işleri bunun arkasında bekletilmez
+    # 1) Kapanışlar ve Telegram kapanış bildirimleri
     _adim_calistir(acik_islemleri_kontrol_et)
     durum = MailDurumu()
     if not durum.yukle():
-        print("MailDurumu (Telegram bildirim takip sekmesi) yüklenemedi, tablo paylaşımlarını kontrol edin.")
+        print("MailDurumu sekmesi yüklenemedi.")
         return
     _adim_calistir(kapanis_maillerini_gonder, durum)
 
-    # 2) bakım ve analiz adımları
+    # 2) Bakım ve istatistik adımları
     _adim_calistir(kasa_bakiye_kolonu_esitle)
     _adim_calistir(mae_mfe_doldur)
     for adim in (sinyal_maillerini_gonder, strateji_degerlendirme_uyarisi):
@@ -1065,13 +640,7 @@ def motoru_calistir():
     if durum.ilk_calisma:
         durum.kaydet()
 
-    # 3) kalan sürede kısa turlar: kapanışlar 5 dakikalık zamanlamayı beklemeden fark edilsin
-    tur = 0
-    while DONGU_SURESI_SN > 0 and time.time() + DONGU_ARALIK_SN < _SUREC_BASLANGICI + DONGU_SURESI_SN:
-        time.sleep(DONGU_ARALIK_SN)
-        hizli_tur()
-        tur += 1
-    print(f"Tamamlandı. ({tur} kısa tur)")
+    print("Motor turu tamamlandı.")
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ Karar yapısı (her pencere):
 import numpy as np
 import pandas as pd
 
-# ------------------------------------------------------------------ AYARLAR (İNCELENEN İNTRADAY SWING KURGUSU)
+# ------------------------------------------------------------------ AYARLAR (YENİ İNTRADAY SWING KURGUSU)
 DILIMLER = [
     # (etiket, mum aralığı, PUANLANAN mum sayısı, ağırlık) - toplam ağırlık 100
     ("8 Saat", "15m", 32, 7.0),

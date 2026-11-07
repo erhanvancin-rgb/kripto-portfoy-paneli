@@ -2,11 +2,11 @@
 Matris puanlama motoru: panel (panel_v2.py) ve GitHub motoru (check_engine.py) AYNI hesabı kullanır.
 
 Süre      | Ağırlık | Mum aralığı | Puanlanan mum sayısı
-8 Saat    |  15     | 15 dakika   | 32
-4 Saat    |  20     |  5 dakika   | 48
-2 Saat    |  30     |  3 dakika   | 40
-1 Saat    |  20     |  1 dakika   | 60
-30 Dakika |  15     |  1 dakika   | 30
+8 Saat    |   7%    | 15 dakika   | 32
+4 Saat    |  18%    |  5 dakika   | 48
+2 Saat    |  40%    |  5 dakika   | 24
+1 Saat    |  22%    |  5 dakika   | 12
+30 Dakika |  13%    |  5 dakika   | 6
 
 ISINMA: EMA (9/20/50), RSI ve ATR yalnızca pencerenin kendi mumlarıyla hesaplanırsa oturmaz (ör. 30 mumda EMA50 anlamsızdır).
 Bu yüzden her aralıkta puanlanan mumların ÖNCESİNDE ISITMA_MUM kadar ek geçmiş mum çekilir; EMA/RSI/ATR bu uzun seriyle
@@ -32,14 +32,14 @@ Karar yapısı (her pencere):
 import numpy as np
 import pandas as pd
 
-# ------------------------------------------------------------------ AYARLAR
+# ------------------------------------------------------------------ AYARLAR (YENİ İNTRADAY SWING KURGUSU)
 DILIMLER = [
     # (etiket, mum aralığı, PUANLANAN mum sayısı, ağırlık) - toplam ağırlık 100
-    ("8 Saat", "15m", 32, 15.0),
-    ("4 Saat", "5m", 48, 20.0),
-    ("2 Saat", "3m", 40, 30.0),
-    ("1 Saat", "1m", 60, 20.0),
-    ("30 Dakika", "1m", 30, 15.0),
+    ("8 Saat", "15m", 32, 7.0),
+    ("4 Saat", "5m", 48, 18.0),
+    ("2 Saat", "5m", 24, 40.0),
+    ("1 Saat", "5m", 12, 22.0),
+    ("30 Dakika", "5m", 6, 13.0),
 ]
 # EMA50'nin ~%98 oturması için puanlanan mumların öncesine eklenen geçmiş mum sayısı (EMA/RSI/ATR için)
 ISITMA_MUM = 100
@@ -54,9 +54,10 @@ TOP5_ARZ = {
 }
 
 # ANA YÖN: net hareketin yönünü belirleyen kanıtlar (gövde baskınlığı + trend verimliliği)
-ANA_AGIRLIK = {"govde": 0.5, "trend": 0.5}
-# TEYİTÇİLER: ana yönü doğrular ya da çürütür (EMA, RSI, Fibonacci yönü, manyetik çekim)
-TEYITCI_AGIRLIK = {"ema": 0.35, "rsi": 0.25, "fib": 0.25, "mik": 0.15}
+ANA_AGIRLIK = {"govde": 0.6, "trend": 0.4}
+# TEYİTÇİLER: Vur-kaç mantığına göre momentum odaklı esnetilmiş ağırlıklar
+TEYITCI_AGIRLIK = {"ema": 0.40, "rsi": 0.40, "fib": 0.10, "mik": 0.10}
+
 TEYIT_K = 1.2                 # teyit çarpanı = 1 + K x (teyitçilerin ana yönle uyumu, -1..+1)
 TEYIT_MIN, TEYIT_MAX = 0.35, 1.5
 VERIMLILIK_TAM = 0.35         # bu verimlilikte trend kanıtı tam güce ulaşır (Kaufman verimlilik oranı)
@@ -73,11 +74,22 @@ RSI_SEVIYE_OLCEK = 20.0
 RSI_IVME_OLCEK = 12.0
 MIKNATIS_OLCEK = 0.6
 
-# Geri çekilme derinliği -> devam gücü (sığ geri çekilme trendi teyit eder, derin olan bozar)
+# Geri çekilme derinliği -> devam gücü
 FIB_DEVAM = [(0.0, 1.0), (0.236, 1.0), (0.382, 0.8), (0.5, 0.5), (0.618, 0.2), (0.786, -0.3), (1.0, -0.8)]
 FIB_SEVIYELER = (0.236, 0.382, 0.5, 0.618, 0.786)
-# Mıknatıs kütleleri (altın oran ve EMA20 daha güçlü çeker)
 MIKNATIS_KUTLE = {"hi": 0.7, "lo": 0.7, 0.236: 0.6, 0.382: 0.8, 0.5: 1.0, 0.618: 1.0, 0.786: 0.6, "ema20": 1.0, "ema50": 0.8}
+
+
+# ------------------------------------------------------------------ R/R (ÇAN EĞRİSİ) SEÇİCİ
+def _oran_sec(puan):
+    # Onaylanan ve Backtest'te en yüksek kârlılığı (%5.60 net) veren Çan Eğrisi Modeli
+    if puan >= 75: return 0.50, 0.50
+    elif puan >= 71: return 0.52, 0.52
+    elif puan >= 67: return 0.56, 0.56
+    elif puan >= 63: return 0.60, 0.60
+    elif puan >= 59: return 0.56, 0.56
+    elif puan >= 55: return 0.52, 0.52
+    else: return 0.50, 0.50
 
 
 # ------------------------------------------------------------------ YARDIMCILAR
@@ -116,9 +128,6 @@ def _parcali(x, noktalar):
 
 # ------------------------------------------------------------------ PENCERE ANALİZİ
 def pencere_analiz(df, n_skor=None):
-    """Tek bir mum penceresi için kanıtları (-1..+1) ve ayrıntıları döndürür.
-    df: ısınma mumları DAHİL tüm seri. n_skor: puanlanan son mum sayısı (None ise df'in tamamı puanlanır).
-    EMA / RSI / ATR tüm seriyle, gövde / fibonacci / mıknatıs / verimlilik yalnızca son n_skor mumla hesaplanır."""
     nötr = {"govde": 0.0, "ema": 0.0, "rsi": 0.0, "fib": 0.0, "mik": 0.0, "trend": 0.0}
     if df is None or len(df) < 10:
         return {"s": nötr, "y_adet": 0, "k_adet": 0, "detay": {}}
@@ -128,7 +137,7 @@ def pencere_analiz(df, n_skor=None):
     if len(d) < 10:
         return {"s": nötr, "y_adet": 0, "k_adet": 0, "detay": {}}
     op, hi, lo, cl = (d[c].astype(float) for c in ("Open", "High", "Low", "Close"))
-    cl_tam = tam["Close"].astype(float)          # ısınma dahil seri: EMA / RSI için
+    cl_tam = tam["Close"].astype(float)
     n = len(d)
     fiyat = float(cl.iloc[-1])
     atr = _atr(tam)
@@ -162,9 +171,9 @@ def pencere_analiz(df, n_skor=None):
     s_ivme = _kenet((rsi_now - rsi_prev) / RSI_IVME_OLCEK)
     asiri = 0.0
     if rsi_now > 80:
-        asiri = -0.5 * (rsi_now - 80.0) / 20.0     # aşırı alım: long yorgunluğu
+        asiri = -0.3 * (rsi_now - 80.0) / 20.0
     elif rsi_now < 20:
-        asiri = 0.5 * (20.0 - rsi_now) / 20.0      # aşırı satım: short yorgunluğu
+        asiri = 0.3 * (20.0 - rsi_now) / 20.0
     s_rsi = _kenet(0.65 * s_seviye + 0.35 * s_ivme + asiri)
 
     # 4) Fibonacci ile olası yön
@@ -173,9 +182,9 @@ def pencere_analiz(df, n_skor=None):
     i_hi, i_lo = int(np.argmax(hi.values)), int(np.argmin(lo.values))
     s_fib, geri_cekilme, bacak = 0.0, None, 0
     if aralik > 0 and i_hi != i_lo:
-        bacak = 1 if i_lo < i_hi else -1               # +1: yukarı bacak, -1: aşağı bacak
+        bacak = 1 if i_lo < i_hi else -1
         geri_cekilme = _kenet(((en_yuksek - fiyat) if bacak == 1 else (fiyat - en_dusuk)) / aralik, 0.0, 1.0)
-        olcek = min(1.0, max(0.35, aralik / (atr * 8.0)))   # küçük/çalkantılı aralıkta güven azalır
+        olcek = min(1.0, max(0.35, aralik / (atr * 8.0)))
         s_fib = bacak * _parcali(geri_cekilme, FIB_DEVAM) * olcek
 
     # 5) Fiyatın manyetik çekimi
@@ -186,14 +195,14 @@ def pencere_analiz(df, n_skor=None):
     toplam_cekim, net_cekim = 0.0, 0.0
     for ad, seviye in mikn.items():
         mesafe = abs(seviye - fiyat) / atr
-        if mesafe < 0.15:       # fiyat zaten mıknatısın üzerinde: yön vermez
+        if mesafe < 0.15:
             continue
         g = MIKNATIS_KUTLE[ad] / (1.0 + mesafe) ** 2
         toplam_cekim += g
         net_cekim += g * (1.0 if seviye > fiyat else -1.0)
     s_mik = (net_cekim / toplam_cekim) * _tanh(toplam_cekim / MIKNATIS_OLCEK) if toplam_cekim > 0 else 0.0
 
-    # 6) trend verimliliği (Kaufman): net yer değiştirme / toplam yol
+    # 6) trend verimliliği (Kaufman)
     yol = float(cl.diff().abs().sum())
     net_hareket = float(cl.iloc[-1] - cl.iloc[0])
     verimlilik = (abs(net_hareket) / yol) if yol > 0 else 0.0
@@ -208,13 +217,11 @@ def pencere_analiz(df, n_skor=None):
 
 
 def pencere_pay(analiz):
-    """Ana yönden ve teyitçilerden Long payını (0..1) üretir. Ayrıca teyitçi uyumunu (0..1) ve ham ana yönü döndürür."""
     s = analiz["s"]
     s_ana = sum(ANA_AGIRLIK[k] * s[k] for k in ANA_AGIRLIK)
     yon = float(np.sign(s_ana))
     if yon == 0:
         return 0.5, 0.0, 0.0
-    # teyitçilerin ana yönle işaretli ortalaması: +1 tam teyit, -1 tam çelişki
     a = sum(TEYITCI_AGIRLIK[k] * s[k] * yon for k in TEYITCI_AGIRLIK)
     uyan = sum(1 for k in TEYITCI_AGIRLIK if abs(s[k]) >= AKTIF_KANIT_ESIGI and np.sign(s[k]) == yon)
     uyum = uyan / float(len(TEYITCI_AGIRLIK))
@@ -228,11 +235,6 @@ def pencere_pay(analiz):
 
 # ------------------------------------------------------------------ MATRİS
 def matris_hesapla(pencereler):
-    """
-    pencereler: [(etiket, df, ağırlık[, puanlanan_mum_sayısı]), ...]  (ağırlıklar toplamı 100)
-    4. eleman verilirse df'in ilk kısmı ısınma mumu sayılır (EMA/RSI/ATR için), puan yalnızca son N mumdan çıkar.
-    Döner: {"nihai_long", "nihai_short", "katkilar": {etiket: {...}}, "mtf_uyum", "mtf_carpan"}
-    """
     toplam_agirlik = float(sum(p[2] for p in pencereler)) or 100.0
     analizler = []
     for p_ in pencereler:
@@ -262,10 +264,6 @@ def matris_hesapla(pencereler):
 
 # ------------------------------------------------------------------ TOP 5 ENDEKSİ
 def birlesik_endeks(coin_dfleri):
-    """5 coinin mumlarından piyasa değeri ağırlıklı endeks mumları üretir: Σ(arz × fiyat).
-    coin_dfleri: {"BTC/USDT": df, ...}; her df aynı aralıkta, sütunlar: timestamp, Open, High, Low, Close.
-    Beş coinin hepsi yoksa boş DataFrame döner (eksik veriyle yanlış endeks üretilmez).
-    Not: High/Low, coinlerin High/Low'larının ağırlıklı toplamıdır (gerçek endeks aralığından çok az geniş olabilir)."""
     parcalar = []
     for coin, arz in TOP5_ARZ.items():
         df = coin_dfleri.get(coin)
@@ -285,11 +283,6 @@ def birlesik_endeks(coin_dfleri):
 
 # ------------------------------------------------------------------ STOP / HEDEF DOKUNUŞU
 def dokunus_bul(mumlar, long_mi, stop, hedef, baslangic_utc_ms):
-    """1 dakikalık mumların High/Low değerlerine bakarak stop veya hedefe İLK dokunuşu bulur.
-    mumlar: sütunlar timestamp (ms int veya datetime), High, Low. baslangic_utc_ms: seviyelerin geçerli olduğu an (UTC, ms).
-    Başlangıcı İÇEREN mum atlanır (başlangıçtan önceki hareketi barındırır); sonraki mumlar taranır.
-    Aynı mumda ikisine de dokunulduysa sıra bilinemez: muhafazakâr davranıp STOP sayılır.
-    Döner: ("stop"|"hedef", mum_baslangic_ms) ya da None."""
     if mumlar is None or len(mumlar) == 0:
         return None
     zs = mumlar["timestamp"]
@@ -313,11 +306,8 @@ def dokunus_bul(mumlar, long_mi, stop, hedef, baslangic_utc_ms):
     return None
 
 
-# ------------------------------------------------------------------ MAE / MFE (strateji kalibrasyonu için)
+# ------------------------------------------------------------------ MAE / MFE
 def mae_mfe_hesapla(mumlar, long_mi, giris, baslangic_ms, bitis_ms):
-    """İşlem süresince (baslangic_ms'den SONRAKİ mumlardan, bitis_ms'yi içeren muma kadar) fiyatın girişe göre sapması (%):
-    MAE = girişe ters yönde en büyük sapma (stop mesafesiyle kıyaslanır), MFE = lehe yönde en büyük sapma (hedefle kıyaslanır).
-    mumlar: timestamp (ms int veya datetime), High, Low. Mum yoksa None döner. Döner: (mae_yuzde, mfe_yuzde)."""
     if mumlar is None or len(mumlar) == 0 or not giris:
         return None
     zs = mumlar["timestamp"]

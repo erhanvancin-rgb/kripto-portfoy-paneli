@@ -2511,8 +2511,8 @@ with col_sag_endeks:
             if abs(sl - ss) < 1e-5:
                 kazanan_renk = "rgb(255, 255, 0)"
             elif sl > ss:
-                # Long baskın: fark %10'dan fazlaysa canlı yeşil (#00FF00), azsa açık yeşil (rgb(150, 255, 0))
-                kazanan_renk = "#00FF00" if sl > ss * 1.10 else "rgb(150, 255, 0)"
+                # Long baskın: fark %10'dan fazlaysa canlı yeşil (#00FF00), azsa açık yeşil (rgb(180, 255, 0))
+                kazanan_renk = "#00FF00" if sl > ss * 1.10 else "rgb(180, 255, 0)"
             else:
                 # Short baskın: fark %10'dan fazlaysa kırmızı (rgb(255, 75, 0)), azsa turuncu (rgb(255, 180, 0))
                 kazanan_renk = "rgb(255, 75, 0)" if ss > sl * 1.10 else "rgb(255, 180, 0)"

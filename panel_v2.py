@@ -2508,7 +2508,14 @@ with col_sag_endeks:
         boxes_listesi = []
         for etk, veri in t_zaman_kat.items():
             sl, ss = veri["sl"], veri["ss"]
-            kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
+            if abs(sl - ss) < 1e-5:
+                kazanan_renk = "rgb(255, 255, 0)"
+            elif sl > ss:
+                # Long baskın: fark %10'dan fazlaysa canlı yeşil (#00FF00), azsa açık yeşil (rgb(120, 255, 0))
+                kazanan_renk = "#00FF00" if sl > ss * 1.10 else "rgb(120, 255, 0)"
+            else:
+                # Short baskın: fark %10'dan fazlaysa kırmızı (rgb(255, 75, 0)), azsa turuncu (rgb(255, 180, 0))
+                kazanan_renk = "rgb(255, 75, 0)" if ss > sl * 1.10 else "rgb(255, 180, 0)"
             boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: 800; font-size: 13px; margin-bottom: 6px; line-height: 1.3; white-space: nowrap;">{etk} · L: {sl:.2f}p | S: {ss:.2f}p</div>')
         boxes_birlestirilmis = "".join(boxes_listesi)
 

@@ -861,16 +861,10 @@ def tr_zaman():
     return datetime.now(TR_TZ)
 
 def hafta_sonu_mu():
-    simdi = tr_zaman()
-    haftanin_gunu = simdi.weekday()
-    saat = simdi.hour
-    if (haftanin_gunu == 4 and saat >= 23) or (haftanin_gunu in [5, 6]) or (haftanin_gunu == 0 and saat < 3):
-        return True
     return False
 
 def aktif_min_puan_esigi_getir():
-    # Başlangıç eşiği hafta içi 50, hafta sonu (sığ piyasa) 55 olarak güncellendi.
-    return 55.0 if hafta_sonu_mu() else 50.0
+    return 50.0
 
 def hafizayi_oku():
     if os.path.exists(HAFIZA_DOSYASI):
@@ -1779,45 +1773,23 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
         kapanis_deftere_yaz_tekil(islem_id, etiket, coin, net_kar, "Kar" if hedefe_ulasti else "Zarar")
 
 def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
-    hsonu = hafta_sonu_mu()
-    min_esik = 55.0 if hsonu else 50.0
-
-    if puan < min_esik:
+    if puan < 50.0:
         return "Nötr (Beklemede)", 1.0, False, False
 
-    # Hafta içi (Normal Mod - 50 Tabana Göre)
-    if not hsonu:
-        if 50.0 <= puan < 55.0:
-            return "⭐ Zayıf Trend", 2.0, False, False
-        elif 55.0 <= puan < 59.0:
-            return "⭐⭐ Orta Trend", 3.0, False, False
-        elif 59.0 <= puan < 63.0:
-            return "⭐⭐⭐ Güvenli Trend", 3.0, False, False
-        elif 63.0 <= puan < 67.0:
-            return "🔥 Güçlü Trend", 4.0, False, False
-        elif 67.0 <= puan < 71.0:
-            return "🔥 🔥 Orta Güçlü Trend", 4.0, True, False
-        elif 71.0 <= puan < 75.0:
-            return "🔥 🔥 🔥 Çok Güçlü Trend", 5.0, False, True
-        else:
-            return "🔥🔥🔥🔥 Boğa / Ayı Vuruşu", 5.0, False, True
-            
-    # Hafta sonu (Sığ Piyasa Modu - Eşikler 5 puan yukarı ötelenir)
+    if 50.0 <= puan < 55.0:
+        return "⭐ Zayıf Trend", 2.0, False, False
+    elif 55.0 <= puan < 60.0:
+        return "⭐⭐ Orta Trend", 3.0, False, False
+    elif 60.0 <= puan < 65.0:
+        return "⭐⭐⭐ Güvenli Trend", 3.0, False, False
+    elif 65.0 <= puan < 70.0:
+        return "🔥 Güçlü Trend", 4.0, False, False
+    elif 70.0 <= puan < 75.0:
+        return "🔥 🔥 Orta Güçlü Trend", 4.0, True, False
+    elif 75.0 <= puan < 80.0:
+        return "🔥 🔥 🔥 Çok Güçlü Trend", 5.0, False, True
     else:
-        if 55.0 <= puan < 60.0:
-            return "⭐ Zayıf Trend", 2.0, False, False
-        elif 60.0 <= puan < 64.0:
-            return "⭐⭐ Orta Trend", 3.0, False, False
-        elif 64.0 <= puan < 68.0:
-            return "⭐⭐⭐ Güvenli Trend", 3.0, False, False
-        elif 68.0 <= puan < 72.0:
-            return "🔥 Güçlü Trend", 4.0, False, False
-        elif 72.0 <= puan < 76.0:
-            return "🔥 🔥 Orta Güçlü Trend", 4.0, True, False
-        elif 76.0 <= puan < 80.0:
-            return "🔥 🔥 🔥 Çok Güçlü Trend", 5.0, False, True
-        else:
-            return "🔥🔥🔥🔥 Boğa / Ayı Vuruşu", 5.0, False, True
+        return "🔥🔥🔥🔥 Boğa / Ayı Vuruşu", 5.0, False, True
 
 def sinyal_ve_trend_mail_kontrolu(sembol, nihai_puan, aktif_yon, trend_metni, coin_mi=True):
     pass
@@ -1864,7 +1836,7 @@ arka_plan_thread = botu_baslat_bir_kez()
 st.title("Piyasa Genel Bakış")
 min_esik_bilgi = aktif_min_puan_esigi_getir()
 mod_bilgi_metni = "Hafta Sonu / Sığ Piyasa Modu (Min Eşik: 60)" if min_esik_bilgi == 60.0 else "Hafta İçi Normal Mod (Min Eşik: 55)"
-st.caption(f"Oransal Matris Omurgası + EMA, RSI Mıknatısı & Fib Katkıları | ⚙️ **{mod_bilgi_metni}**")
+st.caption("Oransal Matris Omurgası (7/18/40/22/13) + EMA, RSI Mıknatısı & Fib Katkıları | ⚙️ **Aktif Eşik: 50 Puan (7/24 Aktif)**")
 
 if "kasa_islem_acik" not in st.session_state:
     st.session_state["kasa_islem_acik"] = False

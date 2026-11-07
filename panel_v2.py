@@ -2505,10 +2505,18 @@ with col_sag_endeks:
         st.markdown(f'<div style="margin-bottom: 8px;">{t_slider_html}</div>', unsafe_allow_html=True)
 
         t_zaman_kat = total_ham_veri["zaman_katkilari"]
+        _dilim_agirliklari = {"8 Saat": 7.0, "4 Saat": 18.0, "2 Saat": 40.0, "1 Saat": 22.0, "30 Dakika": 13.0}
         boxes_listesi = []
         for etk, veri in t_zaman_kat.items():
             sl, ss = veri["sl"], veri["ss"]
-            kazanan_renk = "#00FF00" if sl >= ss else "rgb(255, 75, 0)"
+            w_ = _dilim_agirliklari.get(etk, 20.0)
+            esik_ = w_ * 1.10
+            if abs(sl - ss) < 1e-5:
+                kazanan_renk = "rgb(255, 255, 0)"
+            elif sl > ss:
+                kazanan_renk = "#00FF00" if sl > esik_ else "rgb(120, 255, 0)"
+            else:
+                kazanan_renk = "rgb(255, 75, 0)" if ss > esik_ else "rgb(255, 180, 0)"
             boxes_listesi.append(f'<div style="background-color: {kazanan_renk}; color: #000000; padding: 6px; border-radius: 6px; text-align: center; font-weight: 800; font-size: 13px; margin-bottom: 6px; line-height: 1.3; white-space: nowrap;">{etk} · L: {sl:.2f}p | S: {ss:.2f}p</div>')
         boxes_birlestirilmis = "".join(boxes_listesi)
 

@@ -134,7 +134,7 @@ def pencere_analiz(df, n_skor=None):
 
     tam = df.reset_index(drop=True)
     d = tam.tail(int(n_skor)).reset_index(drop=True) if (n_skor and len(tam) > int(n_skor)) else tam
-    if len(d) < 10:
+    if len(d) < 3:
         return {"s": nötr, "y_adet": 0, "k_adet": 0, "detay": {}}
     op, hi, lo, cl = (d[c].astype(float) for c in ("Open", "High", "Low", "Close"))
     cl_tam = tam["Close"].astype(float)

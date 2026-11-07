@@ -6,7 +6,7 @@ Süre      | Ağırlık | Mum aralığı | Puanlanan mum sayısı
 4 Saat    |  18%    |  5 dakika   | 48
 2 Saat    |  40%    |  5 dakika   | 24
 1 Saat    |  22%    |  5 dakika   | 12
-30 Dakika |  13%    |  5 dakika   | 6
+30 Dakika |  13%    |  3 dakika   | 10
 
 ISINMA: EMA (9/20/50), RSI ve ATR yalnızca pencerenin kendi mumlarıyla hesaplanırsa oturmaz (ör. 30 mumda EMA50 anlamsızdır).
 Bu yüzden her aralıkta puanlanan mumların ÖNCESİNDE ISITMA_MUM kadar ek geçmiş mum çekilir; EMA/RSI/ATR bu uzun seriyle
@@ -39,7 +39,7 @@ DILIMLER = [
     ("4 Saat", "5m", 48, 18.0),
     ("2 Saat", "5m", 24, 40.0),
     ("1 Saat", "5m", 12, 22.0),
-    ("30 Dakika", "5m", 6, 13.0),
+    ("30 Dakika", "3m", 10, 13.0),
 ]
 # EMA50'nin ~%98 oturması için puanlanan mumların öncesine eklenen geçmiş mum sayısı (EMA/RSI/ATR için)
 ISITMA_MUM = 100

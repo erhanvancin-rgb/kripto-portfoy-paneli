@@ -2395,8 +2395,14 @@ with col_orta_grafik:
         t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
         for _n in (7, 14, 21):   # EMA'lar 192 mumluk seriyle hesaplanır (ısınmış), sonra son mumlar gösterilir
             t_df[f"EMA{_n}"] = t_df["Close"].ewm(span=_n, adjust=False).mean()
-        _zoom_4s = bool(st.session_state.get("grafik_4saat", False))   # çift tıklayınca 8 saat <-> 4 saat
-        t_df = t_df.tail(48 if _zoom_4s else 96).reset_index(drop=True)   # 5 dk × 96 = 8 saat | 5 dk × 48 = 4 saat
+        _zoom_seviyesi = st.session_state.get("grafik_zoom_seviyesi", "8 Saat")
+        if _zoom_seviyesi == "2 Saat":
+            _m_sayisi, _z_pad, _dt = 24, 15, 900000
+        elif _zoom_seviyesi == "4 Saat":
+            _m_sayisi, _z_pad, _dt = 48, 30, 1800000
+        else:
+            _m_sayisi, _z_pad, _dt = 96, 60, 3600000
+        t_df = t_df.tail(_m_sayisi).reset_index(drop=True)
 
         _alt_kolon = "Low" if "Low" in t_df.columns else "Close"
         _ust_kolon = "High" if "High" in t_df.columns else "Close"
@@ -2415,7 +2421,7 @@ with col_orta_grafik:
             1.236: max_f + 0.236 * fiyat_fark,
         }
 
-        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(minutes=(30 if _zoom_4s else 60))
+        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(minutes=_z_pad)
         alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.28), max_f + (fiyat_fark * 0.28)
 
         fig_total = go.Figure()
@@ -2468,7 +2474,7 @@ with col_orta_grafik:
 
         fig_total.update_layout(
             template="plotly_dark", margin=dict(t=28, b=36, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 360),
-            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=(1800000 if _zoom_4s else 3600000), tickformat="%H:%M", tickangle=0,
+            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=_dt, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False, fixedrange=True),
@@ -2481,12 +2487,31 @@ with col_orta_grafik:
         except TypeError:
             _grafik_kap = st.container()
         def _grafik_zoom_toggle():
-            st.session_state["grafik_4saat"] = not st.session_state.get("grafik_4saat", False)
+            # Döngüsel geçiş (JS çift tık için)
+            mevcut = st.session_state.get("grafik_zoom_seviyesi", "8 Saat")
+            if mevcut == "8 Saat": st.session_state["grafik_zoom_seviyesi"] = "4 Saat"
+            elif mevcut == "4 Saat": st.session_state["grafik_zoom_seviyesi"] = "2 Saat"
+            else: st.session_state["grafik_zoom_seviyesi"] = "8 Saat"
 
         with _grafik_kap:
-            # Çift tıklama (JS) bu düğmeye basar; düğme aynı zamanda telefonda/JS yokken elle kullanılabilir.
-            st.button("🔍 8 Saat" if _zoom_4s else "🔍 4 Saat", key="grafik_zoom", on_click=_grafik_zoom_toggle,
-                      help="Grafiğe çift tıklayınca da 4 saat ↔ 8 saat arasında geçer.")
+            _z_c1, _z_c2, _z_c3 = st.columns(3)
+            with _z_c1:
+                if st.button("🔍 8 Saat", key="z_8s", type="primary" if _zoom_seviyesi=="8 Saat" else "secondary", use_container_width=True):
+                    st.session_state["grafik_zoom_seviyesi"] = "8 Saat"
+                    st.rerun()
+            with _z_c2:
+                if st.button("🔍 4 Saat", key="z_4s", type="primary" if _zoom_seviyesi=="4 Saat" else "secondary", use_container_width=True):
+                    st.session_state["grafik_zoom_seviyesi"] = "4 Saat"
+                    st.rerun()
+            with _z_c3:
+                if st.button("🔍 2 Saat", key="z_2s", type="primary" if _zoom_seviyesi=="2 Saat" else "secondary", use_container_width=True):
+                    st.session_state["grafik_zoom_seviyesi"] = "2 Saat"
+                    st.rerun()
+            
+            # JS doubleClick tetikleyicisi için gizli buton
+            st.button("gizli", key="grafik_zoom", on_click=_grafik_zoom_toggle)
+            st.markdown("<style>.st-key-grafik_zoom {display: none !important;}</style>", unsafe_allow_html=True)
+            
             st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
 
 with col_sag_endeks:

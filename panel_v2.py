@@ -3078,21 +3078,27 @@ if not df_gosterilecek.empty:
     df_gecmis_copy["Anlik_KZ_Deger"] = df_gecmis_copy["Islem_ID"].map(anlik_kz_sozluk)
 
     for _, row in df_gecmis_copy.iterrows():
+        # Sadece XRP için 4 basamak, diğerleri için 2 basamak formatı
+        bas = 4 if "XRP" in str(row["Coin"]) else 2
+        
         logo_h = f'<img src="{logo_urls.get(row["Coin"], "")}" width="24" height="24">'
         yon_h = f'<div style="background-color: {"#00FF00" if "Long" in row["Yon"] else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold;">{row["Yon"]}</div>'
-        anlik_fiyat_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_Fiyat_Deger"] or 0) > float(row["Giris_Fiyat"]) else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_Fiyat_Deger"] or 0):,.2f}&nbsp;$</div>'
+        
+        anlik_fiyat_deger = float(row["Anlik_Fiyat_Deger"] or 0)
+        anlik_fiyat_h = f'<div style="background-color: {"#00FF00" if anlik_fiyat_deger > float(row["Giris_Fiyat"]) else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{anlik_fiyat_deger:,.{bas}f}&nbsp;$</div>'
 
         if not durum_kapali_mi(row["Durum"]):
             kapanis_fiyat_h, durum_h = '<div style="padding: 5px; color: #91a0b8;">-</div>', '<div style="background-color: #5b8cff; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
         else:
             is_kar = float(row["Net_Kar_Zarar"]) >= 0
             sinif = "kar-hucre" if is_kar else "zarar-hucre"
-            kapanis_fiyat_h = f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.2f}&nbsp;$</div>'
+            kapanis_fiyat_h = f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{bas}f}&nbsp;$</div>'
             durum_h = f'<div class="{sinif}">{row["Durum"]}</div>'
 
         kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.2f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row.get('Matris_Puan_RH', '-')}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.2f}&nbsp;$</td><td>{float(row['Stop']):,.2f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+        # Tüm fiyatlar {bas} ile XRP için 4'e uyarlandı (Giriş, Anlık, Kapanış, Hedef, Stop)
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{bas}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row.get('Matris_Puan_RH', '-')}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{bas}f}&nbsp;$</td><td>{float(row['Stop']):,.{bas}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
 else:
     portfoy_html += "<tr><td colspan='18' style='text-align: center; color: #91a0b8; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
 

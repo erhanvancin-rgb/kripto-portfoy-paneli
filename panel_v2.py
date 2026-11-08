@@ -3052,7 +3052,7 @@ if st.session_state["sadece_aktifleri_goster"]:
     _df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
     if _df_acik_kart.empty:
         st.info("Şu an açık pozisyon yok.")
-    for _, row in df_gecmis_copy.iterrows():
+        for _, row in df_gecmis_copy.iterrows():
         # Coin XRP ise 4, değilse 2 basamak ayarı
         basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         

@@ -209,9 +209,14 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 .st-key-grafik_total { height:380px; box-sizing:border-box; border:1px solid var(--border) !important; border-radius:14px !important; background:linear-gradient(145deg,#141f31,#0f1726) !important; padding:6px 4px 0 !important; overflow:hidden !important; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] { border:none !important; background:transparent !important; padding:0 !important; }
 .st-key-grafik_total { position:relative; }
-div.st-key-grafik_zoom { position:absolute !important; top:8px; right:10px; z-index:6; width:auto !important; margin:0 !important; }
-div.st-key-grafik_zoom button { min-height:26px !important; height:26px !important; padding:0 10px !important; border-radius:13px !important; background:rgba(16,24,39,.88) !important; border:1px solid #3a4a66 !important; }
-div.st-key-grafik_zoom button p { font-size:12px !important; color:#c3cfe2 !important; margin:0 !important; line-height:1 !important; }
+div.st-key-grafik_zoom_cycle { display: none !important; }
+div.st-key-grafik_zoom_grup { position:absolute !important; top:8px; right:10px; z-index:6; width:auto !important; margin:0 !important; background:rgba(16,24,39,.88) !important; border-radius:13px !important; border:1px solid #3a4a66 !important; padding: 3px !important; }
+div.st-key-grafik_zoom_grup div[data-testid="stHorizontalBlock"] { gap: 2px !important; align-items: center !important; }
+div.st-key-grafik_zoom_grup div[data-testid="stColumn"] { width: auto !important; flex: 1 1 auto !important; min-width: 0 !important; }
+div[class*="st-key-btn_zoom_"] button { min-height:24px !important; height:24px !important; padding:0 12px !important; border-radius:11px !important; background:transparent !important; border:none !important; box-shadow:none !important; }
+div[class*="st-key-btn_zoom_"] button p { font-size:11px !important; color:#8fa0ba !important; margin:0 !important; line-height:1 !important; font-weight: 600 !important; }
+div[class*="st-key-btn_zoom_"][class*="_aktif"] button { background:#3977f6 !important; }
+div[class*="st-key-btn_zoom_"][class*="_aktif"] button p { color:#ffffff !important; font-weight: 800 !important; }
 .st-key-grafik_total [data-testid="stPlotlyChart"] > div, .st-key-grafik_total .js-plotly-plot, .st-key-grafik_total .plot-container { overflow:hidden !important; }
 </style>
 """,
@@ -2395,8 +2400,16 @@ with col_orta_grafik:
         t_df["RSI"] = (100 - (100 / (1 + rs))).fillna(50)
         for _n in (7, 14, 21):   # EMA'lar 192 mumluk seriyle hesaplanır (ısınmış), sonra son mumlar gösterilir
             t_df[f"EMA{_n}"] = t_df["Close"].ewm(span=_n, adjust=False).mean()
-        _zoom_4s = bool(st.session_state.get("grafik_4saat", False))   # çift tıklayınca 8 saat <-> 4 saat
-        t_df = t_df.tail(48 if _zoom_4s else 96).reset_index(drop=True)   # 5 dk × 96 = 8 saat | 5 dk × 48 = 4 saat
+        _zoom_seviye = st.session_state.get("grafik_zoom_seviye", "8s")
+        if _zoom_seviye == "2s":
+            t_df = t_df.tail(24).reset_index(drop=True)
+            _ilerleme_dk, dtick_val = 15, 900000
+        elif _zoom_seviye == "4s":
+            t_df = t_df.tail(48).reset_index(drop=True)
+            _ilerleme_dk, dtick_val = 30, 1800000
+        else:
+            t_df = t_df.tail(96).reset_index(drop=True)
+            _ilerleme_dk, dtick_val = 60, 3600000
 
         _alt_kolon = "Low" if "Low" in t_df.columns else "Close"
         _ust_kolon = "High" if "High" in t_df.columns else "Close"
@@ -2415,7 +2428,7 @@ with col_orta_grafik:
             1.236: max_f + 0.236 * fiyat_fark,
         }
 
-        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(minutes=(30 if _zoom_4s else 60))
+        min_zaman, max_zaman_grafik = t_df["timestamp"].min(), t_df["timestamp"].max() + pd.Timedelta(minutes=_ilerleme_dk)
         alt_sinir, ust_sinir = min_f - (fiyat_fark * 0.28), max_f + (fiyat_fark * 0.28)
 
         fig_total = go.Figure()
@@ -2468,7 +2481,7 @@ with col_orta_grafik:
 
         fig_total.update_layout(
             template="plotly_dark", margin=dict(t=28, b=36, l=8, r=(56 if IS_MOBIL else 86)), height=(300 if IS_MOBIL else 360),
-            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=(1800000 if _zoom_4s else 3600000), tickformat="%H:%M", tickangle=0,
+            xaxis=dict(fixedrange=True, automargin=True, range=[min_zaman, max_zaman_grafik], dtick=dtick_val, tickformat="%H:%M", tickangle=0,
                        tickfont=dict(size=12, color="#c3cfe2"), showgrid=True, gridcolor="rgba(255,255,255,0.16)", gridwidth=1,
                        zeroline=False, showline=False),
             yaxis=dict(showticklabels=False, range=[alt_sinir, ust_sinir], showgrid=False, zeroline=False, fixedrange=True),
@@ -2480,13 +2493,28 @@ with col_orta_grafik:
             _grafik_kap = st.container(key="grafik_total")
         except TypeError:
             _grafik_kap = st.container()
-        def _grafik_zoom_toggle():
-            st.session_state["grafik_4saat"] = not st.session_state.get("grafik_4saat", False)
+
+        def _grafik_zoom_set(seviye):
+            st.session_state["grafik_zoom_seviye"] = seviye
+            
+        def _grafik_zoom_cycle():
+            mevcut = st.session_state.get("grafik_zoom_seviye", "8s")
+            yeni = "4s" if mevcut == "8s" else ("2s" if mevcut == "4s" else "8s")
+            st.session_state["grafik_zoom_seviye"] = yeni
 
         with _grafik_kap:
-            # Çift tıklama (JS) bu düğmeye basar; düğme aynı zamanda telefonda/JS yokken elle kullanılabilir.
-            st.button("🔍 8 Saat" if _zoom_4s else "🔍 4 Saat", key="grafik_zoom", on_click=_grafik_zoom_toggle,
-                      help="Grafiğe çift tıklayınca da 4 saat ↔ 8 saat arasında geçer.")
+            st.button("cycle", key="grafik_zoom_cycle", on_click=_grafik_zoom_cycle)
+            
+            _grp = st.container(key="grafik_zoom_grup")
+            with _grp:
+                _c1, _c2, _c3 = st.columns(3, gap="small")
+                with _c1:
+                    st.button("8 Saat", key="btn_zoom_8s_aktif" if _zoom_seviye=="8s" else "btn_zoom_8s", on_click=_grafik_zoom_set, args=("8s",))
+                with _c2:
+                    st.button("4 Saat", key="btn_zoom_4s_aktif" if _zoom_seviye=="4s" else "btn_zoom_4s", on_click=_grafik_zoom_set, args=("4s",))
+                with _c3:
+                    st.button("2 Saat", key="btn_zoom_2s_aktif" if _zoom_seviye=="2s" else "btn_zoom_2s", on_click=_grafik_zoom_set, args=("2s",))
+
             st.plotly_chart(fig_total, width='stretch', config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
 
 with col_sag_endeks:
@@ -2738,8 +2766,8 @@ try:
   if(P.__zoomH) d.removeEventListener('dblclick', P.__zoomH, true);
   P.__zoomH=function(ev){ try{
     var t=ev.target; if(!t||!t.closest) return;
-    if(t.closest('.st-key-grafik_total') && !t.closest('.st-key-grafik_zoom')){
-      var b=d.querySelector('.st-key-grafik_zoom button'); if(b) b.click(); } }catch(e){} };
+    if(t.closest('.st-key-grafik_total') && !t.closest('.st-key-grafik_zoom_grup')){
+      var b=d.querySelector('.st-key-grafik_zoom_cycle button'); if(b) b.click(); } }catch(e){} };
   d.addEventListener('dblclick', P.__zoomH, true);
   if(P.__fitH) P.removeEventListener('resize', P.__fitH);
   P.__fitH=function(){ if(P.__fitBusy) return; clearTimeout(P.__fitT); P.__fitT=setTimeout(fit,250); };
@@ -3024,22 +3052,40 @@ if st.session_state["sadece_aktifleri_goster"]:
     _df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
     if _df_acik_kart.empty:
         st.info("Şu an açık pozisyon yok.")
-    else:
-        try:
-            _kart_alani = st.container(key="poz_kartlari")
-        except TypeError:
-            _kart_alani = st.container()
-        with _kart_alani:
-            _satirlar = [_df_acik_kart.iloc[i:i + 4] for i in range(0, len(_df_acik_kart), 4)]
-            for _grup in _satirlar:
-                _kolonlar = st.columns(4)
-                for _k, (_, _r) in zip(_kolonlar, _grup.iterrows()):
-                    with _k:
-                        _id = int(_r["Islem_ID"])
-                        st.markdown(pozisyon_karti_html(_r, anlik_fiyat_sozluk.get(_r["Islem_ID"]), logo_urls.get(_r["Coin"], ""), toplam_kasa), unsafe_allow_html=True)
-                        _miktar = float(_r["Islem_Miktari"])
-                        st.button(f"{_id} ID Sonlandır", key=f"btn_kart_ac_{_id}", width="stretch", on_click=_ac_kapat_toggle, args=(f"kart_ac_{_id}",))
-                        if st.session_state.get(f"kart_ac_{_id}", False):
+    for _, row in df_gecmis_copy.iterrows():
+        # Coin XRP ise 4, değilse 2 basamak ayarı
+        basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
+        
+        logo_h = f'<img src="{logo_urls.get(row["Coin"], "")}" width="24" height="24">'
+        yon_h = f'<div style="background-color: {"#00FF00" if "Long" in row["Yon"] else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold;">{row["Yon"]}</div>'
+        
+        # Anlık Fiyat (basamak_degeri kullanılıyor)
+        anlik_fiyat_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_Fiyat_Deger"] or 0) > float(row["Giris_Fiyat"]) else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_Fiyat_Deger"] or 0):,.{basamak_degeri}f}&nbsp;$</div>'
+
+        if not durum_kapali_mi(row["Durum"]):
+            kapanis_fiyat_h, durum_h = '<div style="padding: 5px; color: #91a0b8;">-</div>', '<div style="background-color: #5b8cff; color: white; padding: 4px; border-radius: 4px; font-weight: bold;">Aktif</div>'
+        else:
+            is_kar = float(row["Net_Kar_Zarar"]) >= 0
+            sinif = "kar-hucre" if is_kar else "zarar-hucre"
+            # Kapanış Fiyatı (basamak_degeri kullanılıyor)
+            kapanis_fiyat_h = f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{basamak_degeri}f}&nbsp;$</div>'
+            durum_h = f'<div class="{sinif}">{row["Durum"]}</div>'
+
+        kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
+
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
+        islem_miktari_val = float(row['Islem_Miktari'])
+        
+        # Kar Al ve Stop değerleri (basamak_degeri kullanılıyor)
+        kar_al_formatli = f"{float(row['Kar_Al']):,.{basamak_degeri}f}&nbsp;$"
+        stop_formatli = f"{float(row['Stop']):,.{basamak_degeri}f}&nbsp;$"
+        
+        canli_beklenen_kar_val = float(row['Canli_Beklenen_Kar'])
+        canli_olasi_stop_val = float(row['Canli_Olasi_Stop'])
+        guncel_kasa_val = float(row['Guncel_Kasa'])
+        giris_fiyat_val = float(row['Giris_Fiyat'])
+
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{giris_fiyat_val:,.{basamak_degeri}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{canli_beklenen_kar_val:,.2f}&nbsp;$</td><td>{canli_olasi_stop_val:,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{guncel_kasa_val:,.2f}&nbsp;$</td></tr>" 
                             _tutar = st.number_input("Tutar ($)", min_value=0.01, max_value=_miktar, value=_miktar, step=10.0, key=f"kismi_tutar_{_id}")
                             st.button("🛑 İşlemi Kapat", key=f"btn_kart_kapat_{_id}", width="stretch", on_click=_kart_kapat_cb, args=(_id, _r["Coin"], _miktar))
 

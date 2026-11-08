@@ -3086,8 +3086,8 @@ if st.session_state["sadece_aktifleri_goster"]:
         giris_fiyat_val = float(row['Giris_Fiyat'])
 
         portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{giris_fiyat_val:,.{basamak_degeri}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td><td>{islem_miktari_val:,.2f}&nbsp;$</td><td>{kar_al_formatli}</td><td>{stop_formatli}</td><td>{canli_beklenen_kar_val:,.2f}&nbsp;$</td><td>{canli_olasi_stop_val:,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{guncel_kasa_val:,.2f}&nbsp;$</td></tr>" 
-                            _tutar = st.number_input("Tutar ($)", min_value=0.01, max_value=_miktar, value=_miktar, step=10.0, key=f"kismi_tutar_{_id}")
-                            st.button("🛑 İşlemi Kapat", key=f"btn_kart_kapat_{_id}", width="stretch", on_click=_kart_kapat_cb, args=(_id, _r["Coin"], _miktar))
+        _tutar = st.number_input("Tutar ($)", min_value=0.01, max_value=_miktar, value=_miktar, step=10.0, key=f"kismi_tutar_{_id}")
+        st.button("🛑 İşlemi Kapat", key=f"btn_kart_kapat_{_id}", width="stretch", on_click=_kart_kapat_cb, args=(_id, _r["Coin"], _miktar))
 
 portfoy_html = """<table class="custom-table"><thead class="custom-table-header"><tr><th>ID</th><th>Açılış</th><th>Logo</th><th>Coin</th><th>Yön</th><th>Giriş</th><th>Anlık</th><th>Kapanış</th><th>Matris Puanı</th><th>Yatırım</th><th>Hedef</th><th>Stop</th><th>Beklenen Kâr</th><th>Olası Stop</th><th>Durum</th><th>Anlık K/Z</th><th>Kapanış Zamanı</th><th>Güncel Kasa</th></tr></thead><tbody>"""
 

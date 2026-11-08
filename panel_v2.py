@@ -3052,9 +3052,9 @@ if st.session_state["sadece_aktifleri_goster"]:
     _df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
     if _df_acik_kart.empty:
         st.info("Şu an açık pozisyon yok.")
-        for _, row in df_gecmis_copy.iterrows():
+    for _, row in df_gecmis_copy.iterrows():
         # Coin XRP ise 4, değilse 2 basamak ayarı
-            basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
+        basamak_degeri = 4 if row['Coin'] == 'XRP/USDT' else 2
         
         logo_h = f'<img src="{logo_urls.get(row["Coin"], "")}" width="24" height="24">'
         yon_h = f'<div style="background-color: {"#00FF00" if "Long" in row["Yon"] else "rgb(255, 75, 0)"}; padding: 6px; border-radius: 6px; color: #000000; font-weight: bold;">{row["Yon"]}</div>'

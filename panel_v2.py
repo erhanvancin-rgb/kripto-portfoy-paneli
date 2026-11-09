@@ -1014,15 +1014,16 @@ STOP_YUZDESI = 0.50   # fiyat yüzdesi (kaldıraçtan bağımsız); tüm puanlar
 HEDEF_TABLOSU = [(50.0, 0.45), (55.0, 0.50), (59.0, 0.60), (63.0, 0.65), (67.0, 0.75), (71.0, 0.80), (75.0, 0.85)]
 
 def calculate_coin_metrics_by_score(matris_puani):
-    """Matris puanına göre Çan Eğrisi modeline uygun (stop %, hedef %, metin) döner."""
+    """Matris puanına göre Geniş Stop (İğne Koruması) ve Hızlı Vur-Kaç Hedefleri."""
     p = float(matris_puani)
-    if p >= 75: stop_uzde, hedef_uzde = 0.50, 0.50
-    elif p >= 71: stop_uzde, hedef_uzde = 0.52, 0.52
-    elif p >= 67: stop_uzde, hedef_uzde = 0.56, 0.56
-    elif p >= 63: stop_uzde, hedef_uzde = 0.60, 0.60
-    elif p >= 59: stop_uzde, hedef_uzde = 0.56, 0.56
-    elif p >= 55: stop_uzde, hedef_uzde = 0.52, 0.52
-    else: stop_uzde, hedef_uzde = 0.50, 0.50
+    if p >= 75: stop_uzde, hedef_uzde = 1.20, 0.35      # Boğa/Ayı Vuruşu (Geniş Risk, Ani Hedef)
+    elif p >= 71: stop_uzde, hedef_uzde = 1.10, 0.40    # Çok Güçlü
+    elif p >= 67: stop_uzde, hedef_uzde = 1.00, 0.45    # Orta Güçlü
+    elif p >= 63: stop_uzde, hedef_uzde = 0.95, 0.50    # Güçlü
+    elif p >= 59: stop_uzde, hedef_uzde = 0.90, 0.50    # Güvenli
+    elif p >= 55: stop_uzde, hedef_uzde = 0.85, 0.45    # Orta Trend
+    else: stop_uzde, hedef_uzde = 0.80, 0.40            # Zayıf Trend
+    
     str_stop = f"{stop_uzde:.2f}".replace(".", ",")
     str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
     return stop_uzde, hedef_uzde, f"{str_stop} / {str_hedef}"

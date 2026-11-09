@@ -136,7 +136,10 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-baseweb="input"] > div, [data-baseweb="select"] > div, [data-testid="stNumberInput"] input, [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { background:#0d1523 !important; color:var(--text) !important; border-color:#2a3951 !important; border-radius:9px !important; }
 [data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
 [data-testid="stExpander"] { background:#101827; border:1px solid var(--border); border-radius:12px; }
-[data-testid="stAlert"] { border-radius:12px; }
+[data-testid="stAlert"] { border-radius:12px; background:rgba(16,24,39,.28) !important; border:1px solid rgba(145,160,184,.18) !important; color:var(--text) !important; }
+[data-testid="stAlert"] [data-testid="stMarkdownContainer"], [data-testid="stAlert"] p { color:#cbd5e1 !important; }
+[data-testid="stAlert"] [data-baseweb="notification"] { background:transparent !important; }
+[data-testid="stAlert"] svg { opacity:.85; }
 .table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
 [data-testid="stHorizontalBlock"] { align-items:stretch; }
 [data-testid="stPlotlyChart"] { min-width:0; background:transparent !important; border:none !important; border-radius:0px !important; padding:0px !important; box-shadow:none !important; }
@@ -789,6 +792,25 @@ def rapor_telegram_gonder(pdf_bytes, dosya_adi, bakiye, zaman):
         return False, f"Telegram yanıtı: {yanit.status_code}"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
+
+def telegram_islem_bildirimi(mesaj):
+    """Otomatik kapanış bildirimini Telegram'a gönderir; yapılandırma yoksa sessizce başarısız döner."""
+    token = _secret_bul("TELEGRAM_BOT_TOKEN")
+    chat_id = _secret_bul("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return False, "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID bulunamadı."
+    try:
+        yanit = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat_id, "text": str(mesaj), "disable_web_page_preview": True},
+            timeout=15,
+        )
+        veri = yanit.json()
+        if yanit.status_code == 200 and veri.get("ok"):
+            return True, "Telegram bildirimi gönderildi."
+        return False, f"Telegram yanıtı: {yanit.status_code}"
+    except Exception as e:
+        return False, f"Telegram gönderim hatası: {type(e).__name__}: {e}"
 
 def matris_birlesik_html(nihai_puan, aktif_yon, y_yuzde, k_yuzde):
     renk = RENK_YESIL if aktif_yon == "Long" else RENK_KIRMIZI
@@ -1502,14 +1524,8 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in eski_yon, yeni_toplam_miktar, yeni_agirlikli_ortalama, yeni_kar_al, yeni_stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, yeni_agirlikli_ortalama, yeni_stop, _lev, eski_yon)
-        if yeni_toplam_miktar > kap["tavan"] + 0.005:   # teminat tavanı: her zaman geçerli
-            return False, (f"⛔ Teminat tavanı aşılıyor! Bu pozisyon için en fazla {kap['tavan']:.2f} $ teminat konabilir "
-                           f"(pozisyon büyüklüğü kasanın {MAKS_POZISYON_ORANI:g} katını geçemez). Mevcut {eski_miktar:.2f} $; "
-                           f"en fazla {max(0.0, kap['tavan'] - eski_miktar):.2f} $ ekleyebilirsiniz.")
-        _risk_asildi = yeni_toplam_miktar > kap["azami"] + 0.005
-        if _risk_asildi and not risk_asimi:
-            eklenebilir = max(0.0, kap["azami"] - eski_miktar)
-            return False, f"⚠️ Risk sınırı aşılıyor! En fazla {eklenebilir:.2f} $ ekleyebilirsiniz. Bilerek aşmak için formdaki 'Risk sınırını aşarak ekle' kutusunu işaretleyin."
+        # Risk/teminat tavanı bilgilendirme amaçlı hesaplanır; emir bloke edilmez.
+        _risk_asildi = yeni_toplam_miktar > kap["azami"] + 0.005 or yeni_toplam_miktar > kap["tavan"] + 0.005
 
         basamak = 4 if yeni_agirlikli_ortalama < 10 else 2
         matris_rh_metin = f"{yeni_agirlikli_puan:.2f} ({rh_guncel_metin})"
@@ -1541,12 +1557,8 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
         beklenen_kar, olasi_stop = beklenen_ve_olasi("Long" in yon, islem_miktari, giris_fiyat, kar_al, stop, _lev)
 
         kap = risk_kapasitesi(toplam_kasa_risk, df, coin, giris_fiyat, stop, _lev, yon)
-        if islem_miktari > kap["tavan"] + 0.005:   # teminat tavanı: her zaman geçerli
-            return False, (f"⛔ Teminat tavanı aşılıyor! Bu işlem için en fazla {kap['tavan']:.2f} $ teminat konabilir "
-                           f"(pozisyon büyüklüğü kasanın {MAKS_POZISYON_ORANI:g} katını geçemez).")
-        _risk_asildi = islem_miktari > kap["azami"] + 0.005
-        if _risk_asildi and not risk_asimi:
-            return False, f"⚠️ Risk sınırı aşılıyor! Azami teminat {kap['azami']:.2f} $. Bilerek aşmak için formdaki 'Risk sınırını aşarak işlem aç' kutusunu işaretleyin."
+        # Risk/teminat tavanı bilgilendirme amaçlı hesaplanır; emir bloke edilmez.
+        _risk_asildi = islem_miktari > kap["azami"] + 0.005 or islem_miktari > kap["tavan"] + 0.005
 
         basamak = 4 if giris_fiyat < 10 else 2
         giris_kom = round(giris_komisyonu(islem_miktari, _lev), 4)
@@ -1782,6 +1794,29 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
     for islem_id, coin, hedefe_ulasti, net_kar in yazilacaklar:
         etiket = "Hedef Kâr" if hedefe_ulasti else "Otomatik Stop"
         kapanis_deftere_yaz_tekil(islem_id, etiket, coin, net_kar, "Kar" if hedefe_ulasti else "Zarar")
+        try:
+            kapali_satir = df.loc[df["Islem_ID"] == islem_id].iloc[0]
+            kasa_son, efektif_son, bos_son, teminat_son, acik_kz_son = bakiye_durumunu_getir(
+                {} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu
+            )
+            yon_son = str(kapali_satir.get("Yon", "-"))
+            kapanis_son = float(kapali_satir.get("Kapanis_Fiyati", 0) or 0)
+            mesaj = (
+                f"{'🟢 HEDEF KÂR' if hedefe_ulasti else '🔴 OTOMATİK STOP'}\n"
+                f"İşlem: #{islem_id} | {coin} | {yon_son}\n"
+                f"Kapanış fiyatı: {kapanis_son:,.6f} $\n"
+                f"Net sonuç: {net_kar:+,.2f} $\n"
+                f"Toplam kasa: {float(kasa_son):,.2f} $\n"
+                f"Efektif kasa: {float(efektif_son):,.2f} $\n"
+                f"Boş nakit: {float(bos_son):,.2f} $\n"
+                f"Kullanılan teminat: {float(teminat_son):,.2f} $\n"
+                f"Zaman: {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')}"
+            )
+            ok_t, sonuc_t = telegram_islem_bildirimi(mesaj)
+            if not ok_t:
+                print(f"Telegram otomatik kapanış bildirimi gönderilemedi (#{islem_id}): {sonuc_t}")
+        except Exception as e:
+            print(f"Telegram kapanış bildirimi hazırlanamadı (#{islem_id}): {e}")
 
 def trend_asamasini_ve_ikon_belirle(puan, aktif_yon):
     hsonu = hafta_sonu_mu()

@@ -3048,7 +3048,8 @@ with _hb3:
 if st.session_state["sadece_aktifleri_goster"]:
     _df_acik_kart = df_gecmisile_goster[~durum_kapali_maskesi(df_gecmisile_goster["Durum"])] if not df_gecmisile_goster.empty else pd.DataFrame()
     if _df_acik_kart.empty:
-        st.info("Şu an açık pozisyon yok.")
+        # Beyaz kutu yerine koyu temaya uygun transparan metin
+        st.markdown("<div style='color: #91a0b8; padding: 10px; text-align: center;'>Şu an açık pozisyon yok.</div>", unsafe_allow_html=True)
     else:
         try:
             _kart_alani = st.container(key="poz_kartlari")
@@ -3095,12 +3096,16 @@ if not df_gosterilecek.empty:
             kapanis_fiyat_h = f'<div class="{sinif}">{float(row.get("Kapanis_Fiyati", 0.0) or row["Giris_Fiyat"]):,.{bas}f}&nbsp;$</div>'
             durum_h = f'<div class="{sinif}">{row["Durum"]}</div>'
 
-        kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
+        kz_h = f'<div style="background-color: {"#00FF00" if float(row["Anlik_KZ_Deger"] or 0) >= 0 else "rgb(255, 75, 0)"}; color: #000000; padding: 5px; font-weight: bold; white-space: nowrap;">{float(row["Anlik_KZ_Deger"] or 0):+,.2f}&nbsp;$</div>'
 
-        # Tüm fiyatlar {bas} ile XRP için 4'e uyarlandı (Giriş, Anlık, Kapanış, Hedef, Stop)
-        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{bas}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td>{row.get('Matris_Puan_RH', '-')}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{bas}f}&nbsp;$</td><td>{float(row['Stop']):,.{bas}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
+        matris_puan_rh_metin = str(row.get('Matris_Puan_RH', '55.0 (Nötr)'))
+        
+        # Formatlamalar dinamik {bas} değişkenine göre yapıldı
+        portfoy_html += f"<tr><td>{row['Islem_ID']}</td><td>{row['Acilis_Zamani']}</td><td>{logo_h}</td><td>{row['Coin']}</td><td>{yon_h}</td><td>{float(row['Giris_Fiyat']):,.{bas}f}&nbsp;$</td><td>{anlik_fiyat_h}</td><td>{kapanis_fiyat_h}</td><td style='font-weight: bold; color: #91a0b8;'>{matris_puan_rh_metin}</td><td>{float(row['Islem_Miktari']):,.2f}&nbsp;$</td><td>{float(row['Kar_Al']):,.{bas}f}&nbsp;$</td><td>{float(row['Stop']):,.{bas}f}&nbsp;$</td><td>{float(row['Canli_Beklenen_Kar']):,.2f}&nbsp;$</td><td>{float(row['Canli_Olasi_Stop']):,.2f}&nbsp;$</td><td>{durum_h}</td><td>{kz_h}</td><td>{row['Kapanis_Zamani']}</td><td>{float(row['Guncel_Kasa']):,.2f}&nbsp;$</td></tr>"
 else:
     portfoy_html += "<tr><td colspan='18' style='text-align: center; color: #91a0b8; padding: 20px;'>Kayıtlı işlem bulunmuyor.</td></tr>"
+
+portfoy_html += "</tbody></table>"
 
 portfoy_html += "</tbody></table>"
 if not st.session_state["sadece_aktifleri_goster"]:

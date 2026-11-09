@@ -78,8 +78,13 @@ def _verileri_tablodan_oku():
                         tutar_str = val
                         break
             
+            t = tutar_str.replace(' ', '').replace('₺', '').replace('$', '')
+            if '.' in t and ',' in t:
+                if t.rfind(',') > t.rfind('.'): t = t.replace('.', '').replace(',', '.')
+                else: t = t.replace(',', '')
+            elif ',' in t: t = t.replace(',', '.')
             try:
-                tutar = float(tutar_str.replace(' ', '').replace('₺', '').replace('$', '').replace(',', '.'))
+                tutar = float(t)
             except ValueError:
                 tutar = 0.0
                 
@@ -149,10 +154,13 @@ def _defter_bakiyeleri(ham):
 
 
 def _sayi_oku(metin):
-    t = str(metin).strip().replace(' ', '')
-    if ',' in t:
-        t = t.replace('.', '').replace(',', '.')
-    return float(t)
+    t = str(metin).strip().replace(' ', '').replace('₺', '').replace('$', '')
+    if '.' in t and ',' in t:
+        if t.rfind(',') > t.rfind('.'): t = t.replace('.', '').replace(',', '.')
+        else: t = t.replace(',', '')
+    elif ',' in t: t = t.replace(',', '.')
+    try: return float(t)
+    except Exception: return 0.0
 
 
 def _baslik_bicimini_kopyala(sheet):

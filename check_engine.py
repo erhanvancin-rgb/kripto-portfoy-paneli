@@ -38,14 +38,14 @@ def satir_kaldiraci(row):
         return KALDIRAC
 
 def _temizle_sayi(val):
-    if val is None:
-        return 0.0
-    s = str(val).strip().replace("$", "").replace(",", ".")
-    s = re.sub(r"[^\d.\-]", "", s)
-    try:
-        return float(s)
-    except Exception:
-        return 0.0
+    if val is None or str(val).strip() == "": return 0.0
+    v = str(val).strip().replace(" ", "").replace("$", "").replace("₺", "")
+    if '.' in v and ',' in v:
+        if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+        else: v = v.replace(',', '')
+    elif ',' in v: v = v.replace(',', '.')
+    try: return float(v)
+    except Exception: return 0.0
 
 def tr_zaman():
     return datetime.now(TR_TZ)

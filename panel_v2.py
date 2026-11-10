@@ -136,10 +136,22 @@ hr { border-color:var(--border) !important; margin:1.4rem 0 !important; }
 [data-baseweb="input"] > div, [data-baseweb="select"] > div, [data-testid="stNumberInput"] input, [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { background:#0d1523 !important; color:var(--text) !important; border-color:#2a3951 !important; border-radius:9px !important; }
 [data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
 [data-testid="stExpander"] { background:#101827; border:1px solid var(--border); border-radius:12px; }
-[data-testid="stAlert"] { border-radius:12px; background:rgba(16,24,39,.28) !important; border:1px solid rgba(145,160,184,.18) !important; color:var(--text) !important; }
-[data-testid="stAlert"] [data-testid="stMarkdownContainer"], [data-testid="stAlert"] p { color:#cbd5e1 !important; }
-[data-testid="stAlert"] [data-baseweb="notification"] { background:transparent !important; }
-[data-testid="stAlert"] svg { opacity:.85; }
+/* Streamlit info/success/warning/error kutularının hem dış hem iç katmanını koyu/şeffaf yap */
+div[data-testid="stAlert"], [data-testid="stAlert"] > div,
+div[data-testid="stAlert"] [data-baseweb="notification"],
+div[data-testid="stAlert"] [class*="st-emotion-cache"],
+div[data-testid="stAlert"] [class*="stAlert"] {
+    background: rgba(16,24,39,.18) !important;
+    background-color: rgba(16,24,39,.18) !important;
+    color: #cbd5e1 !important;
+    border-color: rgba(145,160,184,.22) !important;
+    box-shadow: none !important;
+}
+div[data-testid="stAlert"] { border-radius:12px !important; border:1px solid rgba(145,160,184,.22) !important; }
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+div[data-testid="stAlert"] [data-testid="stMarkdownContainer"] p { color:#cbd5e1 !important; }
+div[data-testid="stAlert"] svg { opacity:.85; }
 .table-container { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:10px 0 22px; border:1px solid var(--border); border-radius:13px; }
 [data-testid="stHorizontalBlock"] { align-items:stretch; }
 [data-testid="stPlotlyChart"] { min-width:0; background:transparent !important; border:none !important; border-radius:0px !important; padding:0px !important; box-shadow:none !important; }
@@ -1799,6 +1811,9 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
             kasa_son, efektif_son, bos_son, teminat_son, acik_kz_son = bakiye_durumunu_getir(
                 {} if ortak_fiyat_havuzu is None else ortak_fiyat_havuzu
             )
+            # Aynı kontrolde birden fazla pozisyon kapandıysa her mesajda o işlemin
+            # kapanışından sonraki kümülatif kasa değerini göster.
+            kasa_islem_sonrasi = float(kapali_satir.get("Guncel_Kasa", kasa_son) or kasa_son)
             yon_son = str(kapali_satir.get("Yon", "-"))
             kapanis_son = float(kapali_satir.get("Kapanis_Fiyati", 0) or 0)
             mesaj = (
@@ -1806,8 +1821,8 @@ def otomatik_stop_kar_kontrolu(df_arg, ortak_fiyat_havuzu=None):
                 f"İşlem: #{islem_id} | {coin} | {yon_son}\n"
                 f"Kapanış fiyatı: {kapanis_son:,.6f} $\n"
                 f"Net sonuç: {net_kar:+,.2f} $\n"
-                f"Toplam kasa: {float(kasa_son):,.2f} $\n"
-                f"Efektif kasa: {float(efektif_son):,.2f} $\n"
+                f"İşlem sonrası toplam kasa: {kasa_islem_sonrasi:,.2f} $\n"
+                f"Güncel efektif kasa: {float(efektif_son):,.2f} $\n"
                 f"Boş nakit: {float(bos_son):,.2f} $\n"
                 f"Kullanılan teminat: {float(teminat_son):,.2f} $\n"
                 f"Zaman: {tr_zaman().strftime('%d.%m.%Y %H:%M:%S')}"

@@ -296,7 +296,7 @@ def kasa_defteri_bakiyesi():
         print("KasaDefteri okunamadı:", type(e).__name__, e)
         return None
 
-def kasa_defterine_ekle(islem_id, aciklama, tutar, coin="", sonuc=""):
+def kasa_defterine_ekle(islem_id, aciklama, tutar, coin="", sonuc="", acilis_dt=None):
     """Panelin kapanis_deftere_yaz_tekil'i ile aynı: tür=Trade_Sonuc, mükerrer kayıt yazmaz."""
     sh = sheets_baglan()
     if not sh:
@@ -314,8 +314,11 @@ def kasa_defterine_ekle(islem_id, aciklama, tutar, coin="", sonuc=""):
             if str(r[0]).replace(".", "", 1).isdigit():
                 idler.append(int(float(r[0])))
             if len(r) >= 3:
-                if str(r[2]) == "Trade_Sonuc" and f"#{islem_id} " in (str(r[4]) if len(r) > 4 else ""):
-                    return True                      # zaten yazılmış
+                if (str(r[2]) == "Trade_Sonuc" and coin and coin in (str(r[4]) if len(r) > 4 else "")
+                        and f"#{islem_id} " in (str(r[4]) + " ")
+                        and abs(_defter_tutari(r) - float(tutar)) <= 0.011
+                        and (acilis_dt is None or (_zaman_ayristir(r[1]) or acilis_dt) >= acilis_dt - timedelta(minutes=1))):
+                    return True                      # zaten yazılmış (aynı id+coin+tutar, açılıştan sonra)
                 bakiye += _defter_isaretli(r[2], _defter_tutari(r))
         yeni_id = (max(idler) if idler else 0) + 1
         satir = [yeni_id, tr_zaman().strftime("%d.%m.%Y %H:%M"), "Trade_Sonuc", round(float(tutar), 2),
@@ -480,6 +483,7 @@ def acik_islemleri_kontrol_et(durum=None):
         print("Kasa bakiyesi okunamadı, otomatik kapanış bu turda atlandı.")
         return
     kapananlar = []
+    acilis_map = {}
     simdi_ms = int(time.time() * 1000)
     dk_mumlar = {}
 
@@ -502,6 +506,7 @@ def acik_islemleri_kontrol_et(durum=None):
         if giris <= 0 or stop_f <= 0 or kar_al_f <= 0 or miktar <= 0:
             continue
 
+        acilis_map[islem_id] = _zaman_ayristir(row.get("Acilis_Zamani", ""))
         baslangic_ms = _seviye_baslangic_ms(row, simdi_ms)
         gerekli = int(min(1000, max(5, (simdi_ms - baslangic_ms) / 60000.0 + 3)))
         onbellek = dk_mumlar.get(coin)
@@ -570,7 +575,10 @@ def acik_islemleri_kontrol_et(durum=None):
         return
 
     for islem_id, coin, yon, etiket, net_kar, kapanis, kasa, hedef in kapananlar:
-        kasa_defterine_ekle(islem_id, etiket, net_kar, coin, "Kar" if hedef else "Zarar")
+        for _den in range(3):
+            if kasa_defterine_ekle(islem_id, etiket, net_kar, coin, "Kar" if hedef else "Zarar", acilis_map.get(islem_id)):
+                break
+            time.sleep(3)
         # Bot kapattı -> bildirim borcu kaydı (aktif=0). Gönderilince 1 olur.
         if durum is not None:
             durum.ayarla(f"kapanis|{islem_id}", 0, tr_zaman().isoformat())
@@ -638,6 +646,133 @@ def kapanis_maillerini_gonder(durum):
                            _fiyat_sayi(r.get("Guncel_Kasa", 0)), zaman_str):
             durum.ayarla(anahtar, 1, tr_zaman().isoformat())
     durum.kaydet()
+
+
+# ----------------------------------------------------------------------------
+# KASA ONARIMI: kapanmış ama KasaDefteri'ne yazılmamış işlemleri tamamlar
+# ----------------------------------------------------------------------------
+KASA_ONARIM_GUN = int(os.environ.get("KASA_ONARIM_GUN", "3") or 3)
+
+def _zaman_ayristir(t):
+    try:
+        return TR_TZ.localize(datetime.strptime(str(t).strip()[:16], "%d.%m.%Y %H:%M"))
+    except Exception:
+        return None
+
+def _sonuc_satiri_bul(ham, coin, tutar, acilis_dt, kullanilan):
+    """Trade_Sonuc satırını ID'ye DEĞİL içeriğe göre bulur (işlem numaraları sıfırlandığı için
+    eski defter satırlarındaki '#35' gibi numaralar yeni işlemlerle çakışabiliyor).
+    Eşleşme: aynı coin + aynı tutar + satır zamanı işlemin açılışından sonra. Bir satır yalnızca bir işleme sayılır."""
+    for i, r in enumerate(ham[1:], start=1):
+        if i in kullanilan or len(r) < 5 or str(r[2]) != "Trade_Sonuc":
+            continue
+        if coin not in str(r[4]) or abs(_defter_tutari(r) - tutar) > 0.011:
+            continue
+        z = _zaman_ayristir(r[1])
+        if acilis_dt is not None and z is not None and z < acilis_dt - timedelta(minutes=1):
+            continue
+        return i
+    return None
+
+def kasa_defteri_onar(durum=None):
+    """Son N gündeki kapalı işlemlerden defterde karşılığı olmayanların Trade_Sonuc satırını ekler,
+    fazla (eşleşmeyen) Trade_Sonuc satırlarını bildirir ve Guncel_Kasa'yı defter bakiyesiyle eşitler."""
+    df = islem_gecmisi_getir()
+    sh = sheets_baglan()
+    if df is None or df.empty or not sh:
+        return
+    ws = sh.worksheet("KasaDefteri")
+    ham = ws.get_all_values()
+    if not ham:
+        return
+    sinir = tr_zaman() - timedelta(days=KASA_ONARIM_GUN)
+
+    kapali = []
+    for idx, r in df.iterrows():
+        if not durum_kapali_mi(r.get("Durum", "")):
+            continue
+        kz = _zaman_ayristir(r.get("Kapanis_Zamani", ""))
+        if kz is None or kz < sinir:
+            continue
+        kapali.append((kz, idx, r))
+    kapali.sort(key=lambda x: x[0])
+
+    kullanilan, eksik, eslesen = set(), [], {}
+    for kz, idx, r in kapali:
+        coin = str(r.get("Coin", ""))
+        net = round(_fiyat_sayi(r.get("Net_Kar_Zarar", 0)), 2)
+        satir_no = _sonuc_satiri_bul(ham, coin, net, _zaman_ayristir(r.get("Acilis_Zamani", "")), kullanilan)
+        if satir_no is None:
+            eksik.append((kz, idx, r, coin, net))
+        else:
+            kullanilan.add(satir_no)
+            eslesen[idx] = satir_no
+
+    if eksik:
+        idler = [int(float(r[0])) for r in ham[1:] if r and str(r[0]).replace(".", "", 1).isdigit()]
+        sonraki = (max(idler) if idler else 0) + 1
+        bakiye = 0.0
+        for r in ham[1:]:
+            if len(r) >= 3:
+                bakiye += _defter_isaretli(r[2], _defter_tutari(r))
+        yeni_satirlar, ozet = [], []
+        for kz, idx, r, coin, net in eksik:
+            d = str(r.get("Durum", "")).lower()
+            etiket = "Hedef Kâr" if "kar" in d else "Otomatik Stop"
+            sonuc = "Kar" if "kar" in d else "Zarar"
+            islem_id = int(_fiyat_sayi(r.get("Islem_ID", 0)))
+            bakiye += net
+            yeni_satirlar.append([sonraki, str(r.get("Kapanis_Zamani", "")), "Trade_Sonuc", net,
+                                  f"{etiket}: #{islem_id} {coin} ({sonuc})", round(bakiye, 2)])
+            ozet.append(f"{etiket} #{islem_id} {coin} → {net:+,.2f} $")
+            sonraki += 1
+        ws.append_rows(yeni_satirlar, value_input_option="USER_ENTERED")
+        print(f"Kasa onarımı: {len(yeni_satirlar)} eksik kayıt eklendi.")
+        telegram_bildirim_gonder("🧾 Kasa defteri onarıldı",
+                                 "Defterde eksik kalan kapanışlar eklendi:<br>" + "<br>".join(ozet))
+        ham = ws.get_all_values()
+        kullanilan = set()                       # satır numaraları değişmedi (sadece sona eklendi) ama temiz başla
+        eslesen = {}
+        for kz, idx, r in kapali:
+            n_ = _sonuc_satiri_bul(ham, str(r.get("Coin", "")), round(_fiyat_sayi(r.get("Net_Kar_Zarar", 0)), 2),
+                                   _zaman_ayristir(r.get("Acilis_Zamani", "")), kullanilan)
+            if n_ is not None:
+                kullanilan.add(n_)
+                eslesen[idx] = n_
+
+    # Fazla satır uyarısı: penceredeki hiçbir işleme eşleşmeyen Trade_Sonuc satırı (örn. çift yazılmış kayıt)
+    if durum is not None:
+        for i, r in enumerate(ham[1:], start=1):
+            if i in kullanilan or len(r) < 5 or str(r[2]) != "Trade_Sonuc":
+                continue
+            z = _zaman_ayristir(r[1])
+            if z is None or z < sinir:
+                continue
+            anahtar = f"fazla_satir|{r[1]}|{r[3]}|{str(r[4])[:40]}"
+            if durum.al(anahtar).get("aktif", 0) == 1:
+                continue
+            if telegram_bildirim_gonder("⚠️ Defterde fazla satır olabilir",
+                                        f"Hiçbir işleme eşleşmeyen Trade_Sonuc satırı:<br>{r[1]} | {r[3]} | {r[4]}<br>"
+                                        f"Çift yazılmışsa KasaDefteri'nden elle silin."):
+                durum.ayarla(anahtar, 1, tr_zaman().isoformat())
+                durum.kaydet()
+
+    # Guncel_Kasa'yı defterdeki gerçek bakiyeyle eşitle
+    bakiyeler, b = {}, 0.0
+    for i, r in enumerate(ham[1:], start=1):
+        if len(r) >= 3 and r[0] != "":
+            b += _defter_isaretli(r[2], _defter_tutari(r))
+        bakiyeler[i] = round(b, 2)
+    degisti = False
+    for kz, idx, r in kapali:
+        if idx in eslesen:
+            hedef = bakiyeler[eslesen[idx]]
+            if abs(_fiyat_sayi(r.get("Guncel_Kasa", 0)) - hedef) > 0.01:
+                df.at[idx, "Guncel_Kasa"] = float(hedef)
+                degisti = True
+    if degisti:
+        dataframe_guncelle_gsheets(df)
+        print("Guncel_Kasa değerleri defterle eşitlendi.")
 
 # ----------------------------------------------------------------------------
 # 3) DİĞER MOTOR İŞLEMLERİ (Sinyaller, Kasa Senkronizasyonu, MAE/MFE vb.)
@@ -757,6 +892,7 @@ def motoru_calistir():
         raise SystemExit(1)          # Actions kırmızı olsun, sessiz geçmesin
     _adim_calistir(acik_islemleri_kontrol_et, durum)
     _adim_calistir(kapanis_maillerini_gonder, durum)
+    _adim_calistir(kasa_defteri_onar, durum)
 
     _adim_calistir(kasa_bakiye_kolonu_esitle)
     _adim_calistir(mae_mfe_doldur)

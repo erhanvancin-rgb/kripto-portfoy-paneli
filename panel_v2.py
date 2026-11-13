@@ -1406,18 +1406,33 @@ def kasa_islem_ekle_deftere(islem_turu, tutar, aciklama):
     basari, _ = kasa_islem_ekle(islem_turu, tutar, aciklama)
     return basari
 
-def kapanis_defterde_var(islem_id):
+def kapanis_defterde_var(islem_id, coin=""):
+    # İşlem numaraları sıfırlanınca eski defter satırlarındaki "#35" yeni #35 ile çakışıyordu ve yeni kapanış
+    # deftere hiç yazılmıyordu. Artık coin de eşleşmeli ("#35 SOL/USDT").
     gecmis = kasa_motoru.gecmis_getir()
+    anahtar = f"#{islem_id} {coin}".strip() + (" " if not coin else "")
     for h in gecmis:
         if h.get("tur") == "Trade_Sonuc":
-            if f"#{islem_id} " in str(h.get("aciklama", "")):
+            ack = str(h.get("aciklama", ""))
+            if (anahtar in ack) if coin else (f"#{islem_id} " in ack):
                 return True
     return False
 
 def kapanis_deftere_yaz_tekil(islem_id, etiket, coin, tutar, sonuc_metin):
-    if kapanis_defterde_var(islem_id):
-        return True
-    return kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin} ({sonuc_metin})")
+    # Sheets kota/ağ hatasında yazım sessizce kayboluyordu (işlem 'Kapandi' ama kasaya işlenmemiş).
+    # Şimdi 3 kez dener; yine olmazsa GitHub botundaki kasa onarımı (check_engine) sonraki turda tamamlar.
+    for deneme in range(1, 4):
+        try:
+            veri_onbellegini_temizle()
+            if kapanis_defterde_var(islem_id, coin):
+                return True
+            if kasa_islem_ekle_deftere("Trade_Sonuc", float(round(tutar, 2)), f"{etiket}: #{islem_id} {coin} ({sonuc_metin})"):
+                return True
+        except Exception as e:
+            print(f"Kasa defteri yazım hatası #{islem_id} (deneme {deneme}/3): {e}")
+        time.sleep(2 * deneme)
+    print(f"UYARI: #{islem_id} kapanışı kasa defterine yazılamadı.")
+    return False
 
 def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
     # Tüm bakiye ve kasa hesaplamaları artık doğrudan kasa_motoru üzerinden yönetilir

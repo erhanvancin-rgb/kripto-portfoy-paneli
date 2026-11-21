@@ -45,14 +45,15 @@ PENCERE_SETLERI = {
                                ("1 Saat", "1m", 60, 20.0), ("30 Dakika", "1m", 30, 15.0)],
     "onceki(10/20/40/20/10)": [("8 Saat", "15m", 32, 10.0), ("4 Saat", "5m", 48, 20.0), ("2 Saat", "3m", 40, 40.0),
                                ("1 Saat", "1m", 60, 20.0), ("30 Dakika", "1m", 30, 10.0)],
-    "yeni(7/18/40/22/13)": [("16 Saat", "15m", 64, 7.0), ("8 Saat", "5m", 96, 18.0), ("4 Saat", "5m", 48, 40.0),
-                            ("2 Saat", "1m", 120, 22.0), ("1 Saat", "1m", 60, 13.0)],
+    "yeni(7/18/40/22/13)": [("8 Saat", "15m", 32, 7.0), ("4 Saat", "5m", 48, 18.0), ("2 Saat", "5m", 24, 40.0),
+                            ("1 Saat", "5m", 12, 22.0), ("30 Dakika", "3m", 10, 13.0)],
 }
 # (puan, stop %, hedef %)
 TABLOLAR = {
     "mevcut": [(50, .50, .45), (55, .50, .50), (59, .50, .60), (63, .50, .65), (67, .50, .75), (71, .50, .80), (75, .50, .85)],
     "A": [(50, .30, .33), (55, .29, .33), (59, .28, .37), (63, .27, .40), (67, .28, .37), (71, .29, .37), (75, .30, .33)],
     "B": [(50, .45, .50), (55, .44, .52), (59, .42, .56), (63, .40, .60), (67, .42, .56), (71, .44, .52), (75, .45, .50)],
+    "75_merkezli_yeni": [(50, .30, .40), (75, .45, .65), (100, .25, .30)],
 }
 ESIKLER = (55, 59, 63)
 KORUMALAR = ("yok", "kovalama", "duzeltme")
@@ -127,27 +128,23 @@ def hazirla(df, bas, bit):
 
 # ------------------------------------------------------------------ SİNYALLER
 def skorlari_hesapla(veriler, TS, setler):
-    """Her coin ve her değerlendirme anı için her pencere seti için (long, short) puanı. Aynı pencere analizi setler arası paylaşılır."""
-    benzersiz = sorted({(a, nm) for ws in setler.values() for (_e, a, nm, _w) in ws})
+    """Her coin/zaman için canlı panelle aynı matris_motoru hesaplamasını kullanır."""
     sonuc = {ad: {coin: np.zeros((len(TS), 2)) for coin in veriler} for ad in setler}
     toplam, yapilan, t0 = len(veriler) * len(TS), 0, time.time()
     for coin, d in veriler.items():
         for i, t in enumerate(TS):
-            ana = {}
-            for (a, nm) in benzersiz:
-                nb = t // K[a]
-                df = d["ser"][a].iloc[max(0, nb - (nm + ISITMA)):nb]
-                an = mm.pencere_analiz(df, nm)
-                pay, uyum, s_ham = mm.pencere_pay(an)
-                ana[(a, nm)] = (an, pay, uyum, s_ham)
             for ad, ws in setler.items():
-                tw = sum(w for *_x, w in ws)
-                liste = [(et, w / tw) + (ana[(a, nm)][0], ana[(a, nm)][1], ana[(a, nm)][2], ana[(a, nm)][3]) for (et, a, nm, w) in ws]
-                r = mm.matris_birlestir(liste)
+                pencereler = []
+                for etiket, aralik, mum_sayisi, agirlik in ws:
+                    nb = t // K[aralik]
+                    df = d["ser"][aralik].iloc[max(0, nb - (mum_sayisi + ISITMA)):nb]
+                    pencereler.append((etiket, df, agirlik, mum_sayisi))
+                r = mm.matris_hesapla(pencereler)
                 sonuc[ad][coin][i] = (r["nihai_long"], r["nihai_short"])
             yapilan += 1
         print(f"  puanlar hesaplandı: {coin} ({yapilan}/{toplam}, {time.time() - t0:.0f} sn)", flush=True)
     return sonuc
+
 
 
 def koruma_dizileri(d, TS):
@@ -292,6 +289,10 @@ def calistir(ham, gun, adim=15, maks_dk=360, hizli_ozet=False):
     print(f"Veri: {len(veriler)} coin, {N} dk (~{N / 1440:.1f} gün); değerlendirme anı: {len(TS)} (her {adim} dk)", flush=True)
 
     skor = skorlari_hesapla(veriler, TS, PENCERE_SETLERI)
+    live_key = next((k for k in PENCERE_SETLERI if k.startswith("yeni(")), next(iter(PENCERE_SETLERI)))
+    _all_live_scores = np.concatenate([a.reshape(-1) for a in skor[live_key].values()])
+    guclu_mod_adet = int((_all_live_scores >= 70.0).sum())
+    guclu_mod_oran = guclu_mod_adet / max(len(_all_live_scores), 1) * 100.0
     guard = {coin: koruma_dizileri(d, TS) for coin, d in veriler.items()}
 
     # --- kontrol (puansız) ---
@@ -332,7 +333,8 @@ def calistir(ham, gun, adim=15, maks_dk=360, hizli_ozet=False):
     s = []
     s.append(f"# Matris doğrulama raporu\nVeri: {len(veriler)} coin, ~{N / 1440:.1f} gün 1 dk mum | değerlendirme: her {adim} dk | "
              f"en uzun işlem {maks_dk} dk | 100 $ teminat x 5x (500 $) | tüm komisyonlar dahil{uyari}\n")
-    s.append("## 1) Kontrol: puansız işlemler (stop/hedef/komisyon tek başına ne yapıyor?)\n```")
+    s.append(f"## 1) 70+ trend teyit modu\nCanlı matrisin 70+ ön puan eşiğine giren yön skorları: {guclu_mod_adet}/{len(_all_live_scores)} (%{guclu_mod_oran:.1f}). Bu bölgede EMA7/14/21, RSI ve Fibonacci teyit ağırlıkları artırılır.\n")
+    s.append("## 2) Kontrol: puansız işlemler (stop/hedef/komisyon tek başına ne yapıyor?)\n```")
     s.append(f"{'tablo':7}{'BE':4}{'mod':9}{'n':>6}{'isabet%':>9}{'toplam$':>10}{'ort$/işlem':>12}")
     for tablo in TABLOLAR:
         for be in BE_SECENEKLERI:
@@ -340,7 +342,7 @@ def calistir(ham, gun, adim=15, maks_dk=360, hizli_ozet=False):
                 m = kontrol[(tablo, be, mod)]
                 s.append(f"{tablo:7}{'BE' if be else '-':4}{mod:9}{m['n']:>6.0f}{m['isabet']:>9.1f}{m['toplam']:>10.1f}{m['ort']:>12.2f}")
     s.append("```\n")
-    s.append("## 2) Sinyalli varyantlar: toplam $'a göre ilk 12 (en az 30 işlem)\n```")
+    s.append("## 3) Sinyalli varyantlar: toplam $'a göre ilk 12 (en az 30 işlem)\n```")
     s.append(f"{'varyant (pencere/tablo/eşik/koruma/BE)':44}{'n':>5}{'isabet%':>9}{'toplam$':>9}{'ort$':>7}{'PF':>6}{'MDD$':>7}{'1.yarı':>8}{'2.yarı':>8}")
     for m in uygun[:12]:
         s.append(f"{ad(m):44}{m['n']:>5}{m['isabet']:>9.1f}{m['toplam']:>9.1f}{m['ort']:>7.2f}{min(m['pf'], 99):>6.2f}{m['mdd']:>7.1f}{m['y1']:>8.1f}{m['y2']:>8.1f}")
@@ -358,7 +360,7 @@ def calistir(ham, gun, adim=15, maks_dk=360, hizli_ozet=False):
         std_eb = float(np.std([r[4] * NOTIONAL / 100.0 for r in islem_kayit[(eb["pencere"], eb["tablo"], eb["esik"], eb["koruma"], eb["be"])]]))
         se = (std_eb ** 2 / max(eb["n"], 1) + kt["std"] ** 2 / max(kt["n_havuz"], 1)) ** 0.5
         t_stat = fark / se if se > 0 else 0.0
-        s.append(f"## 3) En iyi varyant: {ad(eb)}\n```")
+        s.append(f"## 4) En iyi varyant: {ad(eb)}\n```")
         s.append(f"işlem/işlem ortalaması {eb['ort']:+.2f} $ | aynı tablo+BE'nin rastgele-yön kontrolü {kt['ort']:+.2f} $ | fark {fark:+.2f} $/işlem | t ≈ {t_stat:.1f}")
         s.append("(t, işlemler birbiriyle ilişkili olduğundan olduğundan fazla çıkar; |t| < 2-3 ise avantaj kanıtlanmış sayılmaz.)")
         kayit = islem_kayit[(eb["pencere"], eb["tablo"], eb["esik"], eb["koruma"], eb["be"])]
@@ -387,7 +389,7 @@ def calistir(ham, gun, adim=15, maks_dk=360, hizli_ozet=False):
         for m in uygun if uygun else sonuc:
             d.setdefault(m[anahtar], []).append(m)
         return d
-    s.append("## 4) Tek tek etki (bütün varyantların ortalaması; n≥30 olanlar)\n```")
+    s.append("## 5) Tek tek etki (bütün varyantların ortalaması; n≥30 olanlar)\n```")
     for anahtar, baslik in (("pencere", "Pencere seti"), ("tablo", "Tablo"), ("esik", "Min. puan"), ("koruma", "Koruma"), ("be", "Başa baş stopu")):
         s.append(f"{baslik}:")
         for deger, ms_ in grup(anahtar).items():

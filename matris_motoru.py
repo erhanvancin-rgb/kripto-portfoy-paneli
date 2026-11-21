@@ -81,15 +81,17 @@ MIKNATIS_KUTLE = {"hi": 0.7, "lo": 0.7, 0.236: 0.6, 0.382: 0.8, 0.5: 1.0, 0.618:
 
 
 # ------------------------------------------------------------------ R/R (ÇAN EĞRİSİ) SEÇİCİ
+# Puan -> (stop %, hedef %) fiyat mesafesi. 75 puan merkezdir.
+# Bu değerler sermaye riski değildir; pozisyon büyüklüğü ayrıca risk_kapasitesi() ile sınırlanır.
+RISK_HEDEF_ANCHORS = ((50.0, 0.30, 0.40), (75.0, 0.45, 0.65), (100.0, 0.25, 0.30))
+
 def _oran_sec(puan):
-    # Onaylanan ve Backtest'te en yüksek kârlılığı (%5.60 net) veren Çan Eğrisi Modeli
-    if puan >= 75: return 0.50, 0.50
-    elif puan >= 71: return 0.52, 0.52
-    elif puan >= 67: return 0.56, 0.56
-    elif puan >= 63: return 0.60, 0.60
-    elif puan >= 59: return 0.56, 0.56
-    elif puan >= 55: return 0.52, 0.52
-    else: return 0.50, 0.50
+    """Puanı 50-100 bandında doğrusal ara değerleyerek stop/hedef yüzdesi döndürür."""
+    p = float(np.clip(float(puan), 50.0, 100.0))
+    xs = [x[0] for x in RISK_HEDEF_ANCHORS]
+    stops = [x[1] for x in RISK_HEDEF_ANCHORS]
+    targets = [x[2] for x in RISK_HEDEF_ANCHORS]
+    return float(np.interp(p, xs, stops)), float(np.interp(p, xs, targets))
 
 
 # ------------------------------------------------------------------ YARDIMCILAR
@@ -149,15 +151,14 @@ def pencere_analiz(df, n_skor=None):
     s_govde = ((yesil - kirmizi) / toplam) if toplam > 0 else 0.0
 
     # 2) EMA etkisi
-    e9, e20, e50 = (cl_tam.ewm(span=s, adjust=False).mean() for s in (9, 20, 50))
-    ema20, ema50 = float(e20.iloc[-1]), float(e50.iloc[-1])
+    e7, e14, e21 = (cl_tam.ewm(span=s, adjust=False).mean() for s in (7, 14, 21))
+    ema7, ema14, ema21 = float(e7.iloc[-1]), float(e14.iloc[-1]), float(e21.iloc[-1])
     k = max(3, min(10, n // 5))
-    s_konum = _tanh(((fiyat - ema20) / atr) / EMA_KONUM_OLCEK)
-    s_egim = _tanh((float(e20.iloc[-1]) - float(e20.iloc[-1 - k])) / atr / EMA_EGIM_OLCEK)
-    a = np.sign(float(e9.iloc[-1]) - ema20)
-    b = np.sign(ema20 - ema50)
-    s_dizilim = 0.6 * a + 0.4 * b
-    s_ema = 0.4 * s_konum + 0.3 * s_egim + 0.3 * s_dizilim
+    s_konum = _tanh(((fiyat - ema14) / atr) / EMA_KONUM_OLCEK)
+    s_egim = _tanh((float(e14.iloc[-1]) - float(e14.iloc[-1 - k])) / atr / EMA_EGIM_OLCEK)
+    # EMA7 > EMA14 > EMA21 = pozitif trend; tersi = negatif trend.
+    s_dizilim = 0.6 * np.sign(ema7 - ema14) + 0.4 * np.sign(ema14 - ema21)
+    s_ema = 0.35 * s_konum + 0.30 * s_egim + 0.35 * s_dizilim
 
     # 3) RSI etkisi
     rsi = _rsi(cl_tam)
@@ -188,7 +189,7 @@ def pencere_analiz(df, n_skor=None):
         s_fib = bacak * _parcali(geri_cekilme, FIB_DEVAM) * olcek
 
     # 5) Fiyatın manyetik çekimi
-    mikn = {"hi": en_yuksek, "lo": en_dusuk, "ema20": ema20, "ema50": ema50}
+    mikn = {"hi": en_yuksek, "lo": en_dusuk, "ema20": ema14, "ema50": ema21}
     if aralik > 0:
         for f in FIB_SEVIYELER:
             mikn[f] = en_dusuk + aralik * f
@@ -211,18 +212,21 @@ def pencere_analiz(df, n_skor=None):
     return {
         "s": {"govde": s_govde, "ema": s_ema, "rsi": s_rsi, "fib": s_fib, "mik": s_mik, "trend": s_trend},
         "y_adet": int((govde > 0).sum()), "k_adet": int((govde < 0).sum()),
-        "detay": {"rsi": rsi_now, "atr": atr, "geri_cekilme": geri_cekilme, "bacak": bacak, "ema20": ema20, "ema50": ema50,
+        "detay": {"rsi": rsi_now, "atr": atr, "geri_cekilme": geri_cekilme, "bacak": bacak, "ema7": ema7, "ema14": ema14, "ema21": ema21,
                   "verimlilik": verimlilik},
     }
 
 
-def pencere_pay(analiz):
+def pencere_pay(analiz, guclu_trend=False):
     s = analiz["s"]
     s_ana = sum(ANA_AGIRLIK[k] * s[k] for k in ANA_AGIRLIK)
     yon = float(np.sign(s_ana))
     if yon == 0:
         return 0.5, 0.0, 0.0
-    a = sum(TEYITCI_AGIRLIK[k] * s[k] * yon for k in TEYITCI_AGIRLIK)
+    # 70+ rejiminde EMA7/14/21, RSI momentumu ve Fibonacci trend devamı daha ağır teyit olur.
+    teyit_agirlik = ({"ema": 0.45, "rsi": 0.30, "fib": 0.20, "mik": 0.05}
+                     if guclu_trend else TEYITCI_AGIRLIK)
+    a = sum(teyit_agirlik[k] * s[k] * yon for k in teyit_agirlik)
     uyan = sum(1 for k in TEYITCI_AGIRLIK if abs(s[k]) >= AKTIF_KANIT_ESIGI and np.sign(s[k]) == yon)
     uyum = uyan / float(len(TEYITCI_AGIRLIK))
     carpan = _kenet(1.0 + TEYIT_K * a, TEYIT_MIN, TEYIT_MAX)
@@ -235,31 +239,45 @@ def pencere_pay(analiz):
 
 # ------------------------------------------------------------------ MATRİS
 def matris_hesapla(pencereler):
+    """Önce normal puanı hesaplar; yön puanı 70'i aşarsa EMA/RSI/Fibonacci teyidini güçlendirir."""
     toplam_agirlik = float(sum(p[2] for p in pencereler)) or 100.0
     analizler = []
     for p_ in pencereler:
         etiket, df, agirlik = p_[0], p_[1], p_[2]
         n_skor = p_[3] if len(p_) > 3 else None
         a = pencere_analiz(df, n_skor)
-        pay, uyum, s_ham = pencere_pay(a)
-        analizler.append((etiket, agirlik / toplam_agirlik, a, pay, uyum, s_ham))
+        analizler.append((etiket, agirlik / toplam_agirlik, a))
 
-    l0 = sum(w * pay for _, w, _, pay, _, _ in analizler)
-    uzun_yon = l0 >= 0.5
-    mtf_uyum = sum(w for _, w, _, pay, _, _ in analizler if (pay > 0.5 if uzun_yon else pay < 0.5))
-    mtf_carpan = MTF_TABAN + MTF_ARTIS * mtf_uyum
+    def birlestir(guclu_trend):
+        ara = []
+        for etiket, w, a in analizler:
+            pay, uyum, s_ham = pencere_pay(a, guclu_trend=guclu_trend)
+            ara.append((etiket, w, a, pay, uyum, s_ham))
+        l0 = sum(w * pay for _, w, _, pay, _, _ in ara)
+        uzun_yon = l0 >= 0.5
+        mtf_uyum = sum(w for _, w, _, pay, _, _ in ara if (pay > 0.5 if uzun_yon else pay < 0.5))
+        mtf_carpan = MTF_TABAN + MTF_ARTIS * mtf_uyum
+        katkilar, long_toplam, short_toplam = {}, 0.0, 0.0
+        for etiket, w, a, pay, uyum, s_ham in ara:
+            pay2 = _kenet(0.5 + (pay - 0.5) * mtf_carpan, 0.0, 1.0)
+            sl, ss = 100.0 * w * pay2, 100.0 * w * (1.0 - pay2)
+            long_toplam += sl
+            short_toplam += ss
+            katkilar[etiket] = {"sl": round(sl, 2), "ss": round(ss, 2), "y_adet": a["y_adet"], "k_adet": a["k_adet"],
+                                "pay": round(pay2, 4), "uyum": round(uyum, 2), "kanitlar": {k: round(v, 3) for k, v in a["s"].items()},
+                                "detay": a["detay"]}
+        return {"nihai_long": round(long_toplam, 2), "nihai_short": round(short_toplam, 2), "katkilar": katkilar,
+                "mtf_uyum": round(mtf_uyum, 3), "mtf_carpan": round(mtf_carpan, 3)}
 
-    katkilar, long_toplam, short_toplam = {}, 0.0, 0.0
-    for etiket, w, a, pay, uyum, s_ham in analizler:
-        pay2 = _kenet(0.5 + (pay - 0.5) * mtf_carpan, 0.0, 1.0)
-        sl, ss = 100.0 * w * pay2, 100.0 * w * (1.0 - pay2)
-        long_toplam += sl
-        short_toplam += ss
-        katkilar[etiket] = {"sl": round(sl, 2), "ss": round(ss, 2), "y_adet": a["y_adet"], "k_adet": a["k_adet"],
-                            "pay": round(pay2, 4), "uyum": round(uyum, 2), "kanitlar": {k: round(v, 3) for k, v in a["s"].items()},
-                            "detay": a["detay"]}
-    return {"nihai_long": round(long_toplam, 2), "nihai_short": round(short_toplam, 2), "katkilar": katkilar,
-            "mtf_uyum": round(mtf_uyum, 3), "mtf_carpan": round(mtf_carpan, 3)}
+    ilk = birlestir(False)
+    guclu_trend = max(ilk["nihai_long"], ilk["nihai_short"]) >= 70.0
+    if guclu_trend:
+        sonuc = birlestir(True)
+    else:
+        sonuc = ilk
+    sonuc["guclu_trend_modu"] = bool(guclu_trend)
+    sonuc["teyit_modu"] = "EMA7/14/21 + RSI + Fibonacci ağırlıklı" if guclu_trend else "Standart"
+    return sonuc
 
 
 # ------------------------------------------------------------------ TOP 5 ENDEKSİ

@@ -1043,24 +1043,18 @@ def load_15min_market_data(coin_symbol: str):
 
 import numpy as np
 
-STOP_YUZDESI = 0.50   # fiyat yüzdesi (kaldıraçtan bağımsız); tüm puanlarda sabit
-# (puan, hedef %) - 50 altı en alt satır, 75 üstü en üst satır değerini alır
-HEDEF_TABLOSU = [(50.0, 0.45), (55.0, 0.50), (59.0, 0.60), (63.0, 0.65), (67.0, 0.75), (71.0, 0.80), (75.0, 0.85)]
+# Puan -> (stop %, hedef %) fiyat mesafesi. 75 puan merkezli, 50-100 arası doğrusal geçiş.
+# Bu yüzdeler sermaye riski değildir; işlem büyüklüğü ayrıca risk_kapasitesi() ile kontrol edilir.
+RISK_HEDEF_ANCHORS = ((50.0, 0.30, 0.40), (75.0, 0.45, 0.65), (100.0, 0.25, 0.30))
 
 def calculate_coin_metrics_by_score(matris_puani):
-    """Matris puanına göre Geniş Stop (İğne Koruması) ve Hızlı Vur-Kaç Hedefleri."""
-    p = float(matris_puani)
-    if p >= 75: stop_uzde, hedef_uzde = 0.32, 0.32      # Boğa/Ayı Vuruşu (Geniş Risk, Ani Hedef)
-    elif p >= 71: stop_uzde, hedef_uzde = 0.34, 0.34    # Çok Güçlü
-    elif p >= 67: stop_uzde, hedef_uzde = 0.36, 0.36    # Orta Güçlü
-    elif p >= 63: stop_uzde, hedef_uzde = 0.38, 0.38    # Güçlü
-    elif p >= 59: stop_uzde, hedef_uzde = 0.36, 0.36    # Güvenli
-    elif p >= 55: stop_uzde, hedef_uzde = 0.34, 0.34    # Orta Trend
-    else: stop_uzde, hedef_uzde = 0.32, 0.32            # Zayıf Trend
-    
-    str_stop = f"{stop_uzde:.2f}".replace(".", ",")
-    str_hedef = f"{hedef_uzde:.2f}".replace(".", ",")
-    return stop_uzde, hedef_uzde, f"{str_stop} / {str_hedef}"
+    """Matris puanına göre fiyat bazlı stop ve hedef yüzdesi üretir."""
+    p = float(np.clip(float(matris_puani), 50.0, 100.0))
+    xs = [x[0] for x in RISK_HEDEF_ANCHORS]
+    stop_uzde = float(np.interp(p, xs, [x[1] for x in RISK_HEDEF_ANCHORS]))
+    hedef_uzde = float(np.interp(p, xs, [x[2] for x in RISK_HEDEF_ANCHORS]))
+    metin = f"{stop_uzde:.2f} / {hedef_uzde:.2f}".replace(".", ",")
+    return stop_uzde, hedef_uzde, metin
 
 def pozisyon_kar_zarar_hesapla(yon, giris_fiyati, guncel_fiyat, yatirim_miktari, kaldirac=1.0):
     """
@@ -1242,16 +1236,31 @@ def islem_gecmisi_getir(sheet_guncelle=True):
         "Giris_Fiyat", "Islem_Miktari", "Stop", "Kar_Al", "Beklenen_Kar",
         "Olasi_Stop", "Net_Kar_Zarar", "Guncel_Kasa", "Kapanis_Fiyati", "Kaldirac", "MAE_Yuzde", "MFE_Yuzde"
     ]
+    def _sheet_sayi_oku(deger):
+        metin = str(deger).strip().replace(" ", "").replace("$", "")
+        if metin.lower() in ("", "nan", "none"):
+            return np.nan
+        if "," in metin and "." in metin:
+            if metin.rfind(",") > metin.rfind("."):
+                metin = metin.replace(".", "").replace(",", ".")
+            else:
+                metin = metin.replace(",", "")
+        elif "," in metin:
+            metin = metin.replace(",", ".")
+        try:
+            return float(metin)
+        except Exception:
+            return np.nan
+
     for col in sayisal_kolonlar:
         if col in df.columns:
-            temiz_seri = (
-                df[col]
-                .astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
-                .str.strip()
-            )
-            df[col] = pd.to_numeric(temiz_seri, errors="coerce").fillna(0.0).astype(float)
+            if col in ("MAE_Yuzde", "MFE_Yuzde"):
+                # Boş değer NaN kalmalı; 0 ile doldurulursa MAE/MFE motoru hesaplandı sanır.
+                df[col] = df[col].apply(_sheet_sayi_oku).astype(float)
+            else:
+                temiz_seri = (df[col].astype(str).str.replace(".", "", regex=False)
+                              .str.replace(",", ".", regex=False).str.strip())
+                df[col] = pd.to_numeric(temiz_seri, errors="coerce").fillna(0.0).astype(float)
     # Eski kayıtlarda Kaldirac boştur: varsayılan kaldıraç atanır
     if "Kaldirac" in df.columns:
         df["Kaldirac"] = df["Kaldirac"].where(df["Kaldirac"] >= 1, float(KALDIRAC))
@@ -1265,6 +1274,7 @@ def dataframe_guncelle_gsheets(df):
             df = df.copy()
             df["Islem_ID"] = df["Islem_ID"].astype(int)
             df = df.sort_values(by="Islem_ID").reset_index(drop=True)
+            df = df.where(pd.notna(df), "")
             veri_listesi = [df.columns.tolist()] + df.values.tolist()
             eski_satir_sayisi = len(sheet.get_all_values())
             
@@ -1611,8 +1621,8 @@ def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_d
             "Kapanis_Fiyati": 0.0,
             "Kaldirac": int(_lev) if float(_lev).is_integer() else float(_lev),
             "Seviye_Zamani": suan_tr.strftime("%d.%m.%Y %H:%M"),
-            "MAE_Yuzde": 0.0,   # kapanınca bot 1 dakikalık mumlardan doldurur (strateji kalibrasyonu)
-            "MFE_Yuzde": 0.0,
+            "MAE_Yuzde": "",   # kapanıştan sonra 1 dakikalık mumlardan hesaplanır
+            "MFE_Yuzde": "",
         }])
         df = pd.concat([df, yeni_kayit], ignore_index=True).drop_duplicates(subset=["Islem_ID"], keep="last")
         if not dataframe_guncelle_gsheets(df):
@@ -1665,8 +1675,8 @@ def manuel_islem_kapat(islem_id, anlik_kapatma_fiyati, kapatilacak_miktar=None):
                 "Kapanis_Fiyati": float(round(anlik_kapatma_fiyati, 4)),
                 "Kaldirac": lev,
                 "Seviye_Zamani": "-",
-                "MAE_Yuzde": 0.0,
-                "MFE_Yuzde": 0.0,
+                "MAE_Yuzde": "",
+                "MFE_Yuzde": "",
             }])
 
             kalan_miktar = mevcut_miktar - kapatilacak_miktar

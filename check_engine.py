@@ -137,8 +137,23 @@ def kline_cek_binance(coin, interval="1m", limit=100):
 
 _KLINE_ONBELLEK = {}
 
+BINANCE_FUTURES_HOSTLAR = ["https://fapi.binance.com", "https://fapi1.binance.com",
+                           "https://fapi2.binance.com", "https://fapi3.binance.com", "https://fapi4.binance.com"]
+
+def _binance_futures_get(yol, timeout=10):
+    """USDT-M Futures mumları; MAE/MFE spot yerine işlem yapılan piyasa ile ölçülür."""
+    for host in BINANCE_FUTURES_HOSTLAR:
+        try:
+            r = requests.get(host + yol, timeout=timeout)
+            if r.status_code == 200:
+                return r
+            print(f"Binance Futures {host} HTTP {r.status_code}")
+        except Exception as e:
+            print(f"Binance Futures {host} hata: {type(e).__name__}")
+    return None
+
 def kline_cek_binance_aralik(coin, interval, bas_ms, bit_ms):
-    """Belirli zaman aralığı için kline çek (önbellekli)."""
+    """USDT-M Futures 1m mumlarını belirli zaman aralığında çeker (önbellekli)."""
     key = (coin, interval, int(bas_ms), int(bit_ms))
     if key in _KLINE_ONBELLEK:
         return _KLINE_ONBELLEK[key]
@@ -151,9 +166,9 @@ def kline_cek_binance_aralik(coin, interval, bas_ms, bit_ms):
     for _ in range(10): 
         if curr_bas >= bit:
             break
-        yol = f"/api/v3/klines?symbol={sym}&interval={interval}&startTime={curr_bas}&endTime={bit}&limit=1000"
         try:
-            r = _binance_get(yol, 10)
+            yol = f"/fapi/v1/klines?symbol={sym}&interval={interval}&startTime={curr_bas}&endTime={bit}&limit=1000"
+            r = _binance_futures_get(yol, 10)
             if r is None:
                 break
             data = r.json()
@@ -252,6 +267,7 @@ def dataframe_guncelle_gsheets(df):
         df = df.copy()
         df["Islem_ID"] = pd.to_numeric(df["Islem_ID"], errors="coerce").fillna(0).astype(int)
         df = df.sort_values(by="Islem_ID").reset_index(drop=True)
+        df = df.where(pd.notna(df), "")
         veri = [df.columns.tolist()] + df.values.tolist()
         try:
             ws.update(values=veri, range_name="A1")
@@ -807,7 +823,10 @@ def mae_mfe_doldur():
             continue
         mae_val = r.get("MAE_Yuzde", "")
         mfe_val = r.get("MFE_Yuzde", "")
-        if mae_val != "" and mfe_val != "" and not pd.isna(mae_val) and not pd.isna(mfe_val):
+        # İki alan da doluysa tekrar hesaplama. Boş/NaN alanlar yeniden işlenir.
+        mae_dolu = str(mae_val).strip() not in ("", "nan", "None") and pd.notna(mae_val)
+        mfe_dolu = str(mfe_val).strip() not in ("", "nan", "None") and pd.notna(mfe_val)
+        if mae_dolu and mfe_dolu:
             continue
 
         coin = r["Coin"]

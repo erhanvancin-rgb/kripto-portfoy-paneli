@@ -1,11 +1,11 @@
+
 name: Trade Check and Alert Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Her 5 dakikada bir (GitHub yoğunlukta birkaç dk geciktirebilir)
-  workflow_dispatch:        # Elle tetiklemeye izin verir
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
-# Üst üste binen çalıştırmalar aynı bildirimi iki kez göndermesin
 concurrency:
   group: trade-check-bot
   cancel-in-progress: false
@@ -14,12 +14,13 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
       - name: Repository checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -29,7 +30,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pandas numpy gspread google-auth pytz pycoingecko openpyxl
 
-      # ÖNCE stop/kâr kontrolü ve Telegram bildirimi (kritik adım)
       - name: Run trade check engine
         timeout-minutes: 10
         env:
@@ -39,7 +39,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -u check_engine.py
 
-      # Analiz adımı (CoinGecko) kritik değil: hata verse bile kontrol motorunu etkilemez
       - name: Run analysis (non-critical)
         if: always()
         continue-on-error: true

@@ -415,3 +415,376 @@ def mae_mfe_hesapla(mumlar, long_mi, giris, baslangic_ms, bitis_ms):
     else:
         mae, mfe = (ust - giris) / giris * 100.0, (giris - alt) / giris * 100.0
     return max(0.0, mae), max(0.0, mfe)
+  
+# ================================================================
+# ÇİFT YÖNLÜ DÜZELTME VE FIRSAT MOTORU
+# Ana trendden bağımsız LONG / SHORT fırsat değerlendirmesi
+# ================================================================
+
+DUZELTME_AYARLARI = {
+    "5m": 5,
+    "15m": 15,
+    "30m": 30,
+    "rsi_asiri": 75,
+    "rsi_asiri_dusuk": 25,
+    "ema_uzama_atr": 1.8,
+    "min_teyit": 60,
+    "min_net_getiri": 0.12,
+    "komisyon_yuzde": 0.04,
+    "kayma_yuzde": 0.02,
+}
+
+
+def duzeltme_firsat_analizi(
+    df,
+    ana_yon,
+    komisyon_yuzde=None,
+    kayma_yuzde=None
+):
+    """
+    Ana trendden bağımsız düzeltme fırsatı üretir.
+    Yüksek LONG puanı SHORT fırsatını engellemez.
+    Tek başına RSI aşırılığı işlem sinyali değildir.
+    """
+
+    bos = {
+        "long_firsat": 0.0,
+        "short_firsat": 0.0,
+        "duzeltme_riski": 0.0,
+        "ana_yon": ana_yon,
+        "aday_yon": None,
+        "teyit_gerekli": True,
+        "nedenler": [],
+    }
+
+    if df is None or len(df) < 60:
+        bos["nedenler"].append("Yetersiz mum verisi")
+        return bos
+
+    d = df.copy().reset_index(drop=True)
+
+    for c in ("Open", "High", "Low", "Close"):
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+
+    d = d.dropna(subset=["Open", "High", "Low", "Close"])
+
+    if len(d) < 60:
+        bos["nedenler"].append("Geçerli mum sayısı yetersiz")
+        return bos
+
+    # Açık mum kullanılmaz.
+    d = d.iloc[:-1].copy()
+
+    if len(d) < 50:
+        return bos
+
+    c = d["Close"]
+    h = d["High"]
+    l = d["Low"]
+
+    fiyat = float(c.iloc[-1])
+    atr = _atr(d)
+
+    if fiyat <= 0 or atr <= 0:
+        return bos
+
+    # Son 5 / 15 / 30 dakikalık hareket
+    # Veri 1 dakikalık değilse çağıran taraf uygun zaman dilimini sağlamalıdır.
+    degisimler = {}
+
+    for dakika in (5, 15, 30):
+        if len(c) > dakika:
+            onceki = float(c.iloc[-1 - dakika])
+            degisimler[dakika] = (
+                (fiyat - onceki) / onceki * 100
+                if onceki > 0 else 0.0
+            )
+        else:
+            degisimler[dakika] = 0.0
+
+    h5 = degisimler[5]
+    h15 = degisimler[15]
+    h30 = degisimler[30]
+
+    # EMA 7 / 14 / 21
+    e7 = c.ewm(span=7, adjust=False).mean()
+    e14 = c.ewm(span=14, adjust=False).mean()
+    e21 = c.ewm(span=21, adjust=False).mean()
+
+    ema7 = float(e7.iloc[-1])
+    ema14 = float(e14.iloc[-1])
+    ema21 = float(e21.iloc[-1])
+
+    ema_uzama = abs(fiyat - ema14) / atr
+
+    # RSI ve RSI ivmesi
+    rsi_ser = _rsi(c)
+    rsi_now = float(rsi_ser.iloc[-1]) if pd.notna(rsi_ser.iloc[-1]) else 50.0
+    rsi_prev = (
+        float(rsi_ser.iloc[-6])
+        if len(rsi_ser) > 6 and pd.notna(rsi_ser.iloc[-6])
+        else rsi_now
+    )
+
+    rsi_ivme = rsi_now - rsi_prev
+
+    # Momentumun son mumlarda zayıflaması
+    son_uc = float(c.iloc[-1] - c.iloc[-4])
+    onceki_uc = float(c.iloc[-4] - c.iloc[-7])
+    momentum_zayifliyor = (
+        abs(son_uc) < abs(onceki_uc)
+        and np.sign(son_uc) != 0
+    )
+
+    # Son 30 dakikalık hareketin ATR karşılığı
+    hareket_atr = abs(
+        float(c.iloc[-1]) - float(c.iloc[-31])
+    ) / atr if len(c) > 31 else 0.0
+
+    # Aşırı yükseliş / düşüş değerlendirmesi
+    yukselis_asiri = (
+        h5 > 0 and h15 > 0 and h30 > 0
+        and h5 > h15 * 0.20
+        and hareket_atr > 2.0
+    )
+
+    dusus_asiri = (
+        h5 < 0 and h15 < 0 and h30 < 0
+        and abs(h5) > abs(h15) * 0.20
+        and hareket_atr > 2.0
+    )
+
+    # Aşağı dönüş teyidi: son kapanmış mum
+    onceki = d.iloc[-2]
+    son = d.iloc[-1]
+
+    asagi_mum = (
+        float(son["Close"]) < float(son["Open"])
+        and float(son["Close"]) < float(onceki["Close"])
+    )
+
+    yukari_mum = (
+        float(son["Close"]) > float(son["Open"])
+        and float(son["Close"]) > float(onceki["Close"])
+    )
+
+    # EMA yön değişimi / momentum teyidi
+    short_ema_teyit = (
+        ema7 < ema14
+        or (fiyat < ema7 and ema7 < float(e7.iloc[-2]))
+    )
+
+    long_ema_teyit = (
+        ema7 > ema14
+        or (fiyat > ema7 and ema7 > float(e7.iloc[-2]))
+    )
+
+    # Düzeltme puanları
+    short = 0.0
+    long = 0.0
+    nedenler = []
+
+    if yukselis_asiri:
+        short += 25
+        nedenler.append("30 dakikalık yükseliş aşırı hızlandı")
+
+    if rsi_now >= DUZELTME_AYARLARI["rsi_asiri"]:
+        short += 15
+        nedenler.append("RSI aşırı alım bölgesinde")
+
+    if rsi_ivme < -3:
+        short += 15
+        nedenler.append("RSI momentumu aşağı dönüyor")
+
+    if momentum_zayifliyor and h30 > 0:
+        short += 10
+        nedenler.append("Yükseliş momentumu zayıflıyor")
+
+    if ema_uzama >= DUZELTME_AYARLARI["ema_uzama_atr"] and h30 > 0:
+        short += 10
+        nedenler.append("Fiyat EMA14'ten aşırı uzaklaştı")
+
+    if asagi_mum:
+        short += 15
+        nedenler.append("Aşağı yönlü mum teyidi oluştu")
+
+    if short_ema_teyit:
+        short += 10
+        nedenler.append("EMA kısa vadeli aşağı dönüş gösteriyor")
+
+    if dusus_asiri:
+        long += 25
+        nedenler.append("30 dakikalık düşüş aşırı hızlandı")
+
+    if rsi_now <= DUZELTME_AYARLARI["rsi_asiri_dusuk"]:
+        long += 15
+        nedenler.append("RSI aşırı satım bölgesinde")
+
+    if rsi_ivme > 3:
+        long += 15
+        nedenler.append("RSI momentumu yukarı dönüyor")
+
+    if momentum_zayifliyor and h30 < 0:
+        long += 10
+        nedenler.append("Düşüş momentumu zayıflıyor")
+
+    if ema_uzama >= DUZELTME_AYARLARI["ema_uzama_atr"] and h30 < 0:
+        long += 10
+        nedenler.append("Fiyat EMA14'ten aşırı uzaklaştı")
+
+    if yukari_mum:
+        long += 15
+        nedenler.append("Yukarı yönlü mum teyidi oluştu")
+
+    if long_ema_teyit:
+        long += 10
+        nedenler.append("EMA kısa vadeli yukarı dönüş gösteriyor")
+
+    # Yalnızca aşırılaşma ile ters işlem açılmasını engelle.
+    if not asagi_mum:
+        short = min(short, 55)
+
+    if not yukari_mum:
+        long = min(long, 55)
+
+    # Ana yön puanı düzeltme fırsatını yasaklamaz.
+    aday = None
+    if short >= DUZELTME_AYARLARI["min_teyit"] and short > long:
+        aday = "SHORT"
+    elif long >= DUZELTME_AYARLARI["min_teyit"] and long > short:
+        aday = "LONG"
+
+    return {
+        "long_firsat": round(min(long, 100), 2),
+        "short_firsat": round(min(short, 100), 2),
+        "duzeltme_riski": round(max(long, short), 2),
+        "ana_yon": ana_yon,
+        "aday_yon": aday,
+        "teyit_gerekli": aday is None,
+        "nedenler": nedenler,
+        "rsi": round(rsi_now, 2),
+        "rsi_ivme": round(rsi_ivme, 2),
+        "atr": atr,
+        "ema_uzama_atr": round(ema_uzama, 2),
+        "hareket_5m": round(h5, 4),
+        "hareket_15m": round(h15, 4),
+        "hareket_30m": round(h30, 4),
+        "hareket_atr": round(hareket_atr, 2),
+    }
+
+
+def net_getiri_hesapla(
+    giris,
+    hedef,
+    yon,
+    komisyon_yuzde=None,
+    kayma_yuzde=None
+):
+    """Hedefe ulaşılması halinde yaklaşık net fiyat getirisi."""
+
+    if not giris or giris <= 0:
+        return 0.0
+
+    komisyon = (
+        DUZELTME_AYARLARI["komisyon_yuzde"]
+        if komisyon_yuzde is None else komisyon_yuzde
+    )
+
+    kayma = (
+        DUZELTME_AYARLARI["kayma_yuzde"]
+        if kayma_yuzde is None else kayma_yuzde
+    )
+
+    if str(yon).lower() == "short":
+        brut = (giris - hedef) / giris * 100
+    else:
+        brut = (hedef - giris) / giris * 100
+
+    # Giriş ve çıkış komisyonu
+    toplam_maliyet = 2 * komisyon + 2 * kayma
+
+    return round(brut - toplam_maliyet, 4)
+
+
+def iki_asamali_teyit(df, durum=None):
+    """
+    Durum bilgisi taramalar arasında saklanmalıdır.
+    İlk aşama uyarı, sonraki kapanmış mumda ikinci aşama teyit.
+    """
+
+    durum = dict(durum or {})
+
+    if df is None or len(df) < 30:
+        return {
+            "durum": durum,
+            "uyari": False,
+            "teyit": False,
+            "yon": None,
+        }
+
+    d = df.iloc[:-1].copy()
+
+    if len(d) < 25:
+        return {
+            "durum": durum,
+            "uyari": False,
+            "teyit": False,
+            "yon": None,
+        }
+
+    son = d.iloc[-1]
+    onceki = d.iloc[-2]
+
+    asagi = (
+        float(son["Close"]) < float(son["Open"])
+        and float(son["Close"]) < float(onceki["Close"])
+    )
+
+    yukari = (
+        float(son["Close"]) > float(son["Open"])
+        and float(son["Close"]) > float(onceki["Close"])
+    )
+
+    aday = "SHORT" if asagi else "LONG" if yukari else None
+
+    if aday is None:
+        return {
+            "durum": durum,
+            "uyari": False,
+            "teyit": False,
+            "yon": None,
+        }
+
+    onceki_aday = durum.get("aday")
+    onceki_mum = durum.get("mum")
+
+    # İlk uyarı
+    if onceki_aday != aday or onceki_mum == len(d) - 1:
+        durum = {
+            "aday": aday,
+            "mum": len(d) - 1,
+        }
+        return {
+            "durum": durum,
+            "uyari": True,
+            "teyit": False,
+            "yon": aday,
+        }
+
+    # Sonraki kapanmış mumda aynı yönde teyit
+    if onceki_aday == aday and onceki_mum is not None:
+        durum = {}
+        return {
+            "durum": durum,
+            "uyari": False,
+            "teyit": True,
+            "yon": aday,
+        }
+
+    return {
+        "durum": durum,
+        "uyari": False,
+        "teyit": False,
+        "yon": aday,
+    }
+

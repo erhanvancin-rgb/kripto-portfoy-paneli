@@ -996,9 +996,10 @@ def fiyat_cek_binance(coin_symbol):
 @st.cache_data(ttl=60)
 def kline_cek_binance(coin_symbol, interval, limit):
     sym = coin_symbol.replace("/", "")
+    # USDT-M Futures mumları: sinyal/stop verisi işlem yapılan piyasa ile aynı olmalı.
     endpoints = [
-        f"https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
-        f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://fapi1.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
     ]
     data = _binance_get_json(endpoints, 5)
     if data is not None:
@@ -1482,6 +1483,34 @@ def bakiye_durumunu_getir(ortak_fiyat_havuzu={}):
 # =====================================================================
 
 def yeni_islem_ekle(coin, yon, giris_fiyat, islem_miktari, stop, kar_al, zaman_dilimi, matris_puan, risk_hedef_metin, esik_atla=False, kaldirac=None, risk_asimi=False):
+    # ZORUNLU OTOMATIK KORUMA KAPISI: kullanıcı onayı/riski aşma seçeneği bu filtreleri atlayamaz.
+    try:
+        _koruma_mumlari = kline_cek_binance(coin, "5m", 160)
+        _koruma = matris_motoru.otomatik_islem_kontrol(_koruma_mumlari, yon)
+    except Exception as _koruma_hata:
+        _koruma = {"izin": False, "nedenler": [f"Koruma filtresi veri/hesaplama hatası: {_koruma_hata}"], "atr": None}
+    if not _koruma.get("izin", False):
+        _neden = "; ".join(_koruma.get("nedenler", ["Koruma filtresi geçemedi"]))
+        try:
+            _kayit = pd.DataFrame([{"Zaman": tr_zaman().strftime("%Y-%m-%d %H:%M:%S"), "Coin": coin, "Yon": yon,
+                "Matris_Puan": matris_puan, "Fiyat": giris_fiyat, "ATR": _koruma.get("atr"), "Neden": _neden}])
+            _kayit.to_csv("engellenen_sinyaller.csv", mode="a", header=not os.path.exists("engellenen_sinyaller.csv"), index=False, encoding="utf-8-sig")
+        except Exception as _log_hata:
+            print(f"Engellenen sinyal kayıt hatası: {_log_hata}")
+        return False, f"🛡️ Otomatik koruma: işlem engellendi. {_neden}"
+
+    # ATR/swing stop: stop genişledikçe pozisyon marjini aynı oranda küçültülür; parasal risk büyütülmez.
+    try:
+        _dinamik = matris_motoru.volatilite_stop_hedef(_koruma_mumlari, yon, float(giris_fiyat), float(matris_puan), 1.6)
+        if _dinamik:
+            _yeni_stop, _yeni_hedef, _atr_deger, _stop_mesafe = _dinamik
+            _eski_mesafe = abs(float(giris_fiyat) - float(stop)) / float(giris_fiyat) * 100.0
+            if _stop_mesafe > 0 and _eski_mesafe > 0 and _stop_mesafe > _eski_mesafe:
+                islem_miktari = float(islem_miktari) * (_eski_mesafe / _stop_mesafe)
+            stop, kar_al = _yeni_stop, _yeni_hedef
+    except Exception as _stop_hata:
+        return False, f"Dinamik stop hesaplanamadı; güvenlik için işlem açılmadı: {_stop_hata}"
+
     df = islem_gecmisi_getir()
     toplam_kasa_risk, _, mevcut_bakiye, _, _ = bakiye_durumunu_getir()
     # Kaldıraç: coinde açık pozisyon varsa onunki korunur, yoksa seçilen değer kullanılır (1..KALDIRAC_MAX)

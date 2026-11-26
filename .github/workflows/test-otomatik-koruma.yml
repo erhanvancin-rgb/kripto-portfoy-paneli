@@ -1,0 +1,27 @@
+
+name: Otomatik Koruma Testleri
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-protection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas numpy gspread google-auth pytz pycoingecko openpyxl
+
+      - name: Run automatic protection tests
+        run: python test_otomatik_koruma.py

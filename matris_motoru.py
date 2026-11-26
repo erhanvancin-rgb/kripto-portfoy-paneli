@@ -324,6 +324,78 @@ def dokunus_bul(mumlar, long_mi, stop, hedef, baslangic_utc_ms):
     return None
 
 
+
+
+# ------------------------------------------------------------------ OTOMATIK ISLEM KAPISI + VOLATILITE STOPU
+def otomatik_islem_kontrol(df, yon, atr_asiri=2.2, ani_sicrama=2.5, seviye_atr=0.20):
+    """Zorunlu giriş filtresi. Veri yetersizse güvenli tarafta kalıp işlemi engeller."""
+    nedenler = []
+    if df is None or len(df) < 60:
+        return {"izin": False, "nedenler": ["Yeterli mum verisi yok (en az 60 mum gerekli)"], "atr": None}
+    d = df.copy()
+    for c in ("Open", "High", "Low", "Close"):
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = d.dropna(subset=["Open", "High", "Low", "Close"])
+    if len(d) < 60:
+        return {"izin": False, "nedenler": ["Geçerli mum sayısı yetersiz"], "atr": None}
+    c, h, l = d.Close, d.High, d.Low
+    atr_ser = (pd.concat([(h-l), (h-c.shift()).abs(), (l-c.shift()).abs()], axis=1).max(axis=1).rolling(14).mean())
+    atr = float(atr_ser.iloc[-2] if len(atr_ser) > 2 else atr_ser.iloc[-1])
+    if not np.isfinite(atr) or atr <= 0:
+        return {"izin": False, "nedenler": ["ATR hesaplanamadı"], "atr": None}
+    son = d.iloc[-2]  # kapanmış mum; açık mumla karar verme
+    onceki_atr = atr
+    son_aralik = float(son.High - son.Low)
+    if son_aralik > ani_sicrama * onceki_atr:
+        nedenler.append(f"Ani volatilite: son mum aralığı {son_aralik/atr:.2f} ATR")
+    atr_ref = float(atr_ser.iloc[-52:-2].median()) if len(atr_ser.dropna()) >= 20 else atr
+    if atr_ref > 0 and atr / atr_ref > atr_asiri:
+        nedenler.append(f"Aşırı ATR: geçmiş medyanın {atr/atr_ref:.2f} katı")
+    e7, e14, e21 = c.ewm(span=7, adjust=False).mean().iloc[-2], c.ewm(span=14, adjust=False).mean().iloc[-2], c.ewm(span=21, adjust=False).mean().iloc[-2]
+    rsi_ser = _rsi(c)
+    rsi = float(rsi_ser.iloc[-2]) if pd.notna(rsi_ser.iloc[-2]) else 50.0
+    long = "long" in str(yon).lower()
+    if long and not (e7 > e14 > e21 and rsi >= 50):
+        nedenler.append(f"LONG teyidi yok: EMA7/14/21 veya RSI uyumsuz (RSI {rsi:.1f})")
+    if not long and not (e7 < e14 < e21 and rsi <= 50):
+        nedenler.append(f"SHORT teyidi yok: EMA7/14/21 veya RSI uyumsuz (RSI {rsi:.1f})")
+    # Yakın swing ve Fibonacci bölgelerinde yeni pozisyon açma: fiyatın nefes alanı kalmalı.
+    hi, lo, fiyat = float(h.iloc[-22:-2].max()), float(l.iloc[-22:-2].min()), float(c.iloc[-2])
+    span = hi - lo
+    if span > 0:
+        fibs = [hi - span*x for x in FIB_SEVIYELER]
+        yakin_fib = min(abs(fiyat-x) for x in fibs) / atr
+        karsi_seviye = abs(hi-fiyat)/atr if long else abs(fiyat-lo)/atr
+        if yakin_fib < seviye_atr:
+            nedenler.append(f"Fibonacci seviyesine çok yakın ({yakin_fib:.2f} ATR)")
+        if karsi_seviye < 0.35:
+            nedenler.append("Yakın swing direnç/destek: hedef için yeterli alan yok")
+    return {"izin": not nedenler, "nedenler": nedenler, "atr": atr, "fiyat": fiyat, "rsi": rsi}
+
+
+def volatilite_stop_hedef(df, yon, giris, puan, atr_katsayi=1.6):
+    """ATR + swing stop; skor hedefi korunur, stop en az ATR tamponu kadar genişletilir."""
+    stop_pct, hedef_pct = _oran_sec(puan)
+    if df is None or len(df) < 30 or not giris:
+        return None
+    d = df.iloc[:-1] if len(df) > 30 else df
+    atr = _atr(d)
+    long = "long" in str(yon).lower()
+    swing_low = float(d["Low"].astype(float).tail(20).min())
+    swing_high = float(d["High"].astype(float).tail(20).max())
+    atr_pct = atr / float(giris) * 100.0
+    mesafe_pct = max(stop_pct, atr_pct * atr_katsayi)
+    # Swing seviyesi ATR tamponunun gerisinde olmalı; stop hiçbir zaman girişin yanlış tarafına geçmez.
+    if long:
+        stop = min(float(giris) * (1-mesafe_pct/100), swing_low - 0.25*atr)
+        hedef = float(giris) * (1+hedef_pct/100)
+    else:
+        stop = max(float(giris) * (1+mesafe_pct/100), swing_high + 0.25*atr)
+        hedef = float(giris) * (1-hedef_pct/100)
+    gercek_stop_pct = abs(float(giris) - float(stop)) / float(giris) * 100.0
+    return float(stop), float(hedef), float(atr), float(gercek_stop_pct)
+
+
 # ------------------------------------------------------------------ MAE / MFE
 def mae_mfe_hesapla(mumlar, long_mi, giris, baslangic_ms, bitis_ms):
     if mumlar is None or len(mumlar) == 0 or not giris:

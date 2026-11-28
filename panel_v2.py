@@ -945,9 +945,11 @@ from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 
 _HTTP = requests.Session()
+_HTTP.headers.update({"User-Agent": "Mozilla/5.0 (compatible; KriptoPortfoyPanel/1.0)"})
 _HTTP.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=20))
 _SON_ENDPOINT = {"i": 0}   # son başarılı endpoint önce denenir
 _KLINE_SON_HATA = {}       # sembol/aralık bazında son veri çekme hatası
+_KLINE_VERI_KAYNAGI = {}   # Futures / Spot yedek kaynağını görünür tutar
 _BINANCE_API_HATA = ""
 
 def _binance_get_json(urls, timeout):
@@ -1006,40 +1008,59 @@ def fiyat_cek_binance(coin_symbol):
         pass
     return baz_fiyatlar.get(coin_symbol, 100.0)
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=45, show_spinner=False)
 def kline_cek_binance(coin_symbol, interval, limit):
+    """Önce USDT-M Futures, erişilemiyorsa Binance Spot mumlarını yedek kaynak olarak dener.
+
+    Her iki API de aynı OHLC şemasına dönüştürülür. Spot yedeği kullanıldığında kaynak
+    _KLINE_VERI_KAYNAGI içinde işaretlenir; veri yoksa sentetik mum üretip puanlamaya sokmaz.
+    """
     sym = coin_symbol.replace("/", "")
-    # USDT-M Futures mumları: sinyal/stop verisi işlem yapılan piyasa ile aynı olmalı.
-    endpoints = [
+    anahtar = f"{coin_symbol}|{interval}"
+    limit = max(10, min(int(limit), 1500))
+    futures_urls = [
         f"https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
         f"https://fapi1.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://fapi2.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://fapi3.binance.com/fapi/v1/klines?symbol={sym}&interval={interval}&limit={limit}",
     ]
-    data = _binance_get_json(endpoints, 5)
-    anahtar = f"{coin_symbol}|{interval}"
-    if isinstance(data, list) and data:
-        try:
-            df = pd.DataFrame(
-                data,
-                columns=[
-                    "timestamp", "Open", "High", "Low", "Close", "Volume",
-                    "Close_Time", "QAV", "Num_Trades", "Taker_BBAV", "Taker_BQAV", "Ignore"
-                ],
-            )
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(TR_TZ)
-            for col in ["Open", "High", "Low", "Close"]:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-            df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["Open", "High", "Low", "Close"])
-            df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
-            if len(df) >= 10:
-                _KLINE_SON_HATA.pop(anahtar, None)
-                return df[["timestamp", "Open", "High", "Low", "Close"]]
-            _KLINE_SON_HATA[anahtar] = f"Binance yalnızca {len(df)} geçerli mum döndürdü"
-        except Exception as e:
-            _KLINE_SON_HATA[anahtar] = f"Mum verisi ayrıştırılamadı: {type(e).__name__}: {e}"
-    elif isinstance(data, dict):
-        _KLINE_SON_HATA[anahtar] = f"Binance API: {str(data)[:180]}"
-    else:
-        _KLINE_SON_HATA[anahtar] = _BINANCE_API_HATA or "Binance Futures API yanıt vermedi veya erişim engellendi"
+    spot_urls = [
+        f"https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
+        f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}",
+    ]
+
+    son_hatalar = []
+    for kaynak, endpoints in (("USDT-M Futures", futures_urls), ("Binance Spot yedek", spot_urls)):
+        data = _binance_get_json(endpoints, 7)
+        if isinstance(data, list) and len(data) > 0:
+            try:
+                # Binance kline dizisi en az ilk 6 alanı içermelidir.
+                satirlar = [x[:6] for x in data if isinstance(x, (list, tuple)) and len(x) >= 6]
+                if not satirlar:
+                    raise ValueError("API mum listesi boş veya beklenen biçimde değil")
+                df = pd.DataFrame(satirlar, columns=["timestamp", "Open", "High", "Low", "Close", "Volume"])
+                df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="coerce"), unit="ms", utc=True).dt.tz_convert(TR_TZ)
+                for col in ("Open", "High", "Low", "Close"):
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["timestamp", "Open", "High", "Low", "Close"])
+                mantikli = (df["High"] >= df["Low"]) & (df["High"] >= df[["Open", "Close"]].max(axis=1)) & (df["Low"] <= df[["Open", "Close"]].min(axis=1))
+                df = df.loc[mantikli].sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+                if len(df) >= 10:
+                    _KLINE_SON_HATA.pop(anahtar, None)
+                    _KLINE_VERI_KAYNAGI[anahtar] = kaynak
+                    if kaynak != "USDT-M Futures":
+                        _KLINE_SON_HATA[anahtar] = "UYARI: Futures API erişilemedi; puanlama Binance Spot mumlarıyla yapılıyor."
+                    return df[["timestamp", "Open", "High", "Low", "Close"]]
+                son_hatalar.append(f"{kaynak}: yalnızca {len(df)} geçerli mum")
+            except Exception as e:
+                son_hatalar.append(f"{kaynak} ayrıştırma: {type(e).__name__}: {str(e)[:120]}")
+        elif isinstance(data, dict):
+            son_hatalar.append(f"{kaynak} API: {str(data)[:150]}")
+        else:
+            son_hatalar.append(f"{kaynak}: {_BINANCE_API_HATA or 'yanıt alınamadı'}")
+
+    _KLINE_VERI_KAYNAGI.pop(anahtar, None)
+    _KLINE_SON_HATA[anahtar] = " | ".join(son_hatalar)[:500] or "Binance mum verisi alınamadı"
     return pd.DataFrame(columns=["timestamp", "Open", "High", "Low", "Close"])
 
 @st.cache_data(ttl=30)

@@ -255,6 +255,8 @@ def matris_hesapla(pencereler):
         n_skor = p_[3] if len(p_) > 3 else None
         a = pencere_analiz(df, n_skor)
         analizler.append((etiket, agirlik, a))
+    # Tüm pencereleri sakla: geçersiz olanlar da teşhis/arayüzde görünmeli.
+    analizler_all = analizler[:]
     gecerli = [(e, w, a) for e, w, a in analizler if a.get("detay", {}).get("veri_gecerli", False)]
     toplam_agirlik = sum(w for _, w, _ in gecerli)
     if not gecerli or toplam_agirlik <= 0:
@@ -290,7 +292,6 @@ def matris_hesapla(pencereler):
                     "pay": 0.5, "uyum": 0.0, "kanitlar": a["s"], "detay": a["detay"]}
         return {"nihai_long": round(long_toplam, 2), "nihai_short": round(short_toplam, 2),
                 "katkilar": katkilar, "mtf_uyum": round(mtf_uyum, 3), "mtf_carpan": round(mtf_carpan, 3)}
-    analizler_all = analizler[:]
     ilk = birlestir(False)
     guclu_trend = max(ilk["nihai_long"], ilk["nihai_short"]) >= 70.0
     sonuc = birlestir(True) if guclu_trend else ilk
